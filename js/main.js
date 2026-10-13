@@ -357,6 +357,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const input = new Input();
 const audio = new Audio();
 let game = null;
+const TMP_V1 = new THREE.Vector3(), TMP_V2 = new THREE.Vector3(), TMP_V3 = new THREE.Vector3(), TMP_C = new THREE.Color(); // per-frame scratch
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -441,6 +442,15 @@ class Game {
     const scene = (this.scene = new THREE.Scene());
     // weather first: it decides how wet the track starts
     this.weather = new Weather(scene, opts.weather, opts.laps * 95, opts.quality, rand);
+    {
+      // contact sparks pool
+      const max = 160, pos = new Float32Array(max * 3).fill(-50), g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.sparkPts = new THREE.Points(g, new THREE.PointsMaterial({ map: TX.particle(), color: 0xffc060, size: 0.16, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+      this.sparkPts.frustumCulled = false;
+      this.sparkPts.userData = { max, pos, vel: new Float32Array(max * 3), life: new Float32Array(max), next: 0 };
+      scene.add(this.sparkPts);
+    }
     const wet = this.weather.wetness > 0.4; // tyre choice at the start
     this.startWet = wet;
     scene.fog = new THREE.FogExp2(0xc9dcec, 0.0006);
@@ -612,10 +622,10 @@ class Game {
     this.scene.fog.density = L(T.fogD, (T.lamps > 0.5 ? 0.0035 : 0.0042) * (0.45 + 0.55 * r));
     this.scene.fog.color.copy(this.fogClear).lerp(this.fogWet, o);
     this.sun.intensity = T.sunInt * (1 - 0.62 * o);
-    this.sun.color.copy(this.sunClear).lerp(new THREE.Color(0xdfe5ea), o * 0.7);
+    this.sun.color.copy(this.sunClear).lerp(TMP_C.setHex(0xdfe5ea), o * 0.7);
     this.sun.shadow.radius = L(2, 6);
     this.hemi.intensity = T.hemiInt * L(1, 1.05);
-    this.hemi.color.copy(this.hemiClear).lerp(new THREE.Color(T.lamps > 0.5 ? 0x3a4458 : 0xc5ccd4), o);
+    this.hemi.color.copy(this.hemiClear).lerp(TMP_C.setHex(T.lamps > 0.5 ? 0x3a4458 : 0xc5ccd4), o);
     this.scene.environmentIntensity = T.env * L(1, 0.8);
     renderer.toneMappingExposure = T.exposure * L(1, 0.92);
     if (this.sunSprite) this.sunSprite.material.opacity = 1 - o;
@@ -736,7 +746,7 @@ class Game {
         C.pos.set(x, 6 + (idx % 3) * 2.5, z);
         C.look.set(p.x, 0.8, p.z);
       }
-      C.look.lerp(new THREE.Vector3(p.x - Math.sin(p.yaw) * p.v * 0.12, 0.7, p.z - Math.cos(p.yaw) * p.v * 0.12), Math.min(1, dt * 6));
+      C.look.lerp(TMP_V1.set(p.x - Math.sin(p.yaw) * p.v * 0.12, 0.7, p.z - Math.cos(p.yaw) * p.v * 0.12), Math.min(1, dt * 6));
       cam.position.copy(C.pos);
       cam.lookAt(C.look);
       const d = C.pos.distanceTo(C.look);
@@ -749,22 +759,22 @@ class Game {
     C.yaw += dy * Math.min(1, dt * (v.heli ? 1.2 : 3.2));
     const [fx, fz] = fwd(C.yaw);
     if (v.heli) {
-      const want = new THREE.Vector3(p.x - fx * 26 + fz * 14, 34, p.z - fz * 26 - fx * 14);
+      const want = TMP_V2.set(p.x - fx * 26 + fz * 14, 34, p.z - fz * 26 - fx * 14);
       C.pos.lerp(want, Math.min(1, dt * 1.5));
-      C.look.lerp(new THREE.Vector3(p.x, 0.5, p.z), Math.min(1, dt * 5));
+      C.look.lerp(TMP_V1.set(p.x, 0.5, p.z), Math.min(1, dt * 5));
       cam.position.copy(C.pos); cam.lookAt(C.look);
       if (Math.abs(cam.fov - v.fov) > 0.05) { cam.fov = v.fov; cam.updateProjectionMatrix(); }
       return;
     }
     const speedPull = Math.min(1.6, p.v * 0.018); // drift back a little at speed
     const dist = v.dist + speedPull;
-    const want = new THREE.Vector3(p.x - fx * dist, v.height + Math.min(0.35, p.v * 0.003), p.z - fz * dist);
+    const want = TMP_V2.set(p.x - fx * dist, v.height + Math.min(0.35, p.v * 0.003), p.z - fz * dist);
     // stiff along the ground, softer in height: smooth but never floaty
     C.pos.x += (want.x - C.pos.x) * Math.min(1, dt * 9);
     C.pos.z += (want.z - C.pos.z) * Math.min(1, dt * 9);
     C.pos.y += (want.y - C.pos.y) * Math.min(1, dt * 4);
     const [cx, cz] = fwd(p.yaw);
-    const lookWant = new THREE.Vector3(p.x + cx * (3 + p.v * 0.05), v.look, p.z + cz * (3 + p.v * 0.05));
+    const lookWant = TMP_V3.set(p.x + cx * (3 + p.v * 0.05), v.look, p.z + cz * (3 + p.v * 0.05));
     C.look.lerp(lookWant, Math.min(1, dt * 10));
     const shk = (p.bump * 0.02 + p.impact * 0.15) * (settings.shake / 60) * v.shake;
     cam.position.set(C.pos.x + (Math.random() - 0.5) * shk, C.pos.y + (Math.random() - 0.5) * shk, C.pos.z);
@@ -869,7 +879,7 @@ class Game {
     // shift edges consumed
     if (racing) for (const ai of this.aiList) if (!ai.net) ai.update(dt, this.raceTime, this.allObjs(), this.track.mu);
     if (mpSync) this.netSync(dt, racing);
-    this.resolveCollisions();
+    this.resolveCollisions(racing ? dt : 0);
     if (p.impact > 0.25 && !this.lastImpact) { audio.crash(p.impact); this.hud.warn('KOLLISION', 1.2); }
     this.lastImpact = p.impact > 0.25;
 
@@ -933,7 +943,7 @@ class Game {
   netSync(dt, racing) {
     const net = this.mp.net, p = this.player, r2 = (v, k) => Math.round(v * k) / k;
     const msg = { car: [r2(p.x, 100), r2(p.z, 100), r2(p.yaw, 1000), r2(p.v, 10), r2(p.dist, 10), r2(p.lat, 100), r2(p.steer, 100)], fin: this.playerEntry.finished ? r2(this.playerEntry.finishTime, 1000) : null };
-    if (net.isHost) msg.ai = this.aiList.map((a) => [r2(a.dist, 10), r2(a.lat, 100), r2(a.v, 10)]);
+    if (net.isHost) msg.ai = this.aiList.map((a) => [r2(a.dist, 10), r2(a.lat, 100), r2(a.v, 10), r2(a.spinYaw, 100)]);
     this.netT = (this.netT || 0) - dt;
     if (this.netT <= 0) { this.netT = 1 / 30; net.sendCar(msg); }
     const now = performance.now();
@@ -968,6 +978,7 @@ class Game {
           a.dist += Math.abs(err) > 25 ? err : err * Math.min(1, dt * 4);
           a.lat += (s[1] - a.lat) * Math.min(1, dt * 6);
           a.v = s[2];
+          if (typeof s[3] === 'number') a.spinYaw = s[3];
           a.latOff = a.lat - this.track.racingLat(a.s);
         }
         a.wheelRot += (a.v * dt) / 0.36;
@@ -1019,33 +1030,113 @@ class Game {
     audio.beep(880, 0.3); setTimeout(() => audio.beep(1320, 0.5), 300);
   }
 
-  resolveCollisions() {
+  resolveCollisions(dt) {
     const tr = this.track, L = tr.length;
     const objs = this.allObjs();
     const p = this.player;
+    // lateral speed of every car (from how fast its track offset changes)
+    for (const o of objs) o.latV = o.prevLat === undefined || dt <= 0 ? 0 : (o.lat - o.prevLat) / dt;
+    const LEN = 5.3, WID = 1.95, E = 0.3; // contact box (m) and restitution
     for (let a = 0; a < objs.length; a++) {
       for (let b = a + 1; b < objs.length; b++) {
         const A = objs[a], B = objs[b];
+        if (A.gone || B.gone) continue;
         let ds = B.dist - A.dist;
         if (ds > L / 2) ds -= L; if (ds < -L / 2) ds += L;
         const dl = B.lat - A.lat;
-        if (Math.abs(ds) > 5.4 || Math.abs(dl) > 1.95) continue;
-        const ol = 1.95 - Math.abs(dl), os = 5.4 - Math.abs(ds);
+        if (Math.abs(ds) > LEN || Math.abs(dl) > WID) continue;
+        const ol = WID - Math.abs(dl), os = LEN - Math.abs(ds);
         const front = ds > 0 ? B : A, rear = ds > 0 ? A : B;
-        if (os / 5.4 < ol / 1.95) {
-          // nose-to-tail
-          const push = os * 0.5;
-          this.shiftCar(rear, -push, 0); this.shiftCar(front, push * 0.3, 0);
-          const vm = (front.v + rear.v) / 2;
-          if (rear.v > front.v) { const dv = rear.v - front.v; rear.v = vm - dv * 0.1; front.v = vm + dv * 0.1; }
-          if ((rear === p || front === p) && Math.abs(rear.v - front.v) > 3) p.impact = Math.max(p.impact, 0.5);
+        const withP = A === p || B === p;
+        const soft = withP || A.remote || B.remote ? 1 : 0.45; // AI give each other room: gentler, rarely a spin
+        let hit = 0, at = null;
+        if (os / LEN < ol / WID) {
+          // nose-to-tail: momentum exchange, an off-centre hit spins the car in front
+          this.shiftCar(rear, -os * 0.55, 0); this.shiftCar(front, os * 0.45, 0);
+          const dv = rear.v - front.v;
+          if (dv > 0) {
+            const J = dv * (1 + E) / 2;
+            this.pushV(rear, -J); this.pushV(front, J);
+            const off = Math.min(1, Math.abs(front.lat - rear.lat) / WID), side = Math.sign(front.lat - rear.lat) || 1;
+            this.kick(front, side * dv * (0.12 + off * 0.5) * soft, dv > (withP ? 7 : 14) && off > 0.25 ? 2.2 : 0, (front.lat - rear.lat) * dv * 0.08 * soft);
+            this.kick(rear, side * dv * off * 0.12 * soft, 0, 0);
+            hit = dv;
+          }
+          at = rear;
         } else {
+          // side by side: lateral impulse pushes them apart, rubbing at different speeds yaws them
           const dir = Math.sign(dl) || 1;
-          this.shiftCar(A, 0, -dir * ol * 0.5); this.shiftCar(B, 0, dir * ol * 0.5);
-          if (A === p || B === p) p.impact = Math.max(p.impact, 0.2);
+          this.shiftCar(A, 0, -dir * ol * 0.55); this.shiftCar(B, 0, dir * ol * 0.55);
+          const closing = Math.max(0, (A.latV - B.latV) * dir);
+          const J = (closing * (1 + E) / 2 + 0.6) * soft;
+          const sgn = Math.sign(ds) || 1, lever = Math.min(1, Math.abs(ds) / LEN);
+          const out = withP && closing > 6 && lever > 0.45 ? 1.6 : 0;
+          this.kick(A, -dir * sgn * J * lever * 0.55, out, -dir * J);
+          this.kick(B, -dir * sgn * J * lever * 0.55, out, dir * J);
+          // friction: speeds pull together while rubbing
+          const dv = (A.v - B.v) * Math.min(1, dt * 2);
+          this.pushV(A, -dv * 0.5); this.pushV(B, dv * 0.5);
+          hit = closing * 1.5;
+          at = A;
+        }
+        if (withP && hit > 0.5) {
+          const o = A === p ? B : A;
+          p.impact = Math.max(p.impact, Math.min(1, hit / 14));
+          if (hit > 2.5) this.sparks((p.x + o.x) / 2, (p.z + o.z) / 2, Math.min(40, 6 + hit * 2), p.v);
+        } else if (!withP && hit > 3 && at && Math.hypot(at.x - p.x, at.z - p.z) < 120) {
+          this.sparks((A.x + B.x) / 2, (A.z + B.z) / 2, Math.min(30, 4 + hit * 2), (A.v + B.v) / 2);
+          audio.crash(Math.min(0.6, hit / 20) * Math.max(0.2, 1 - Math.hypot(at.x - p.x, at.z - p.z) / 120));
         }
       }
     }
+    for (const o of objs) o.prevLat = o.lat; // after the shoves, so they don't read as lateral speed
+  }
+
+  // change a car's forward speed (other players are moved by their own devices)
+  pushV(o, dv) { if (o.remote || o.net) return; o.v = Math.max(0, o.v + dv); }
+
+  // contact response: yaw kick (rad/s, +right), spin-out time for AI, sideways shove (m/s, +right)
+  kick(o, spin, spunT, lat) {
+    if (o.remote || o.net) return;
+    if (o === this.player) {
+      o.spin = Math.max(-6, Math.min(6, o.spin + spin * 0.7));
+      if (lat) { const f = this.track.frame(o.s); o.kx += f.rx * lat; o.kz += f.rz * lat; }
+    } else {
+      // AI yaw grows the other way (yaw += left), so flip the sign
+      if (spunT && !(o.spunT > 0)) { o.spinRate = -Math.sign(spin) * (4 + Math.random() * 3); o.spunT = spunT + Math.random(); o.knock += lat; }
+      else { o.spinRate += -spin * 0.5; o.knock += lat; o.spunT = Math.max(o.spunT, Math.abs(o.spinRate) > 2.5 ? 1.2 : 0); }
+      o.knock = Math.max(-9, Math.min(9, o.knock));
+    }
+  }
+
+  // contact sparks: small additive particle burst at the contact point
+  sparks(x, z, n, v) {
+    if (!this.sparkPts) return;
+    const S = this.sparkPts.userData;
+    for (let i = 0; i < n; i++) {
+      const k = S.next = (S.next + 1) % S.max;
+      S.pos[k * 3] = x + (Math.random() - 0.5) * 1.2; S.pos[k * 3 + 1] = 0.2 + Math.random() * 0.4; S.pos[k * 3 + 2] = z + (Math.random() - 0.5) * 1.2;
+      const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 3.5;
+      S.vel[k * 3] = Math.cos(a) * sp; S.vel[k * 3 + 1] = 1 + Math.random() * 4; S.vel[k * 3 + 2] = Math.sin(a) * sp;
+      S.life[k] = 0.15 + Math.random() * 0.3;
+    }
+    S.v = v;
+  }
+
+  updateSparks(dt) {
+    if (!this.sparkPts) return;
+    const S = this.sparkPts.userData, P = S.pos;
+    let any = false;
+    for (let k = 0; k < S.max; k++) {
+      if (S.life[k] <= 0) continue;
+      S.life[k] -= dt;
+      if (S.life[k] <= 0) { P[k * 3 + 1] = -50; continue; }
+      any = true;
+      S.vel[k * 3 + 1] -= 9.8 * dt;
+      P[k * 3] += S.vel[k * 3] * dt; P[k * 3 + 1] = Math.max(0.02, P[k * 3 + 1] + S.vel[k * 3 + 1] * dt); P[k * 3 + 2] += S.vel[k * 3 + 2] * dt;
+    }
+    if (any || S.wasAny) this.sparkPts.geometry.attributes.position.needsUpdate = true;
+    S.wasAny = any;
   }
 
   shiftCar(o, ds, dl) {
@@ -1146,6 +1237,7 @@ class Game {
     const blink = (performance.now() / 250 | 0) % 2;
     const rainLights = this.weather.rain > 0.15 || this.weather.wetness > 0.5;
     this.applyWeather(dt);
+    this.updateSparks(dt);
     for (const c of this.cars) {
       if (c.isPlayer) continue;
       const o = c.obj, m = c.mesh;
@@ -1284,6 +1376,21 @@ class Game {
     document.body.classList.remove('ingame');
   }
 
+  // compile every shader up front (rain, cockpit, sparks, mirrors…) so nothing stalls mid-race the first time it appears
+  warmup() {
+    const hidden = [];
+    this.scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    const sp = this.sparkPts.userData.pos; sp[1] = 0.5; sp[0] = this.player.x; sp[2] = this.player.z - 6;
+    this.sparkPts.geometry.attributes.position.needsUpdate = true;
+    try {
+      renderer.compile(this.scene, this.camera);
+      if (this.mirrorRT) { renderer.setRenderTarget(this.mirrorRT); renderer.render(this.scene, this.rearCam); renderer.setRenderTarget(null); }
+      if (this.composer) this.composer.render(); else renderer.render(this.scene, this.camera);
+    } catch (e) { console.warn('warmup', e); }
+    for (const o of hidden) o.visible = false;
+    sp[1] = -50; this.sparkPts.geometry.attributes.position.needsUpdate = true;
+  }
+
   dispose() {
     this.weather.dispose();
     this.scene.traverse((o) => {
@@ -1327,6 +1434,7 @@ function startRace(mpStart) {
     const opts = { ...settings };
     if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } });
     game = new Game(opts);
+    game.warmup();
     $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
     window.__game = game; window.__input = input;
     showScreen('none');

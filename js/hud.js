@@ -94,51 +94,63 @@ export class HUD {
     ['h-s1', 'h-s2', 'h-s3'].forEach((id, i) => { this.el[id].className = states[i] || ''; });
   }
 
+  // DOM writes only when a value changes (avoids style/layout work every frame)
+  t(id, v) { const el = this.el[id]; v = String(v); if (el._t !== v) { el._t = v; el.textContent = v; } }
+  cl(id, v) { const el = this.el[id]; if (el._c !== v) { el._c = v; el.className = v; } }
+  st(id, prop, v) {
+    const el = this.el[id];
+    if (typeof v === 'number') v = String(Math.round(v * 10) / 10);
+    else if (v.endsWith('%')) v = Math.round(parseFloat(v) * 10) / 10 + '%';
+    const k = '_s' + prop; if (el[k] === v) return; el[k] = v;
+    if (prop[0] === '-') el.style.setProperty(prop, v); else el.style[prop] = v;
+  }
+  html(id, v) { const el = this.el[id]; if (el._h !== v) { el._h = v; el.innerHTML = v; } }
+
   update(dt, car, race) {
     const e = this.el;
     // dash
     const g = car.gear;
-    e['h-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
-    e['h-speed'].textContent = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
-    e['h-unit'].textContent = race.mph ? 'MPH' : 'KM/H';
-    e['h-rpm'].textContent = Math.round(car.rpm);
-    e['h-ers'].textContent = Math.round(car.ers * 100) + '%';
-    e['h-ersring'].style.strokeDashoffset = this.C * (1 - car.ers);
-    e['h-rpmring'].style.strokeDashoffset = this.C * (1 - Math.min(1, car.speedKmh / 340));
-    e['h-ersmode'].textContent = car.overtake ? 'OVERTAKE' : 'MITTEL';
-    e['h-ot'].classList.toggle('on', car.overtake);
-    e['h-drs'].className = 'drs' + (car.drsOpen ? ' open' : car.drsAvailable ? ' avail' : '');
-    e['h-thr'].style.setProperty('--h', car.throttle * 100 + '%');
-    e['h-brk'].style.setProperty('--h', car.brake * 100 + '%');
+    this.t('h-gear', g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g);
+    this.t('h-speed', Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh));
+    this.t('h-unit', race.mph ? 'MPH' : 'KM/H');
+    this.t('h-rpm', Math.round(car.rpm));
+    this.t('h-ers', Math.round(car.ers * 100) + '%');
+    this.st('h-ersring', 'strokeDashoffset', this.C * (1 - car.ers));
+    this.st('h-rpmring', 'strokeDashoffset', this.C * (1 - Math.min(1, car.speedKmh / 340)));
+    this.t('h-ersmode', car.overtake ? 'OVERTAKE' : 'MITTEL');
+    if (e['h-ot']._on !== car.overtake) { e['h-ot']._on = car.overtake; e['h-ot'].classList.toggle('on', car.overtake); }
+    this.cl('h-drs', 'drs' + (car.drsOpen ? ' open' : car.drsAvailable ? ' avail' : ''));
+    this.st('h-thr', '--h', car.throttle * 100 + '%');
+    this.st('h-brk', '--h', car.brake * 100 + '%');
     const lit = Math.max(0, Math.min(15, Math.round(((car.rpm - 9000) / 3300) * 15)));
     const flash = car.rpm > 12100 && (performance.now() / 70 | 0) % 2;
-    this.revs.forEach((r, i) => { r.className = i < lit ? (flash ? 'f' : i < 5 ? 'g' : i < 10 ? 'r' : 'p') : ''; });
+    this.revs.forEach((r, i) => { const c = i < lit ? (flash ? 'f' : i < 5 ? 'g' : i < 10 ? 'r' : 'p') : ''; if (r._c !== c) { r._c = c; r.className = c; } });
 
     // clean pill (minimal HUD)
     if (document.body.classList.contains('hud-minimal')) {
-      e['pl-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
-      e['pl-speed'].textContent = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
-      e['pl-unit'].textContent = race.mph ? 'mph' : 'km/h';
+      this.t('pl-gear', g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g);
+      this.t('pl-speed', Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh));
+      this.t('pl-unit', race.mph ? 'mph' : 'km/h');
     }
     // broadcast-style onboard graphic (T-cam)
     if (document.body.classList.contains('cam-tcam')) {
       const sp = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
-      e['ob-speed'].textContent = sp; e['ob-unit'].textContent = race.mph ? 'MPH' : 'KM/H';
-      e['ob-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
-      e['ob-rpm'].style.width = Math.max(0, Math.min(100, ((car.rpm - 4000) / 8500) * 100)) + '%';
-      e['ob-thr'].style.width = car.throttle * 100 + '%';
-      e['ob-brk'].style.width = car.brake * 100 + '%';
-      e['ob-drs'].className = car.drsOpen ? 'on' : car.drsAvailable ? 'avail' : '';
-      e['ob-ers'].className = car.overtake ? 'on' : '';
-      e['ob-ersv'].textContent = Math.round(car.ers * 100);
-      e['ob-pos'].textContent = 'P' + race.playerPos;
+      this.t('ob-speed', sp); this.t('ob-unit', race.mph ? 'MPH' : 'KM/H');
+      this.t('ob-gear', g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g);
+      this.st('ob-rpm', 'width', Math.max(0, Math.min(100, ((car.rpm - 4000) / 8500) * 100)) + '%');
+      this.st('ob-thr', 'width', car.throttle * 100 + '%');
+      this.st('ob-brk', 'width', car.brake * 100 + '%');
+      this.cl('ob-drs', car.drsOpen ? 'on' : car.drsAvailable ? 'avail' : '');
+      this.cl('ob-ers', car.overtake ? 'on' : '');
+      this.t('ob-ersv', Math.round(car.ers * 100));
+      this.t('ob-pos', 'P' + race.playerPos);
     }
     // timing
-    e['h-lap'].textContent = Math.min(this.laps, Math.max(1, race.playerLap));
-    e['h-time'].textContent = fmtTime(race.curLapTime, false);
-    e['h-best'].textContent = fmtTime(race.bestLap);
-    e['h-pos'].textContent = race.playerPos;
-    e['h-tot'].textContent = race.total;
+    this.t('h-lap', Math.min(this.laps, Math.max(1, race.playerLap)));
+    this.t('h-time', fmtTime(race.curLapTime, false));
+    this.t('h-best', fmtTime(race.bestLap));
+    this.t('h-pos', race.playerPos);
+    this.t('h-tot', race.total);
 
     this.lastRows -= dt;
     if (this.lastRows <= 0) { this.lastRows = 0.25; this.renderRows(race); this.renderWeather(race); }
@@ -203,7 +215,7 @@ export class HUD {
     const slots = W.forecast(race.time || 0).map((f, i) => `<div class="slot"><span>${labels[i]}</span>${icon(f.rain)}<b>${Math.round(f.rain * 100)}%</b></div>`).join('');
     const w = W.wetness;
     const state = w < 0.15 ? ['TROCKEN', 'dry'] : w < 0.5 ? ['FEUCHT', 'damp'] : ['NASS', 'wet'];
-    this.el['h-wx'].innerHTML = `<div class="slots">${slots}</div><div class="surf ${state[1]}">STRECKE <b>${state[0]}</b></div>`;
+    this.html('h-wx', `<div class="slots">${slots}</div><div class="surf ${state[1]}">STRECKE <b>${state[0]}</b></div>`);
   }
 
   renderRows(race) {
@@ -224,6 +236,6 @@ export class HUD {
       }
       html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name}</span><span class="tyre ${race.wet ? 'i' : 's'}">${race.wet ? 'I' : 'S'}</span><span class="gap">${gap}</span></div>`;
     }
-    this.el['h-rows'].innerHTML = html;
+    this.html('h-rows', html);
   }
 }

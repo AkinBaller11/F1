@@ -24,6 +24,7 @@ export class PlayerCar {
     this.surface = 'road'; this.offTrack = false; this.offTimer = 0;
     this.hint = -1; this.s = 0; this.lat = 0; this.dist = 0;
     this.impact = 0; this.bump = 0; this.wheelRot = 0; this.limiter = false;
+    this.kx = 0; this.kz = 0; this.spin = 0; // shove velocity (world m/s) and yaw kick (rad/s) from contact
     this.loc = {};
   }
 
@@ -162,6 +163,17 @@ export class PlayerCar {
 
     this.x += -Math.sin(this.yaw) * this.v * dt;
     this.z += -Math.cos(this.yaw) * this.v * dt;
+    // contact: sideways shove bleeds off through the tyres, a yaw kick can spin the car
+    if (this.kx || this.kz || this.spin) {
+      this.x += this.kx * dt; this.z += this.kz * dt;
+      const kd = Math.exp(-dt * (this.surface === 'road' ? 2.6 : 4));
+      this.kx *= kd; this.kz *= kd;
+      this.yaw -= this.spin * dt;
+      if (Math.abs(this.spin) > 1.2) { this.v -= Math.sign(this.v) * Math.min(Math.abs(this.v), (3 + Math.abs(this.v) * 0.35) * dt); this.slip = 1; }
+      this.spin *= Math.exp(-dt * (Math.abs(this.spin) > 2 ? 1.1 : 2.8));
+      if (Math.abs(this.spin) < 0.02) this.spin = 0;
+      if (Math.hypot(this.kx, this.kz) < 0.05) this.kx = this.kz = 0;
+    }
 
     // --- track position & barriers
     const prevS = this.s;
@@ -185,6 +197,9 @@ export class PlayerCar {
       const hit = this.v * into;
       if (hit > 2) { this.impact = Math.min(1, hit / 30); }
       this.v *= 1 - Math.min(0.9, into * 1.6);
+      // shove into the wall is absorbed
+      const kin = this.kx * f.rx * side + this.kz * f.rz * side;
+      if (kin > 0) { this.kx -= f.rx * side * kin; this.kz -= f.rz * side * kin; }
       this.yaw -= rel * 0.5; // align with wall
     }
     this.bump = this.surface === 'kerb' ? 1 : this.surface === 'gravel' || this.surface === 'grass' ? 0.6 : 0;
@@ -203,12 +218,35 @@ export class AICar {
     this.laneTimer = 0; this.wheelRot = 0; this.yaw = 0; this.x = 0; this.z = 0;
     this.wobble = Math.random() * 100;
     this.launch = 0.86 + Math.random() * 0.18; // good or bad getaway
+    this.knock = 0; this.spinRate = 0; this.spinYaw = 0; this.spunT = 0; // contact response
   }
   get s() { return this.track.wrapS(this.dist + this.track.startS); }
 
   update(dt, raceTime, cars, wetMu) {
     const tr = this.track;
     if (raceTime < this.reaction) { this.computePose(dt); return; }
+    // spun / punted: slide, scrub speed, then turn back and rejoin
+    if (this.spunT > 0 || this.spinRate) {
+      this.spunT -= dt;
+      this.spinYaw += this.spinRate * dt;
+      this.spinRate *= Math.exp(-dt * 1.4);
+      if (Math.abs(this.spinRate) < 0.3) this.spinRate = 0;
+      if (this.spunT > 0) {
+        this.v = Math.max(0, this.v - (4 + this.v * 0.55) * dt);
+        this.dist += this.v * dt;
+        this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 2.5);
+        this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
+        this.latOff = this.lat - this.track.racingLat(this.s);
+        this.wheelRot += (this.v * dt) / 0.36;
+        this.computePose(dt);
+        return;
+      }
+    }
+    if (this.spinYaw && !this.spinRate) {
+      let d = Math.atan2(Math.sin(this.spinYaw), Math.cos(this.spinYaw));
+      d -= Math.sign(d) * Math.min(Math.abs(d), dt * 1.6);
+      this.spinYaw = Math.abs(d) < 0.01 ? 0 : d;
+    }
     const s = this.s;
     const look = Math.max(this.v, 10) * 0.12;
     let target = tr.targetSpeed(s + look) * this.skill;
@@ -260,6 +298,12 @@ export class AICar {
     const wantLat = Math.max(-HALF_W + 1, Math.min(HALF_W - 1, tr.racingLat(this.s) + this.latOff));
     const maxMove = (1.2 + this.v * 0.04) * dt;
     this.lat += Math.max(-maxMove, Math.min(maxMove, wantLat - this.lat));
+    if (this.knock) {
+      this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 3);
+      if (Math.abs(this.knock) < 0.05) this.knock = 0;
+      this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
+      this.latOff = this.lat - tr.racingLat(this.s); // rejoin from where the shove left it
+    }
     this.wheelRot += (this.v * dt) / 0.36;
     this.computePose(dt);
   }
@@ -274,8 +318,9 @@ export class AICar {
     const x2 = fa.x + fa.rx * la, z2 = fa.z + fa.rz * la;
     this.x = f.x + f.rx * this.lat; this.z = f.z + f.rz * this.lat;
     const yawT = Math.atan2(-(x2 - this.x), -(z2 - this.z));
-    if (this.yawInit) { let d = yawT - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yaw += d * Math.min(1, dt * 12); }
-    else { this.yaw = yawT; this.yawInit = true; }
+    if (this.yawInit) { let d = yawT - this.yawB; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yawB += d * Math.min(1, dt * 12); }
+    else { this.yawB = yawT; this.yawInit = true; }
+    this.yaw = this.yawB + this.spinYaw;
     const steerT = Math.max(-0.4, Math.min(0.4, tr.k[tr.idx(s + 5)] * 12));
     this.steerVis = (this.steerVis || 0) + (steerT - (this.steerVis || 0)) * Math.min(1, dt * 8);
   }
