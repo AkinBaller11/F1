@@ -129,10 +129,11 @@ class Game {
     this.player.onShift = (down) => !down && audio.shift();
     this.playerRoot = new THREE.Group(); scene.add(this.playerRoot);
     this.playerBody = new THREE.Group(); this.playerRoot.add(this.playerBody);
-    this.playerModel = buildCar(pd.team, wet, pd.number); this.playerBody.add(this.playerModel);
-    this.mirrorRT = new THREE.WebGLRenderTarget(512, 160);
+        this.mirrorRT = new THREE.WebGLRenderTarget(512, 160);
     this.mirrorRT.texture.colorSpace = THREE.SRGBColorSpace;
-    this.cockpit = buildCockpit(pd.team, wet, this.mirrorRT.texture); this.playerBody.add(this.cockpit);
+    this.playerModel = buildCar(pd.team, wet, pd.number, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1 });
+    this.playerBody.add(this.playerModel);
+    this.cockpit = buildCockpit(); this.playerBody.add(this.cockpit);
     this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 800);
     this.rearCam.position.set(0, 0.95, 0.9); this.rearCam.rotation.y = Math.PI;
     this.playerBody.add(this.rearCam);
@@ -161,7 +162,7 @@ class Game {
         const ai = new AICar(this.track, d.team, d.name, d.number, skill);
         ai.dist = dist0; ai.lat = lat; ai.latOff = lat - this.track.racingLat(gs);
         ai.computePose();
-        const mesh = buildCar(d.team, wet, d.number);
+        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1 });
         scene.add(mesh);
         entry = { isPlayer: false, team: d.team, name: d.name, number: d.number, obj: ai, mesh };
       }
@@ -250,9 +251,9 @@ class Game {
     const m = this.camMode;
     const cam = this.camera;
     this.cockpit.visible = m === 'cockpit';
-    this.playerModel.visible = m !== 'cockpit';
+    this.playerModel.userData.helmet.visible = m !== 'cockpit';
     // helmet and halo of own car look odd in T-cam: keep model visible though
-    if (m === 'cockpit') { cam.position.set(0, 0.98, 0.4); cam.rotation.set(-0.045, 0, 0); cam.fov = 72; }
+    if (m === 'cockpit') { cam.position.set(0, 0.96, 0.02); cam.rotation.set(-0.045, 0, 0); cam.fov = 72; }
     else if (m === 'tcam') { cam.position.set(0, 1.32, 0.55); cam.rotation.set(-0.06, 0, 0); cam.fov = 70; }
     else { cam.position.set(0, 2.1, 6.6); cam.rotation.set(-0.12, 0, 0); cam.fov = 64; }
     cam.updateProjectionMatrix();
@@ -483,7 +484,7 @@ class Game {
     this.playerBody.rotation.set(this.pitch, 0, this.roll);
     const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * (this.camMode === 'chase' ? 0.3 : 1);
     if (this.camMode === 'cockpit') {
-      cam.position.set((Math.random() - 0.5) * shake, 0.98 + (Math.random() - 0.5) * shake, 0.4);
+      cam.position.set((Math.random() - 0.5) * shake, 0.96 + (Math.random() - 0.5) * shake, 0.02);
       // head leans into corners
       cam.rotation.set(-0.045 + this.pitch * 0.5, -p.steer * 0.03, -this.roll * 0.6);
     } else if (this.camMode === 'tcam') {
@@ -529,11 +530,11 @@ class Game {
 
     // mirrors
     if (this.camMode === 'cockpit') {
-      this.cockpit.visible = false;
+      this.cockpit.visible = false; this.playerModel.visible = false;
       renderer.setRenderTarget(this.mirrorRT);
       renderer.render(this.scene, this.rearCam);
       renderer.setRenderTarget(null);
-      this.cockpit.visible = true;
+      this.cockpit.visible = true; this.playerModel.visible = true;
     }
     renderer.render(this.scene, cam);
 
