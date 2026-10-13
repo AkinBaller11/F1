@@ -75,6 +75,7 @@ export class Track {
     const r = this.roadMat;
     r.roughness = L(0.85, 0.22); r.metalness = L(0, 0.18);
     r.color.setRGB(L(1, 0.72), L(1, 0.75), L(1, 0.79));
+    if (r.normalMap) r.normalScale.set(L(0.45, 0.15), L(0.45, 0.15)); // water fills the grain
     this.kerbMat.roughness = L(0.7, 0.25);
     this.roMat.roughness = L(0.9, 0.35);
     this.pitMat.roughness = L(0.9, 0.3); this.pitMat.color.setRGB(L(0.33, 0.24), L(0.34, 0.25), L(0.36, 0.27));
@@ -197,7 +198,25 @@ export class Track {
       const v = G * (ks[i] - 0.55 * ks[(i + off) % N] - 0.35 * ks[(i - off + N) % N]);
       race[i] = Math.max(-lim, Math.min(lim, v));
     }
-    this.race = smoothArr(race, 8, 3);
+    // minimum-curvature refinement ("elastic band"): every point is pulled toward the midpoint of its
+    // neighbours and clamped to the track width -> real outside-inside-outside lines through corners
+    const lat = smoothArr(race, 8, 3);
+    const edge = HALF_W - 1.6;
+    for (const stride of [16, 8, 4, 2]) {
+      for (let it = 0; it < 90; it++) {
+        for (let i = 0; i < N; i++) {
+          // curvature-minimising target from a 5-point stencil: (-p[-2] + 4p[-1] + 4p[+1] - p[+2]) / 6
+          const P = (o) => { const j = (i + o * stride + N * 4) % N; return [this.px[j] - this.tz[j] * lat[j], this.pz[j] + this.tx[j] * lat[j]]; };
+          const a2 = P(-2), a1 = P(-1), b1 = P(1), b2 = P(2);
+          const tx = (-a2[0] + 4 * a1[0] + 4 * b1[0] - b2[0]) / 6 - this.px[i];
+          const tz = (-a2[1] + 4 * a1[1] + 4 * b1[1] - b2[1]) / 6 - this.pz[i];
+          const want = tx * -this.tz[i] + tz * this.tx[i];
+          const nl = lat[i] + (want - lat[i]) * 0.5;
+          lat[i] = nl > edge ? edge : nl < -edge ? -edge : nl;
+        }
+      }
+    }
+    this.race = smoothArr(lat, 3, 2);
     // curvature of the racing line itself
     const rx = new Float32Array(N), rz = new Float32Array(N);
     for (let i = 0; i < N; i++) {
@@ -206,7 +225,7 @@ export class Track {
     }
     const kr = new Float32Array(N);
     for (let i = 0; i < N; i++) {
-      const a = (i - 2 + N) % N, b = i, c = (i + 2) % N;
+      const a = (i - 4 + N) % N, b = i, c = (i + 4) % N;
       const ax = rx[b] - rx[a], az = rz[b] - rz[a], bx = rx[c] - rx[b], bz = rz[c] - rz[b];
       const cross = ax * bz - az * bx, dot = ax * bx + az * bz;
       const len = (Math.hypot(ax, az) + Math.hypot(bx, bz)) * 0.5;
@@ -410,6 +429,7 @@ export class Track {
     const roadMat = new THREE.MeshStandardMaterial({
       map: asp, roughness: wet ? 0.28 : 0.85, metalness: wet ? 0.15 : 0.0, color: wet ? 0xbfc4c9 : 0xffffff,
     });
+    if (this.quality !== 'low') { roadMat.normalMap = TX.noiseNormal(512, 11, 1, 2.6); roadMat.normalMap.repeat.set(9, 11); roadMat.normalScale.set(0.45, 0.45); }
     this.roadMat = roadMat;
     this.ribbon(-W, W, 0.03, roadMat, 1, 16);
 

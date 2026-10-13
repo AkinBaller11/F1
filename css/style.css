@@ -422,3 +422,36 @@ body:not(.ingame) #speedfx { display: none; }
 #update-bar { position: fixed; z-index: 70; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(16,18,30,.96); border-left: 4px solid var(--green); padding: 8px 10px 8px 14px; font-weight: 700; box-shadow: 0 6px 20px rgba(0,0,0,.4); max-width: calc(100vw - 32px); }
 #update-bar button { border: 0; padding: 8px 12px; font-weight: 900; background: rgba(255,255,255,.1); }
 #update-bar #update-now { background: var(--green); color: #031; }
+
+/* ---------------- broadcast onboard graphic (T-cam) ---------------- */
+.onboard { display: none; position: absolute; left: 50%; bottom: calc(3vh + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); scale: var(--hud-scale, 1); transform-origin: bottom center; font-variant-numeric: tabular-nums; filter: drop-shadow(0 4px 14px rgba(0,0,0,.45)); }
+body.cam-tcam.ingame .onboard { display: grid; }
+body.cam-tcam .dash { display: none !important; }
+body.hide-dash .onboard { display: none !important; }
+.ob-id { display: flex; align-items: stretch; background: rgba(12,14,22,.92); height: 30px; }
+.ob-bar { width: 6px; }
+.ob-num { display: grid; place-items: center; padding: 0 10px; font: italic 900 20px/1 var(--display); background: rgba(255,255,255,.06); }
+.ob-drv { display: grid; align-content: center; padding: 0 12px; line-height: 1; }
+.ob-drv b { font-size: 15px; letter-spacing: .04em; }
+.ob-drv small { font-size: 9px; letter-spacing: .14em; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.ob-pos { margin-left: auto; display: grid; place-items: center; padding: 0 12px; font: italic 900 17px/1 var(--display); background: var(--red); }
+.ob-data { display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, rgba(22,25,38,.94), rgba(12,14,22,.94)); padding: 8px 14px 9px; border-top: 2px solid var(--red); }
+.ob-speed { display: grid; justify-items: end; min-width: 64px; }
+.ob-speed b { font: italic 900 30px/1 var(--display); }
+.ob-speed small { font-size: 9px; letter-spacing: .16em; color: var(--muted); font-weight: 700; }
+.ob-gear { font: italic 900 40px/1 var(--display); min-width: 30px; text-align: center; color: var(--yellow); }
+.ob-meters { display: grid; gap: 5px; width: clamp(120px, 14vw, 190px); }
+.ob-rpm { height: 6px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.ob-rpm i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--green) 0 60%, #ff2a2a 60% 85%, var(--purple) 85%); background-size: clamp(120px, 14vw, 190px) 100%; transition: width .05s linear; }
+.ob-pedal { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 6px; font-size: 8px; letter-spacing: .14em; color: var(--muted); font-weight: 700; }
+.ob-pedal div { height: 5px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.ob-pedal i { display: block; height: 100%; width: 0; background: var(--green); }
+.ob-pedal.brk i { background: #ff2a2a; }
+.ob-flags { display: grid; gap: 4px; }
+.ob-flags span { font-size: 10px; font-weight: 900; letter-spacing: .1em; padding: 2px 8px; background: rgba(255,255,255,.07); color: rgba(255,255,255,.35); text-align: center; }
+.ob-flags span.avail { color: var(--green); outline: 1px solid var(--green); }
+.ob-flags span.on { background: var(--green); color: #031; }
+#ob-ers.on { background: var(--yellow); color: #221; }
+body.touch.cam-tcam .onboard { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+body.touch.steer-wheel.cam-tcam .onboard { left: auto; right: calc(230px + env(safe-area-inset-right, 0px)); transform: none; }
+@media (max-height: 520px) { .onboard { scale: calc(var(--hud-scale, 1) * .78); } }

@@ -7,7 +7,7 @@ function canvas(w, h) {
   return [c, c.getContext('2d')];
 }
 
-function tex(c, repeatX = 1, repeatY = 1, aniso = 8) {
+function tex(c, repeatX = 1, repeatY = 1, aniso = 16) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.repeat.set(repeatX, repeatY);
@@ -22,27 +22,60 @@ function rand(seed) {
 }
 
 export function asphalt(wet) {
-  const [c, g] = canvas(512, 512);
+  const S = 1024;
+  const [c, g] = canvas(S, S);
   const r = rand(7);
   g.fillStyle = wet ? '#3a3c40' : '#55575b';
-  g.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 26000; i++) {
-    const v = (wet ? 40 : 70) + r() * 50;
-    g.fillStyle = `rgba(${v},${v},${v + 3},${0.35 + r() * 0.4})`;
-    g.fillRect(r() * 512, r() * 512, 1 + r() * 2, 1 + r() * 2);
+  g.fillRect(0, 0, S, S);
+  // aggregate: dense speckle in several sizes and tones
+  for (let i = 0; i < 120000; i++) {
+    const v = (wet ? 40 : 66) + r() * 58;
+    g.fillStyle = `rgba(${v},${v},${v + 3},${0.3 + r() * 0.45})`;
+    const s = r() < 0.92 ? 1 + r() * 1.5 : 2 + r() * 2.5;
+    g.fillRect(r() * S, r() * S, s, s);
+  }
+  // patches of older / newer tarmac
+  for (let i = 0; i < 26; i++) {
+    const x = r() * S, y = r() * S, w = 60 + r() * 240, h = 40 + r() * 200;
+    g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.03)';
+    g.fillRect(x, y, w, h);
   }
   // rubbered-in racing line darkening in the middle band
-  const grd = g.createLinearGradient(0, 0, 512, 0);
+  const grd = g.createLinearGradient(0, 0, S, 0);
   grd.addColorStop(0, 'rgba(0,0,0,0)');
-  grd.addColorStop(0.35, 'rgba(10,10,12,0.22)');
-  grd.addColorStop(0.65, 'rgba(10,10,12,0.22)');
+  grd.addColorStop(0.32, 'rgba(10,10,12,0.25)');
+  grd.addColorStop(0.68, 'rgba(10,10,12,0.25)');
   grd.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = grd; g.fillRect(0, 0, 512, 512);
-  // white edge lines
-  g.fillStyle = '#e9e9e9';
-  g.fillRect(4, 0, 9, 512);
-  g.fillRect(499, 0, 9, 512);
+  g.fillStyle = grd; g.fillRect(0, 0, S, S);
+  // white edge lines with a slightly worn look
+  g.fillStyle = '#ececec';
+  g.fillRect(8, 0, 18, S); g.fillRect(S - 26, 0, 18, S);
+  for (let i = 0; i < 4000; i++) { g.fillStyle = 'rgba(80,80,80,0.5)'; g.fillRect(8 + r() * 18, r() * S, 1.5, 1.5); g.fillRect(S - 26 + r() * 18, r() * S, 1.5, 1.5); }
   return tex(c, 1, 1);
+}
+
+// tangent-space normal map from value noise (gives asphalt and grass a real surface under the light)
+export function noiseNormal(size = 512, seed = 3, scale = 1, strength = 2.2) {
+  const r = rand(seed);
+  const h = new Float32Array(size * size);
+  for (let i = 0; i < h.length; i++) h[i] = r();
+  // two blur passes = soft grains
+  const blur = (src) => { const o = new Float32Array(src.length); for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += src[((y + dy + size) % size) * size + ((x + dx + size) % size)]; o[y * size + x] = s / 9; } return o; };
+  let hh = blur(h); if (scale > 1) hh = blur(hh);
+  const [c, g] = canvas(size, size);
+  const img = g.createImageData(size, size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const L = hh[y * size + ((x - 1 + size) % size)], R = hh[y * size + ((x + 1) % size)];
+    const U = hh[((y - 1 + size) % size) * size + x], D = hh[((y + 1) % size) * size + x];
+    let nx = (L - R) * strength, ny = (U - D) * strength, nz = 1;
+    const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
+    const o = (y * size + x) * 4;
+    img.data[o] = (nx * 0.5 + 0.5) * 255; img.data[o + 1] = (ny * 0.5 + 0.5) * 255; img.data[o + 2] = (nz * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16;
+  return t;
 }
 
 export function kerb() {

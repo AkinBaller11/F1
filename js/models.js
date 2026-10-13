@@ -473,6 +473,7 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   // T-cam: black for the first driver, yellow for the second
   const tcam = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: opts.second ? 0xf5d000 : 0x111111, roughness: 0.4 }));
   tcam.position.set(0, 1.06, 0.38); car.add(tcam);
+  car.userData.tcam = tcam;
 
   // mirror glass (the player car shows the live rear view)
   car.userData.mirrors = [];
@@ -512,13 +513,20 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   decal(sp, 0.32, 0.08, 0, 0.705, -0.85, 0, -Math.PI / 2 + 0.1);
   decal(decalTex(spName, '#fff'), 0.7, 0.16, 0, 0.88, 2.43, Math.PI, 0.12);
 
-  // helmet with visor
+  // helmet: painted shell (team colours, stripes, number), dark visor, chin guard; pivots at the neck
   const helmet = new THREE.Group();
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.135, 20, 14), new THREE.MeshPhysicalMaterial({ color: team.accent, roughness: 0.25, clearcoat: 1 }));
-  shell.scale.set(1, 1.05, 1.12); helmet.add(shell);
-  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.137, 20, 8, Math.PI * 0.72, Math.PI * 0.56, Math.PI * 0.35, Math.PI * 0.2), m.glass);
-  visor.scale.set(1, 1.05, 1.12); helmet.add(visor);
-  helmet.position.set(0, 0.86, 0.05); car.add(helmet);
+  helmet.position.set(0, 0.74, 0.07);
+  const head = new THREE.Group(); head.position.y = 0.12; helmet.add(head);
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.135, 32, 20), new THREE.MeshPhysicalMaterial({ map: helmetTex(team, number), roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05 }));
+  shell.scale.set(1, 1.05, 1.12); shell.rotation.y = Math.PI; head.add(shell);
+  // SphereGeometry: front (-z) sits at phi = 1.5 PI
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.1385, 24, 8, Math.PI * 1.22, Math.PI * 0.56, Math.PI * 0.36, Math.PI * 0.17), new THREE.MeshPhysicalMaterial({ color: 0x0a0d12, roughness: 0.05, metalness: 0.9, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.6 }));
+  visor.scale.set(1, 1.05, 1.12); head.add(visor);
+  const chin = new THREE.Mesh(new THREE.SphereGeometry(0.137, 20, 6, Math.PI * 1.25, Math.PI * 0.5, Math.PI * 0.6, Math.PI * 0.18), new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 }));
+  chin.scale.set(1, 1.05, 1.12); head.add(chin);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 20), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
+  collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
+  car.add(helmet);
   car.userData.helmet = helmet;
 
   // rain light
@@ -540,6 +548,27 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   car.userData.wheels = wheels;
   car.add(contactShadow());
   return car;
+}
+
+function helmetTex(team, number) {
+  const key = 'helm' + team.id + number;
+  if (texCache[key]) return texCache[key];
+  const [c, g] = canvas(512, 256);
+  // equirectangular: x = around the head (front at the centre after the mesh is turned), y = top -> bottom
+  g.fillStyle = hex(team.top === 0xf2f2f2 || team.top === 0xf0f0f0 ? team.body : team.top); g.fillRect(0, 0, 512, 256);
+  g.fillStyle = hex(team.accent); g.fillRect(0, 0, 512, 46);
+  g.fillStyle = hex(team.body); g.fillRect(0, 150, 512, 106);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 6;
+  for (const y of [52, 144]) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+  // swooshes on the sides
+  g.fillStyle = hex(team.accent);
+  for (const x of [128, 384]) { g.beginPath(); g.moveTo(x - 70, 140); g.quadraticCurveTo(x, 70, x + 70, 140); g.lineTo(x + 70, 150); g.quadraticCurveTo(x, 90, x - 70, 150); g.fill(); }
+  if (number) {
+    g.fillStyle = '#ffffff'; g.font = 'italic 900 54px "Titillium Web", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(number), 128, 110); g.fillText(String(number), 384, 110);
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return (texCache[key] = t);
 }
 
 let shadowTex = null;

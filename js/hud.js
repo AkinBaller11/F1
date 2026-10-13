@@ -43,10 +43,23 @@ export class HUD {
       <div class="startlights" id="h-lights">${'<div class="pod"><i></i><i></i></div>'.repeat(5)}</div>
       <div class="camhint" id="h-cam"></div>
       <canvas class="minimap" id="h-map" width="220" height="220"></canvas>
+      <div class="onboard" id="h-onb">
+        <div class="ob-id"><span class="ob-bar" id="ob-bar"></span><span class="ob-num" id="ob-num">44</span><span class="ob-drv"><b id="ob-drv">HAMILTON</b><small id="ob-team">FERRARI</small></span><span class="ob-pos" id="ob-pos">P8</span></div>
+        <div class="ob-data">
+          <div class="ob-speed"><b id="ob-speed">0</b><small id="ob-unit">KM/H</small></div>
+          <div class="ob-gear" id="ob-gear">N</div>
+          <div class="ob-meters">
+            <div class="ob-rpm"><i id="ob-rpm"></i></div>
+            <div class="ob-pedal"><span>GAS</span><div><i id="ob-thr"></i></div></div>
+            <div class="ob-pedal brk"><span>BREMSE</span><div><i id="ob-brk"></i></div></div>
+          </div>
+          <div class="ob-flags"><span id="ob-drs">DRS</span><span id="ob-ers">ERS <b id="ob-ersv">100</b>%</span></div>
+        </div>
+      </div>
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -100,6 +113,19 @@ export class HUD {
     const flash = car.rpm > 12100 && (performance.now() / 70 | 0) % 2;
     this.revs.forEach((r, i) => { r.className = i < lit ? (flash ? 'f' : i < 5 ? 'g' : i < 10 ? 'r' : 'p') : ''; });
 
+    // broadcast-style onboard graphic (T-cam)
+    if (document.body.classList.contains('cam-tcam')) {
+      const sp = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
+      e['ob-speed'].textContent = sp; e['ob-unit'].textContent = race.mph ? 'MPH' : 'KM/H';
+      e['ob-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
+      e['ob-rpm'].style.width = Math.max(0, Math.min(100, ((car.rpm - 4000) / 8500) * 100)) + '%';
+      e['ob-thr'].style.width = car.throttle * 100 + '%';
+      e['ob-brk'].style.width = car.brake * 100 + '%';
+      e['ob-drs'].className = car.drsOpen ? 'on' : car.drsAvailable ? 'avail' : '';
+      e['ob-ers'].className = car.overtake ? 'on' : '';
+      e['ob-ersv'].textContent = Math.round(car.ers * 100);
+      e['ob-pos'].textContent = 'P' + race.playerPos;
+    }
     // timing
     e['h-lap'].textContent = Math.min(this.laps, Math.max(1, race.playerLap));
     e['h-time'].textContent = fmtTime(race.curLapTime, false);
@@ -114,6 +140,11 @@ export class HUD {
 
     if (this.msgTimer > 0) { this.msgTimer -= dt; if (this.msgTimer <= 0) e['h-msg'].classList.remove('show'); }
     if (this.warnTimer > 0) { this.warnTimer -= dt; if (this.warnTimer <= 0) e['h-warn'].classList.remove('show'); }
+  }
+
+  setDriver(name, number, team) {
+    this.$('ob-drv').textContent = name; this.$('ob-num').textContent = number; this.$('ob-team').textContent = team.name.toUpperCase();
+    this.$('ob-bar').style.background = hex(team.body === 0xf0f0f0 || team.body === 0x161616 ? team.accent : team.body);
   }
 
   // circuit outline for the minimap (world -> canvas transform, rotated so the map is roughly landscape)

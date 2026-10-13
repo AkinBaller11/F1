@@ -123,7 +123,8 @@ export class Input {
         let rot = 0;
         if (rDist > w * 0.22) { rot = Math.atan2(p.y - cy, p.x - cx) - base.ang; rot = Math.atan2(Math.sin(rot), Math.cos(rot)) / MAX; }
         const v = Math.abs(rot) > Math.abs(lin) ? rot : lin;
-        this.touch.steer = Math.max(-1, Math.min(1, base.steer + v));
+        const raw = Math.max(-1, Math.min(1, base.steer + v));
+        this.touch.steer = raw;
       }
       this.touch.steerActive = true;
     };
@@ -194,7 +195,8 @@ export class Input {
     let steer = 0, analog = false;
     if (H('left') || T.left) steer -= 1;
     if (H('right') || T.right) steer += 1;
-    if (T.steerActive) { steer = T.steer; analog = true; }
+    // touch: expo curve = finer control around the centre, full lock still reachable
+    if (T.steerActive) { steer = Math.sign(T.steer) * Math.pow(Math.abs(T.steer), 1.45); analog = true; }
     if (this.mode.touchSteer === 'tilt' && this.tiltOn && steer === 0) { steer = this.tilt; analog = true; }
     s.overtake = H('ers') || T.ers;
     s.drs = this.act('drs');

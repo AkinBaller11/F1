@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Track, HALF_W } from './track.js';
+import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
 import { TEAMS, buildCar, buildCockpit } from './models.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -15,6 +15,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 const $ = (s) => document.querySelector(s);
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -25,7 +26,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
-  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
+  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
@@ -43,11 +44,11 @@ const defaults = {
 const ONOFF = { vals: [true, false], labels: ['An', 'Aus'] };
 const SETTINGS = [
   { tab: 'Grafik', items: [
-    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['high', 'medium', 'low'], labels: ['Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Setzt Auflösung, Schatten und Details auf einmal.' },
+    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Ultra: 4K-Schatten, 8× Kantenglättung, Grasbüschel, Linsenreflexe. Für starke PCs und neue iPads.' },
     { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
     { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
     { key: 'bloom', label: 'Glüheffekt', vals: ['auto', 'on', 'off'], labels: ['Automatisch', 'An', 'Aus'], next: true, hint: 'Leuchtende Lampen, Neon und Sonne.' },
-    { key: 'trees', label: 'Bäume & Details', vals: ['auto', 'high', 'medium', 'low'], labels: ['Automatisch', 'Viele', 'Mittel', 'Wenige'], next: true },
+    { key: 'trees', label: 'Bäume & Details', vals: ['auto', 'ultra', 'high', 'medium', 'low'], labels: ['Automatisch', 'Sehr viele', 'Viele', 'Mittel', 'Wenige'], next: true },
     { key: 'fpsLimit', label: 'Bildrate begrenzen', vals: [0, 60, 30], labels: ['Unbegrenzt', '60 FPS', '30 FPS'], hint: '30 FPS schont den Akku.' },
   ] },
   { tab: 'Kamera', items: [
@@ -90,7 +91,7 @@ const SETTINGS = [
 // assist profiles: one tap sets everything
 const PROFILES = {
   easy: { autoGas: true, brakeAssist: true, steerAssist: true, autoDrs: true, autoErs: true, line: 'full', gearbox: 'auto' },
-  normal: { autoGas: false, brakeAssist: true, steerAssist: false, autoDrs: true, autoErs: true, line: 'corners', gearbox: 'auto' },
+  normal: { autoGas: false, brakeAssist: true, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', gearbox: 'auto' },
   pro: { autoGas: false, brakeAssist: false, steerAssist: false, autoDrs: false, autoErs: false, line: 'off', gearbox: 'manual' },
 };
 const PROFILE_KEYS = Object.keys(PROFILES.easy);
@@ -99,6 +100,7 @@ if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', difficulty: 60, profi
 let settings = { ...defaults };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}')); } catch (e) { /* storage unavailable */ }
 // the on-screen wheel replaced the joystick as default touch steering
+if (!settings.lightIntro) { if (settings.profile === 'normal' && settings.steerAssist === false) settings.steerAssist = 'light'; settings.lightIntro = true; }
 if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
 document.body.classList.toggle('touch', IS_TOUCH);
 const save = () => { try { localStorage.setItem('apexgp25', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
@@ -338,7 +340,7 @@ let game = null;
 function resize() {
   const w = innerWidth, h = innerHeight;
   const q = settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'ultra' ? 2.5 : q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100);
   renderer.setSize(w, h, false);
   if (game) {
     game.camera.aspect = w / h; game.camera.updateProjectionMatrix();
@@ -351,7 +353,7 @@ addEventListener('resize', resize);
 const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
-  tcam: { label: 'T-KAMERA', pos: [0, 1.16, 0.52], pitch: -0.055, fov: 63, shake: 0.9, lean: 0.6 },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.24, 0.78], pitch: -0.085, fov: 58, shake: 1.0, lean: 0.8, lens: true },
   sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
@@ -361,6 +363,24 @@ const CAMS = {
   heli: { label: 'HELIKOPTER', world: true, heli: true, fov: 45 },
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
+
+// sun lens flare: soft hexagonal ghosts along the line through the screen centre
+function makeFlare(tod) {
+  const disc = (size, inner, col) => {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gr.addColorStop(0, col); gr.addColorStop(inner, col.replace(/[\d.]+\)$/, '0.25)')); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(c);
+  };
+  const warm = tod.sunEl < 20;
+  const lf = new Lensflare();
+  lf.addElement(new LensflareElement(disc(256, 0.2, warm ? 'rgba(255,200,140,0.9)' : 'rgba(255,250,235,0.9)'), 420, 0, new THREE.Color(1, 1, 1)));
+  const ghost = disc(128, 0.6, 'rgba(255,255,255,0.35)');
+  [[60, 0.6], [90, 0.7], [140, 0.9], [70, 1.0], [180, 1.2]].forEach(([s, d], i) => lf.addElement(new LensflareElement(ghost, s, d, new THREE.Color(i % 2 ? 0.6 : 0.9, i % 2 ? 0.8 : 0.7, 1))));
+  return lf;
+}
 
 // ------------------------------------------------------------------ other players' cars
 class RemoteCar {
@@ -416,7 +436,10 @@ class Game {
     sky.add(skyWet);
     scene.add(sky); this.sky = sky; this.skyWet = skyWet;
     this.sunSprite = sunSprite(tod);
-    if (this.sunSprite) scene.add(this.sunSprite);
+    if (this.sunSprite) {
+      scene.add(this.sunSprite);
+      if (opts.quality === 'high' || opts.quality === 'ultra') this.sunSprite.add(makeFlare(tod));
+    }
     const pm = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
@@ -428,9 +451,11 @@ class Game {
     scene.add(hemi);
     const sun = (this.sun = new THREE.DirectionalLight(tod.sun, tod.sunInt));
     sun.castShadow = opts.quality !== 'low' && opts.shadows;
-    const sz = opts.quality === 'high' ? 2048 : 1024;
+    const sz = opts.quality === 'ultra' ? 4096 : opts.quality === 'high' ? 2048 : 1024;
     sun.shadow.mapSize.set(sz, sz);
-    const sc = sun.shadow.camera; sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 10; sc.far = 600;
+    const sr = opts.quality === 'ultra' ? 55 : 70;
+    const sc = sun.shadow.camera; sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.near = 10; sc.far = 600;
+    sun.shadow.normalBias = 0.02;
     sun.shadow.bias = -0.0005;
     scene.add(sun, sun.target);
     this.fogClear = new THREE.Color(tod.fog);
@@ -440,9 +465,12 @@ class Game {
 
     // bloom makes lamps, neon and the sun glow (skipped on low quality)
     this.composer = null;
-    const wantBloom = opts.bloom === 'on' || (opts.bloom !== 'off' && (opts.quality === 'high' || (opts.quality === 'medium' && tod.lamps > 0.5)));
+    const wantBloom = opts.bloom === 'on' || (opts.bloom !== 'off' && (opts.quality === 'high' || opts.quality === 'ultra' || (opts.quality === 'medium' && tod.lamps > 0.5)));
     if (wantBloom) {
-      const c = new EffectComposer(renderer);
+      // multisampled target keeps anti-aliasing when post-processing is on
+      const pr = renderer.getPixelRatio();
+      const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: opts.quality === 'ultra' ? 8 : 4 });
+      const c = new EffectComposer(renderer, rt);
       this.renderPass = new RenderPass(scene, null);
       c.addPass(this.renderPass);
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.32, 0.5, tod.lamps > 0.5 ? 0.62 : 0.86);
@@ -541,6 +569,7 @@ class Game {
     this.trackWarnings = 0; this.offWasOn = false;
     this.hud = new HUD($('#hud'), opts.laps);
     this.hud.setMap(this.track);
+    this.hud.setDriver(this.playerEntry.name, pd.number, pd.team);
     this.hud.setLights(0, false);
     this.paused = false;
     this.applyCamera();
@@ -576,25 +605,40 @@ class Game {
   buildRacingLineMesh() {
     const tr = this.track, N = tr.N;
     if (this.opts.line === 'off') return;
-    const pos = new Float32Array(N * 2 * 3), col = new Float32Array(N * 2 * 4);
+    // ribbon along the racing line with chevrons pointing in the driving direction
+    const pos = new Float32Array(N * 2 * 3), col = new Float32Array(N * 2 * 4), uv = new Float32Array(N * 2 * 2);
     const idx = [];
+    let dist = 0;
     for (let i = 0; i < N; i++) {
       const j = (i + 1) % N;
       let dx = tr.raceX[j] - tr.raceX[i], dz = tr.raceZ[j] - tr.raceZ[i];
       const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      const w = 0.35;
-      pos.set([tr.raceX[i] - dz * w, 0.055, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, 0.055, tr.raceZ[i] - dx * w], i * 6);
+      const w = 0.55;
+      pos.set([tr.raceX[i] - dz * w, 0.056, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, 0.056, tr.raceZ[i] - dx * w], i * 6);
+      uv.set([0, dist / 2.2, 1, dist / 2.2], i * 4);
+      dist += l;
       idx.push(i * 2, j * 2, i * 2 + 1, i * 2 + 1, j * 2, j * 2 + 1);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-    m.frustumCulled = false;
-    this.scene.add(m);
-    this.lineMesh = m;
-    // corners only mode: mask
+    // chevron texture: soft band with arrow shapes
+    const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+    const cg = c.getContext('2d');
+    const band = cg.createLinearGradient(0, 0, 64, 0);
+    band.addColorStop(0, 'rgba(255,255,255,0)'); band.addColorStop(0.18, 'rgba(255,255,255,.55)'); band.addColorStop(0.82, 'rgba(255,255,255,.55)'); band.addColorStop(1, 'rgba(255,255,255,0)');
+    cg.fillStyle = band; cg.fillRect(0, 0, 64, 128);
+    cg.fillStyle = 'rgba(255,255,255,1)';
+    cg.beginPath(); cg.moveTo(8, 92); cg.lineTo(32, 40); cg.lineTo(56, 92); cg.lineTo(46, 92); cg.lineTo(32, 62); cg.lineTo(18, 92); cg.closePath(); cg.fill();
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16;
+    const mat = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: false });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.frustumCulled = false;
+    this.scene.add(mesh);
+    this.lineMesh = mesh;
+    // corners-only mode: show from the braking zone through the apex
     this.lineMask = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       let near = 0;
@@ -607,22 +651,25 @@ class Game {
     if (!this.lineMesh) return;
     const tr = this.track, N = tr.N, p = this.player;
     const col = this.lineMesh.geometry.attributes.color.array;
-    col.fill(0);
-    const i0 = p.hint;
-    const ahead = 140;
-    for (let d = -5; d < ahead; d++) {
+    const from = this.lineFrom ?? 0, to = this.lineTo ?? 0;
+    for (let d = from; d < to; d++) { const i = (d + N) % N; col[i * 8 + 3] = 0; col[i * 8 + 7] = 0; } // clear the previous window only
+    const i0 = p.hint, ahead = 160, v = Math.max(p.v, 0);
+    const brakeCap = brakeDecelAt(v, tr.mu) * 0.85;
+    this.lineFrom = i0 - 6; this.lineTo = i0 + ahead;
+    for (let d = -6; d < ahead; d++) {
       const i = (i0 + d + N) % N;
-      const fade = Math.min(1, (d + 5) / 6) * Math.min(1, (ahead - d) / 30) * this.lineMask[i] * 0.85;
-      if (fade <= 0) continue;
-      const vt = tr.vProf[i];
-      // what speed could we still reach this point at with full braking?
-      const dist = d * tr.ds;
-      const reach = Math.sqrt(Math.max(0, p.v * p.v - 2 * 30 * tr.mu * Math.max(0, dist)));
+      const fade = Math.min(1, (d + 6) / 8) * Math.min(1, (ahead - d) / 40) * this.lineMask[i];
+      if (fade <= 0) { col[i * 8 + 3] = 0; col[i * 8 + 7] = 0; continue; }
+      // how hard would we have to brake from here to make the target speed at that point?
+      const vt = tr.vProf[i], dist = Math.max(1, d * tr.ds);
+      const need = v > vt ? (v * v - vt * vt) / (2 * dist) : 0;
+      const k = need / brakeCap;
       let r, g, b;
-      if (p.v > vt + 2 && reach > vt - 4) { r = 1; g = 0.08; b = 0.05; }
-      else if (p.v > vt - 4 && tr.brakeZone[i]) { r = 1; g = 0.75; b = 0.05; }
-      else { r = 0.1; g = 0.95; b = 0.25; }
-      for (const k of [i * 2, i * 2 + 1]) { col[k * 4] = r; col[k * 4 + 1] = g; col[k * 4 + 2] = b; col[k * 4 + 3] = fade; }
+      if (k > 0.75 || v > vt + 4) { r = 1; g = 0.12; b = 0.08; }          // brake now
+      else if (k > 0.3 || (tr.brakeZone[i] && v > vt - 6)) { r = 1; g = 0.78; b = 0.08; } // lift / prepare
+      else { r = 0.12; g = 0.95; b = 0.35; }                               // full throttle
+      const a = fade * 0.9;
+      col.set([r, g, b, a, r, g, b, a], i * 8);
     }
     this.lineMesh.geometry.attributes.color.needsUpdate = true;
   }
@@ -634,8 +681,10 @@ class Game {
     const v = CAMS[m];
     this.cockpit.visible = !!v.ego;
     this.playerModel.userData.helmet.visible = !v.ego;
+    this.playerModel.userData.tcam.visible = m !== 'tcam';
     this.cockpit.userData.hands.visible = settings.hands;
     document.body.classList.toggle('cam-helmet', m === 'helmet');
+    document.body.classList.toggle('cam-tcam', m === 'tcam');
     if (v.world) { if (cam.parent !== this.scene) this.scene.add(cam); this.chaseCam = null; }
     else { if (cam.parent !== this.playerBody) this.playerBody.add(cam); cam.position.set(...v.pos); cam.rotation.set(v.pitch, v.yaw || 0, 0); }
     this.baseFov = v.ego ? settings.fov - (m === 'helmet' ? 4 : 0) : v.fov;
@@ -1039,8 +1088,9 @@ class Game {
       cam.position.set(v.pos[0] + H.x + rx() + Math.sin(t * 61) * buzz, v.pos[1] + rx() + Math.sin(t * 47) * buzz + p.bump * Math.sin(t * 38) * 0.004 * shakeK, v.pos[2] + H.z);
       cam.rotation.set(v.pitch + H.pitch, -p.steer * 0.05 * hm, H.roll);
     } else {
-      // body-mounted onboard cams: rigid mount, a touch of lean into corners
-      cam.position.set(v.pos[0] + rx(), v.pos[1] + rx(), v.pos[2]);
+      // body-mounted onboard cams: rigid mount, engine buzz, a touch of lean into corners
+      const t2 = performance.now() / 1000, bz = Math.min(1, p.v / 85) * 0.0011 * shakeK * (v.lens ? 1.4 : 1);
+      cam.position.set(v.pos[0] + rx() + Math.sin(t2 * 67) * bz, v.pos[1] + rx() + Math.sin(t2 * 53) * bz + p.bump * Math.sin(t2 * 40) * 0.005 * shakeK, v.pos[2]);
       cam.rotation.set(v.pitch + H.pitch * 0.3, (v.yaw || 0) - p.steer * 0.015, H.roll * (v.lean || 0) * 0.4);
     }
     // field of view widens with speed
@@ -1056,6 +1106,9 @@ class Game {
       this.vibT = (this.vibT || 0) - dt;
       if (this.vibT <= 0 && (p.impact > 0.3 || (p.bump > 0.9 && p.v > 15))) { navigator.vibrate(p.impact > 0.3 ? 60 : 15); this.vibT = p.impact > 0.3 ? 0.5 : 0.25; }
     }
+    // driver's head: leans with lateral g, looks toward the apex, nods under braking
+    const hd = this.playerModel.userData.helmet.children[0];
+    hd.rotation.set(-H.pitch * 1.6, -p.steer * 0.32, H.roll * 1.4);
     // wheels
     const maxSteer = 0.42 / (1 + Math.abs(p.v) / 16);
     for (const set of [this.playerModel.userData.wheels, this.cockpit.userData.wheels]) {
@@ -1082,6 +1135,7 @@ class Game {
       o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
       m.rotation.set(0, o.yaw, o.rollVis);
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
+      m.userData.helmet.children[0].rotation.set(0, -(o.steerVis || 0) * 0.6, (o.rollVis || 0) * -3);
       m.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     }
     this.playerModel.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
@@ -1092,7 +1146,7 @@ class Game {
     this.sky.position.set(p.x, 0, p.z);
 
     this.updateRacingLine();
-    this.weather.update(dt, this.camWorld(), p.v, this.others.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), !!(CAMS[this.camMode] || {}).ego && settings.droplets && !this.lookBack);
+    this.weather.update(dt, this.camWorld(), p.v, this.others.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), !!((CAMS[this.camMode] || {}).ego || (CAMS[this.camMode] || {}).lens) && settings.droplets && !this.lookBack);
     if (!(CAMS[this.camMode] || {}).ego) this.weather.emitSpray(p, dt);
 
     // steering wheel display

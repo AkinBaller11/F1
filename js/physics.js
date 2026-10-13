@@ -59,12 +59,15 @@ export class PlayerCar {
     let st = input.steer;
     // steering assist: pulls the car toward the racing line, strongest when the player isn't steering
     if (this.opts.steerAssist && this.v > 3) {
+      const strong = this.opts.steerAssist === true;
       const ahead = this.s + Math.max(8, this.v * 0.45);
       const f = tr.frame(ahead), lat = tr.racingLat(ahead);
       const want = Math.atan2(-(f.x + f.rx * lat - this.x), -(f.z + f.rz * lat - this.z));
       let err = want - this.yaw; err = Math.atan2(Math.sin(err), Math.cos(err));
       const auto = Math.max(-1, Math.min(1, -err * 12));
-      st = st === 0 ? auto : Math.max(-1, Math.min(1, st + (auto - st) * 0.35));
+      // strong: drives itself when hands-off; light: gentle pull toward the line, player stays in charge
+      const k = strong ? (st === 0 ? 1 : 0.35) : (st === 0 ? 0.35 : 0.14);
+      st = Math.max(-1, Math.min(1, st + (auto - st) * k));
       this.assistErr = Math.abs(err);
       this.assistAnalog = true;
     }
@@ -79,12 +82,12 @@ export class PlayerCar {
 
     // braking assist
     if (this.opts.brakeAssist && raceOn) {
-      const safe = this.opts.steerAssist ? 0.92 : 1; // easy mode keeps a margin to the limit
+      const safe = this.opts.steerAssist === true ? 0.92 : this.opts.steerAssist ? 0.97 : 1; // assisted modes keep a margin to the limit
       const ahead = safe * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
       if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(1, (this.v - ahead) / 4));
     }
     let thrEff = thr;
-    if (this.opts.steerAssist && this.assistErr > 0.06) thrEff = thr * Math.max(0.2, 1 - (this.assistErr - 0.06) * 6);
+    if (this.opts.steerAssist === true && this.assistErr > 0.06) thrEff = thr * Math.max(0.2, 1 - (this.assistErr - 0.06) * 6);
     this.assistErr = 0;
     this.throttle = thrEff; this.brake = brk;
 
@@ -138,7 +141,7 @@ export class PlayerCar {
     const maxSteer = 0.42 / (1 + Math.abs(this.v) / 16);
     const wantYaw = (this.v / CAR.wheelBase) * Math.tan(this.steer * maxSteer);
     // friction circle: braking / traction eat into lateral grip
-    const latMax = lateralGrip(v, mu);
+    const latMax = lateralGrip(v, mu) * 1.06; // a touch more forgiving than the AI's limit
     const longUse = Math.min(0.85, (brk * bd + this.throttle * eng * 0.4) / (latMax + 1e-3));
     const latAvail = latMax * Math.sqrt(1 - longUse * longUse);
     const maxYaw = latAvail / Math.max(Math.abs(this.v), 2);
@@ -147,7 +150,7 @@ export class PlayerCar {
     if (Math.abs(wantYaw) > maxYaw) {
       const excess = Math.abs(wantYaw) / maxYaw - 1;
       yawRate = Math.sign(wantYaw) * maxYaw;
-      this.v -= Math.min(excess, 1.5) * 4 * dt * Math.sign(this.v); // scrubbing (understeer)
+      this.v -= Math.min(excess, 1.5) * 2.6 * dt * Math.sign(this.v); // scrubbing (understeer)
       this.slip = Math.min(1, this.slip + excess * dt * 3);
     }
     // power oversteer in the wet / off-track wobble

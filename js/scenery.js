@@ -399,7 +399,7 @@ export function buildScenery(tr) {
 // ------------------------------------------------------------------ park / forest
 function buildNature(tr, df, height, lakeAt, R) {
   const G = tr.group, q = tr.trees || tr.quality, forest = tr.style === 'forest';
-  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : 2400) * (forest ? 1.5 : 1));
+  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 1.5 : 1));
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.38, 3.4, 6);
   const leafGeo = new THREE.IcosahedronGeometry(3.2, 1);
   const pineGeo = new THREE.ConeGeometry(2.6, 9, 7);
@@ -443,6 +443,35 @@ function buildNature(tr, df, height, lakeAt, R) {
     }
   }
   trunks.count = lc; leaves.count = lc; pines.count = pc; bushes.count = bc;
+  // grass tufts near the barriers (ultra/high): two crossed alpha planes per tuft
+  if (q === 'ultra' || q === 'high') {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const g2 = c.getContext('2d');
+    for (let k = 0; k < 26; k++) { const x = 4 + R() * 56; g2.strokeStyle = `rgba(${60 + R() * 40},${110 + R() * 50},${40 + R() * 20},1)`; g2.lineWidth = 2; g2.beginPath(); g2.moveTo(32, 64); g2.quadraticCurveTo(x, 40, x + (R() - 0.5) * 10, 6 + R() * 20); g2.stroke(); }
+    const tt = new THREE.CanvasTexture(c); tt.colorSpace = THREE.SRGBColorSpace;
+    const p1 = new THREE.PlaneGeometry(0.8, 0.55); p1.translate(0, 0.27, 0);
+    const p2 = p1.clone(); p2.rotateY(Math.PI / 2);
+    const tuftGeo = mergeGeometries([p1, p2]);
+    const n = q === 'ultra' ? 9000 : 4500;
+    const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ map: tt, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }), n);
+    let tcnt = 0;
+    for (let k = 0; k < n * 2 && tcnt < n; k++) {
+      const s = R() * tr.length, i = tr.idx(s);
+      if (tr.inPitStraight(s)) continue;
+      const side = R() < 0.5 ? -1 : 1;
+      const lim = side > 0 ? tr.limR[i] : tr.limL[i];
+      const grav = side > 0 ? tr.gravelR[i] : tr.gravelL[i];
+      const kerb = side > 0 ? tr.kerbR[i] : tr.kerbL[i];
+      const from = HALF_W + (kerb ? 5 : 1.2);
+      const lat = side * (from + R() * Math.max(0.5, (grav ? 3 : lim) - from - 0.6));
+      if (Math.abs(lat) > lim - 0.5) continue;
+      const [x, z] = tr.posAt(s, lat);
+      P.set(x, 0, z); Q.setFromAxisAngle(Y, R() * 6.28); S.setScalar(0.7 + R() * 0.8);
+      M.compose(P, Q, S); tufts.setMatrixAt(tcnt, M); tcnt++;
+    }
+    tufts.count = tcnt;
+    G.add(tufts);
+  }
   for (const m of [trunks, leaves, pines]) m.castShadow = true;
   G.add(trunks, leaves, pines, bushes);
 }
