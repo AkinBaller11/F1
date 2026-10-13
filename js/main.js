@@ -5,7 +5,7 @@ import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
 import { Audio } from './audio.js';
 import { Weather } from './weather.js';
-import { Input } from './input.js';
+import { Input, IS_TOUCH } from './input.js';
 import * as TX from './textures.js';
 
 const $ = (s) => document.querySelector(s);
@@ -15,9 +15,12 @@ const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const DRIVERS = [];
 TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d, number: t.numbers[i] })));
 
-const defaults = { driver: 'HAMILTON', laps: 5, weather: 'wet', difficulty: 75, grid: 8, gearbox: 'auto', brakeAssist: false, line: 'corners', camera: 'cockpit', quality: 'high' };
+const defaults = { driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, gearbox: 'auto', brakeAssist: false, autoGas: false, line: 'corners', camera: 'cockpit', quality: 'high', touchSteer: 'joystick' };
+// friendlier defaults on phones / tablets
+if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', brakeAssist: true, line: 'full', difficulty: 60 });
 let settings = { ...defaults };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}')); } catch (e) { /* storage unavailable */ }
+document.body.classList.toggle('touch', IS_TOUCH);
 const save = () => { try { localStorage.setItem('apexgp25', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
 function buildMenu() {
@@ -76,48 +79,59 @@ let game = null;
 function resize() {
   const w = innerWidth, h = innerHeight;
   const q = settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.25 : 0.85));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
   renderer.setSize(w, h, false);
   if (game) { game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); }
 }
 addEventListener('resize', resize);
 
+// ------------------------------------------------------------------ cameras
+const CAMS = {
+  cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1 },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.3, 0.42], pitch: -0.06, fov: 70, shake: 0.8 },
+  nose: { label: 'NASEN-KAMERA', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
+  wing: { label: 'FLÜGEL-KAMERA', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
+  chase: { label: 'VERFOLGER', pos: [0, 2.1, 6.6], pitch: -0.12, fov: 64, shake: 0.3, chase: true },
+  far: { label: 'VERFOLGER WEIT', pos: [0, 3.3, 10.5], pitch: -0.15, fov: 60, shake: 0.2, chase: true },
+};
+
 // ------------------------------------------------------------------ game
 class Game {
   constructor(opts) {
     this.opts = opts;
-    const wet = (this.wet = opts.weather === 'wet');
     const scene = (this.scene = new THREE.Scene());
-    const fogCol = wet ? 0xa9afb5 : 0xc9dcec;
-    scene.fog = wet ? new THREE.FogExp2(fogCol, 0.0042) : new THREE.Fog(fogCol, 400, 2600);
-    renderer.toneMappingExposure = wet ? 0.95 : 1.05;
+    // weather first: it decides how wet the track starts
+    this.weather = new Weather(scene, opts.weather, opts.laps * 95, opts.quality);
+    const wet = this.weather.wetness > 0.4; // tyre choice at the start
+    this.startWet = wet;
+    scene.fog = new THREE.FogExp2(0xc9dcec, 0.0006);
     renderer.shadowMap.enabled = opts.quality !== 'low';
 
-    // sky + environment
-    const skyTex = TX.sky(wet);
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
-    scene.add(sky); this.sky = sky;
+    // sky (dry dome + overcast dome cross-faded by the weather) + environment
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(false), side: THREE.BackSide, fog: false }));
+    const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
+    sky.add(skyWet);
+    scene.add(sky); this.sky = sky; this.skyWet = skyWet;
     const pm = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
-    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: wet ? 0x3d4a3a : 0x51703f }));
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(false), side: THREE.BackSide })));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: 0x51703f }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; envScene.add(ground);
     scene.environment = pm.fromScene(envScene, 0.04).texture;
-    scene.environmentIntensity = wet ? 0.7 : 0.9;
 
-    const hemi = new THREE.HemisphereLight(wet ? 0xc5ccd4 : 0xdbe8ff, wet ? 0x4a5240 : 0x5a6b3c, wet ? 1.2 : 1.1);
+    const hemi = (this.hemi = new THREE.HemisphereLight(0xdbe8ff, 0x5a6b3c, 1.1));
     scene.add(hemi);
-    const sun = (this.sun = new THREE.DirectionalLight(wet ? 0xdfe5ea : 0xfff1dd, wet ? 0.9 : 2.6));
+    const sun = (this.sun = new THREE.DirectionalLight(0xfff1dd, 2.6));
     sun.position.set(80, 140, 60);
     sun.castShadow = opts.quality !== 'low';
     const sz = opts.quality === 'high' ? 2048 : 1024;
     sun.shadow.mapSize.set(sz, sz);
     const sc = sun.shadow.camera; sc.left = -60; sc.right = 60; sc.top = 60; sc.bottom = -60; sc.near = 10; sc.far = 400;
     sun.shadow.bias = -0.0005;
-    sun.shadow.radius = wet ? 6 : 2;
     scene.add(sun, sun.target);
 
-    this.track = new Track(scene, { wet });
+    this.track = new Track(scene, { wetness: this.weather.wetness, quality: opts.quality });
+    this.applyWeather(0, true);
 
     // camera
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 5000);
@@ -134,7 +148,7 @@ class Game {
     this.playerModel = buildCar(pd.team, wet, pd.number, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1 });
     this.playerBody.add(this.playerModel);
     this.cockpit = buildCockpit(); this.playerBody.add(this.cockpit);
-    this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 800);
+    this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 3500);
     this.rearCam.position.set(0, 0.95, 0.9); this.rearCam.rotation.y = Math.PI;
     this.playerBody.add(this.rearCam);
     this.playerBody.add(this.camera);
@@ -173,7 +187,6 @@ class Game {
     this.playerEntry = this.cars.find((c) => c.isPlayer);
     this.aiList = this.cars.filter((c) => !c.isPlayer).map((c) => c.obj);
 
-    this.weather = new Weather(scene, wet);
     this.buildRacingLineMesh();
 
     // race state
@@ -187,10 +200,29 @@ class Game {
     this.paused = false;
     this.applyCamera();
     resize();
-    audio.init(wet); audio.rainLevel = wet ? 0.12 : 0;
+    audio.init();
     audio.resume();
     this.displayT = 0;
     this.track.setStartLights(0, false);
+  }
+
+  // blend sky, light, fog, track surface and sound with the current rain / wetness
+  applyWeather(dt, force = false) {
+    const W = this.weather, r = W.rain, w = W.wetness;
+    const o = Math.min(1, r * 1.3 + w * 0.25);
+    const L = (a, b, t = o) => a + (b - a) * t;
+    this.skyWet.material.opacity = o;
+    this.scene.fog.density = L(0.00055, 0.0042 * (0.45 + 0.55 * r));
+    this.scene.fog.color.setRGB(L(0.79, 0.66), L(0.86, 0.69), L(0.93, 0.71));
+    this.sun.intensity = L(2.6, 0.9);
+    this.sun.color.setRGB(1, L(0.945, 0.9), L(0.87, 0.92));
+    this.sun.shadow.radius = L(2, 6);
+    this.hemi.intensity = L(1.1, 1.2);
+    this.hemi.color.setRGB(L(0.86, 0.77), L(0.91, 0.8), L(1, 0.83));
+    this.scene.environmentIntensity = L(0.9, 0.7);
+    renderer.toneMappingExposure = L(1.05, 0.95);
+    if (force) this.track.setWetness(w);
+    audio.rainLevel = r * 0.14;
   }
 
   buildRacingLineMesh() {
@@ -250,19 +282,17 @@ class Game {
   applyCamera() {
     const m = this.camMode;
     const cam = this.camera;
+    const v = CAMS[m] || CAMS.cockpit;
     this.cockpit.visible = m === 'cockpit';
     this.playerModel.userData.helmet.visible = m !== 'cockpit';
-    // helmet and halo of own car look odd in T-cam: keep model visible though
-    if (m === 'cockpit') { cam.position.set(0, 0.96, 0.02); cam.rotation.set(-0.045, 0, 0); cam.fov = 72; }
-    else if (m === 'tcam') { cam.position.set(0, 1.32, 0.55); cam.rotation.set(-0.06, 0, 0); cam.fov = 70; }
-    else { cam.position.set(0, 2.1, 6.6); cam.rotation.set(-0.12, 0, 0); cam.fov = 64; }
+    cam.position.set(...v.pos); cam.rotation.set(v.pitch, 0, 0); cam.fov = v.fov;
     cam.updateProjectionMatrix();
-    this.hud.camHint({ cockpit: 'COCKPIT', tcam: 'T-KAMERA', chase: 'VERFOLGER' }[m]);
+    this.hud.camHint(v.label);
   }
 
-  cycleCamera() {
-    const modes = ['cockpit', 'tcam', 'chase'];
-    this.camMode = modes[(modes.indexOf(this.camMode) + 1) % 3];
+  cycleCamera(dir = 1) {
+    const modes = Object.keys(CAMS);
+    this.camMode = modes[(modes.indexOf(this.camMode) + dir + modes.length) % modes.length];
     this.applyCamera();
   }
 
@@ -305,6 +335,8 @@ class Game {
     if (input.was('Escape') || input.was('KeyP')) { this.togglePause(); }
     if (this.paused) { input.endFrame(); return; }
     if (input.was('KeyC')) this.cycleCamera();
+    if (input.was('KeyV')) this.cycleCamera(-1);
+    this.lookBack = input.keys.has('KeyB') || input.touch.look;
     if (input.was('KeyM')) { const m = audio.toggleMute(); this.hud.camHint(m ? 'TON AUS' : 'TON AN'); }
     if (input.was('KeyR') && this.state === 'race') this.resetCar();
 
@@ -328,6 +360,14 @@ class Game {
     }
     const racing = this.state === 'race' || this.state === 'finished';
     if (racing) this.raceTime += dt;
+    const wEvent = this.weather.step(dt, this.raceTime);
+    // grip + AI speed profile follow the track wetness (cheap, so twice a second)
+    this.surfaceT = (this.surfaceT || 0) - dt;
+    if (this.surfaceT <= 0) { this.surfaceT = 0.5; this.track.setWetness(this.weather.wetness); }
+    if (wEvent === 'start') this.hud.message('REGEN SETZT EIN', 3, 'rain');
+    if (wEvent === 'stop') this.hud.message('DER REGEN HÖRT AUF', 3);
+    if (this.track.wet !== this.lastWetState && this.lastWetState !== undefined) this.hud.warn(this.track.wet ? 'STRECKE NASS — WENIGER GRIP' : 'STRECKE TROCKNET AB', 2.5);
+    this.lastWetState = this.track.wet;
 
     // ---- physics (fixed sub-steps)
     const p = this.player;
@@ -346,7 +386,7 @@ class Game {
     // ---- DRS availability (dry, from lap 2, within 1s at detection, inside zone)
     const sNow = p.s;
     const inZone = this.track.drsZones.some(([a, b]) => (a < b ? sNow > a && sNow < b : sNow > a || sNow < b));
-    if (!this.wet && this.lap.lapNo >= 1 && inZone) {
+    if (!this.track.wet && this.lap.lapNo >= 1 && inZone) {
       if (!p.drsAvailable && !this.drsChecked) {
         this.drsChecked = true;
         const ahead = this.computeOrder();
@@ -482,15 +522,19 @@ class Game {
     this.pitch = (this.pitch || 0) + (clamp(-longG * 0.0012, 0.025) - (this.pitch || 0)) * Math.min(1, dt * 6);
     this.roll = (this.roll || 0) + (clamp(p.yawRate * p.v * 0.0009, 0.03) - (this.roll || 0)) * Math.min(1, dt * 6);
     this.playerBody.rotation.set(this.pitch, 0, this.roll);
-    const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * (this.camMode === 'chase' ? 0.3 : 1);
-    if (this.camMode === 'cockpit') {
-      cam.position.set((Math.random() - 0.5) * shake, 0.96 + (Math.random() - 0.5) * shake, 0.02);
-      // head leans into corners
-      cam.rotation.set(-0.045 + this.pitch * 0.5, -p.steer * 0.03, -this.roll * 0.6);
-    } else if (this.camMode === 'tcam') {
-      cam.position.set((Math.random() - 0.5) * shake, 1.32 + (Math.random() - 0.5) * shake, 0.55);
+    const v = CAMS[this.camMode] || CAMS.cockpit;
+    const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * v.shake;
+    const rx = () => (Math.random() - 0.5) * shake;
+    if (this.lookBack) {
+      cam.position.set(0, 1.25, 0.6); cam.rotation.set(-0.08, Math.PI, 0);
+    } else if (v.chase) {
+      // chase cams swing out a little in corners
+      cam.position.set(p.yawRate * -0.25, v.pos[1], v.pos[2]);
+      cam.rotation.set(v.pitch, p.yawRate * 0.12, 0);
     } else {
-      cam.rotation.set(-0.12, p.yawRate * 0.12, 0);
+      cam.position.set(v.pos[0] + rx(), v.pos[1] + rx(), v.pos[2]);
+      if (this.camMode === 'cockpit') cam.rotation.set(v.pitch + this.pitch * 0.5, -p.steer * 0.03, -this.roll * 0.6);
+      else cam.rotation.set(v.pitch, 0, 0);
     }
     // wheels
     const maxSteer = 0.42 / (1 + Math.abs(p.v) / 16);
@@ -503,6 +547,8 @@ class Game {
     this.cockpit.userData.steering.rotation.z = -p.steer * 0.9;
     // AI meshes
     const blink = (performance.now() / 250 | 0) % 2;
+    const rainLights = this.weather.rain > 0.15 || this.weather.wetness > 0.5;
+    this.applyWeather(dt);
     for (const c of this.cars) {
       if (c.isPlayer) continue;
       const o = c.obj, m = c.mesh;
@@ -512,9 +558,9 @@ class Game {
       m.position.set(o.x, 0, o.z);
       m.rotation.y = o.yaw;
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
-      if (this.wet) m.userData.rainLight.material.color.setHex(blink ? 0xff2020 : 0x330000);
+      m.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     }
-    if (this.wet) this.playerModel.userData.rainLight.material.color.setHex(blink ? 0xff2020 : 0x330000);
+    this.playerModel.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     // sun/shadow follow
     this.sun.position.set(p.x + 80, 140, p.z + 60);
     this.sun.target.position.set(p.x, 0, p.z);
@@ -522,14 +568,16 @@ class Game {
 
     this.updateRacingLine();
     this.weather.update(dt, this.camWorld(), p.v, this.aiList.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), this.camMode === 'cockpit');
-    if (this.wet && this.camMode !== 'cockpit') this.weather.emitSpray(p, dt);
+    if (this.camMode !== 'cockpit') this.weather.emitSpray(p, dt);
 
     // steering wheel display
     this.displayT -= dt;
     if (this.displayT <= 0 && this.camMode === 'cockpit') { this.displayT = 0.1; this.drawWheelDisplay(); }
 
     // mirrors
-    if (this.camMode === 'cockpit') {
+    this.mirrorFrame = (this.mirrorFrame || 0) + 1;
+    const every = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 2 : 3;
+    if (this.camMode === 'cockpit' && !this.lookBack && this.mirrorFrame % every === 0) {
       this.cockpit.visible = false; this.playerModel.visible = false;
       renderer.setRenderTarget(this.mirrorRT);
       renderer.render(this.scene, this.rearCam);
@@ -541,7 +589,7 @@ class Game {
     this.hud.update(dt, p, {
       playerLap: Math.max(1, this.lap.lapNo + 1), curLapTime: this.state === 'grid' ? 0 : this.raceTime - this.lap.start,
       bestLap: this.lap.best, playerPos: this.playerPos || this.playerEntry.grid, total: this.cars.length,
-      order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.wet, time: this.raceTime,
+      order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather,
     });
     audio.update(p, this.aiList, this.camMode === 'cockpit');
   }
@@ -603,6 +651,7 @@ class Game {
     $('#res-warn').textContent = this.trackWarnings;
     showScreen('results');
     $('#hud').classList.remove('active');
+    document.body.classList.remove('ingame');
   }
 
   dispose() {
@@ -629,6 +678,11 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 function startRace() {
+  audio.init(); // create / unlock audio inside the user gesture (iOS)
+  input.setMode({ touchSteer: settings.touchSteer, autoGas: settings.autoGas });
+  if (IS_TOUCH && settings.touchSteer === 'tilt') input.enableTilt();
+  document.body.classList.toggle('steer-buttons', settings.touchSteer === 'buttons');
+  document.body.classList.toggle('steer-tilt', settings.touchSteer === 'tilt');
   showScreen('loading');
   $('#hud').classList.remove('active');
   setTimeout(() => {
@@ -637,7 +691,7 @@ function startRace() {
     window.__game = game; window.__input = input;
     showScreen('none');
     $('#hud').classList.add('active');
-    document.body.classList.toggle('touch', matchMedia('(pointer: coarse)').matches);
+    document.body.classList.add('ingame');
   }, 60);
 }
 
@@ -645,7 +699,7 @@ function quitToMenu() {
   if (game) { game.dispose(); game = null; }
   $('#pause').classList.remove('active');
   $('#hud').classList.remove('active');
-  document.body.classList.remove('touch');
+  document.body.classList.remove('ingame');
   showScreen('menu');
 }
 
@@ -654,7 +708,7 @@ document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-action]');
   if (!a) return;
   const act = a.dataset.action;
-  audio.resume();
+  audio.init();
   if (act === 'start') startRace();
   if (act === 'setup') showScreen('setup');
   if (act === 'controls') showScreen('controls');
@@ -663,6 +717,7 @@ document.addEventListener('click', (e) => {
   if (act === 'restart') { $('#pause').classList.remove('active'); startRace(); }
   if (act === 'quit') quitToMenu();
 });
+document.addEventListener('visibilitychange', () => { if (document.hidden && game && !game.paused) game.togglePause(true); });
 addEventListener('keydown', (e) => {
   if (game) return;
   if (e.code === 'Enter') {
@@ -673,6 +728,19 @@ addEventListener('keydown', (e) => {
 
 buildMenu();
 resize();
+// fullscreen (not available on iPhone Safari; add to home screen instead)
+{
+  const fsBtn = $('#fs-btn');
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req || !(document.fullscreenEnabled || document.webkitFullscreenEnabled)) fsBtn.hidden = true;
+  fsBtn.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { await req.call(el); try { await screen.orientation.lock('landscape'); } catch (_) { /* optional */ } }
+    } catch (_) { fsBtn.hidden = true; }
+  });
+}
 showScreen('menu');
 // Menu backdrop: slowly orbiting camera around a car
 (function menuBackdrop() {

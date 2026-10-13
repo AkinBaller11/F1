@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apex GP 25">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Apex GP 25</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,700;1,900&display=swap">
@@ -16,9 +23,15 @@
 
 <!-- touch controls -->
 <div id="touch">
-  <div class="tgroup left"><button id="tc-left" aria-label="Links">◀</button><button id="tc-right" aria-label="Rechts">▶</button></div>
-  <div class="tgroup right"><button id="tc-drs" class="small">DRS</button><button id="tc-ers" class="small">ERS</button><button id="tc-brake">BREMSE</button><button id="tc-gas">GAS</button></div>
+  <div id="tz-steer" aria-label="Lenken: Daumen nach links oder rechts ziehen"><div class="ring"><i id="tz-knob"></i></div><span class="hint">ZIEHEN ZUM LENKEN</span></div>
+  <div id="tc-arrows"><button id="tc-left" aria-label="Links">◀</button><button id="tc-right" aria-label="Rechts">▶</button></div>
+  <div class="tside">
+    <div class="tsmall"><button id="tc-drs">DRS</button><button id="tc-ers">ERS</button><button id="tc-look" aria-label="Nach hinten schauen">⟲</button><button id="tc-cam" aria-label="Kamera wechseln">CAM</button></div>
+    <div class="tpedals"><button id="tc-brake">BREMSE</button><button id="tc-gas">GAS</button></div>
+  </div>
+  <button id="tc-pause" aria-label="Pause">❚❚</button>
 </div>
+<div id="rotate"><div><div class="phone"></div><p>Dreh dein Gerät ins Querformat</p></div></div>
 
 <!-- main menu -->
 <section class="screen" id="menu">
@@ -37,7 +50,8 @@
     <div class="lbl">DEIN FAHRER</div>
     <div class="who"><span id="sel-num">44</span><div><b id="sel-driver">HAMILTON</b><span id="sel-team">Ferrari</span></div></div>
   </aside>
-  <footer class="foot">Inoffizielles Fan-Projekt · Enter = Start</footer>
+  <button class="fs-btn" id="fs-btn" aria-label="Vollbild">⛶ VOLLBILD</button>
+  <footer class="foot">Inoffizielles Fan-Projekt · <span class="desk-only">Enter = Start</span><span class="touch-only">Für iPad &amp; Handy optimiert</span></footer>
 </section>
 
 <!-- race setup -->
@@ -52,15 +66,18 @@
       <div class="col opts">
         <h3>RENNEN</h3>
         <div class="opt" data-key="laps" data-vals="[3,5,8,12]" data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
-        <div class="opt" data-key="weather" data-vals='["wet","dry"]' data-labels='["Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry"]' data-labels='["Wechselhaft","Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="grid" data-vals='[1,3,5,8,10,15,20,"random"]' data-labels='["P1 (Pole)","P3","P5","P8","P10","P15","P20","Zufällig"]'><span>Startplatz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="slider"><span>KI-Schwierigkeit</span><input type="range" id="difficulty" min="0" max="110" step="1"><b id="diff-val">75</b></div>
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell (Q/E)"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="autoGas" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <h3 class="touch-only">TOUCH</h3>
+        <div class="opt touch-only" data-key="touchSteer" data-vals='["joystick","buttons","tilt"]' data-labels='["Joystick","Tasten","Neigen"]'><span>Lenkung</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>ANZEIGE</h3>
-        <div class="opt" data-key="camera" data-vals='["cockpit","tcam","chase"]' data-labels='["Cockpit","T-Kamera","Verfolger"]'><span>Kamera</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="camera" data-vals='["cockpit","tcam","nose","wing","chase","far"]' data-labels='["Cockpit","T-Kamera","Nase","Flügel","Verfolger","Verfolger weit"]'><span>Kamera</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="quality" data-vals='["high","medium","low"]' data-labels='["Hoch","Mittel","Niedrig"]'><span>Grafik</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
       </div>
     </div>
@@ -77,7 +94,7 @@
           <dt>W / ↑</dt><dd>Gas</dd><dt>S / ↓</dt><dd>Bremse (im Stand: Rückwärts)</dd>
           <dt>A D / ← →</dt><dd>Lenken</dd><dt>Leertaste</dt><dd>ERS Overtake</dd>
           <dt>F</dt><dd>DRS öffnen (wenn verfügbar)</dd><dt>E / Q</dt><dd>Hoch- / Runterschalten (manuell)</dd>
-          <dt>C</dt><dd>Kamera wechseln</dd><dt>R</dt><dd>Auto zurücksetzen</dd>
+          <dt>C / V</dt><dd>Kamera vor / zurück</dd><dt>B (halten)</dt><dd>Nach hinten schauen</dd><dt>R</dt><dd>Auto zurücksetzen</dd>
           <dt>M</dt><dd>Ton an/aus</dd><dt>Esc / P</dt><dd>Pause</dd>
         </dl>
       </div>
@@ -85,10 +102,15 @@
         <dl>
           <dt>Linker Stick</dt><dd>Lenken</dd><dt>RT / LT</dt><dd>Gas / Bremse</dd>
           <dt>A</dt><dd>ERS Overtake</dd><dt>X</dt><dd>DRS</dd>
-          <dt>RB / LB</dt><dd>Schalten</dd><dt>Y</dt><dd>Kamera</dd><dt>Start</dt><dd>Pause</dd>
+          <dt>RB / LB</dt><dd>Schalten</dd><dt>Y</dt><dd>Kamera</dd><dt>B</dt><dd>Nach hinten schauen</dd><dt>Start</dt><dd>Pause</dd>
+        </dl>
+        <h3>IPAD &amp; HANDY</h3>
+        <dl>
+          <dt>Linke Hälfte</dt><dd>Daumen ziehen = Lenken (oder Tasten / Neigen)</dd><dt>GAS / BREMSE</dt><dd>Rechts unten</dd>
+          <dt>ERS / DRS</dt><dd>Über den Pedalen</dd><dt>CAM / ⟲</dt><dd>Kamera / Rückblick</dd><dt>❚❚</dt><dd>Pause</dd>
         </dl>
         <h3>RENNREGELN</h3>
-        <p>DRS gibt es ab Runde 2 im Trockenen, wenn du an der Erkennungslinie weniger als 1 s hinter dem Vordermann bist. Verlässt du mit allen Rädern die Strecke, wird die Runde ungültig. Im Regen fährst du Intermediates mit weniger Grip, die Gischt der Vorderleute nimmt dir die Sicht.</p>
+        <p>Bei „Wechselhaft“ kann es jederzeit anfangen oder aufhören zu regnen. Die Vorhersage oben rechts zeigt dir, was kommt: Eine nasse Strecke hat deutlich weniger Grip und trocknet nach dem Regen langsam ab. DRS gibt es ab Runde 2 im Trockenen, wenn du an der Erkennungslinie weniger als 1 s hinter dem Vordermann bist. Verlässt du mit allen Rädern die Strecke, wird die Runde ungültig. Im Regen fährst du Intermediates mit weniger Grip, die Gischt der Vorderleute nimmt dir die Sicht.</p>
       </div>
     </div>
   </div>

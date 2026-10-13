@@ -48,8 +48,10 @@ export function driveAccel(v, power, cdA, mu) {
 
 export class Track {
   constructor(scene, opts) {
-    this.wet = opts.wet;
-    this.mu = opts.wet ? 0.72 : 1.0;
+    this.wetness = opts.wetness ?? 0;
+    this.quality = opts.quality || 'high';
+    this.mu = 1 - 0.28 * this.wetness;
+    this.wet = false; // materials are built dry, then tinted by setWetness()
     this.buildCentreLine();
     this.buildRacingLine();
     this.buildSpeedProfile();
@@ -58,6 +60,25 @@ export class Track {
     scene.add(this.group);
     this.buildMeshes();
     this.buildScenery();
+    this.profileMu = this.mu;
+    this.setWetness(this.wetness, true);
+  }
+
+  // 0 = bone dry, 1 = standing water. Changes grip, AI speeds and the look of the surfaces.
+  setWetness(w, force = false) {
+    this.wetness = w;
+    this.wet = w > 0.4;
+    this.mu = 1 - 0.28 * w;
+    const L = (a, b) => a + (b - a) * w;
+    const r = this.roadMat;
+    r.roughness = L(0.85, 0.22); r.metalness = L(0, 0.18);
+    r.color.setRGB(L(1, 0.72), L(1, 0.75), L(1, 0.79));
+    this.kerbMat.roughness = L(0.7, 0.25);
+    this.roMat.roughness = L(0.9, 0.35);
+    this.pitMat.roughness = L(0.9, 0.3); this.pitMat.color.setRGB(L(0.33, 0.24), L(0.34, 0.25), L(0.36, 0.27));
+    this.grassMat.color.setRGB(L(1, 0.75), L(1, 0.82), L(1, 0.72));
+    this.grassMat.roughness = L(0.95, 0.7);
+    if (force || Math.abs(this.mu - this.profileMu) > 0.012) { this.profileMu = this.mu; this.buildSpeedProfile(); }
   }
 
   buildCentreLine() {
@@ -329,7 +350,7 @@ export class Track {
     // ground
     const grassTex = TX.grass(); grassTex.repeat.set(220, 220);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000),
-      new THREE.MeshStandardMaterial({ map: grassTex, roughness: wet ? 0.75 : 0.95, color: wet ? 0xb8c8b0 : 0xffffff }));
+      (this.grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 })));
     ground.rotation.x = -Math.PI / 2; ground.position.set(100, -0.02, 360);
     ground.receiveShadow = true;
     this.group.add(ground);
@@ -344,7 +365,7 @@ export class Track {
 
     // run-off verge (tarmac strip next to track)
     const ro = TX.runoff();
-    const roMat = new THREE.MeshStandardMaterial({ map: ro, roughness: wet ? 0.4 : 0.9, color: 0xbbbbbb });
+    const roMat = (this.roMat = new THREE.MeshStandardMaterial({ map: ro, roughness: 0.9, color: 0xbbbbbb }));
     this.ribbon(-W - 4.5, -W, 0.02, roMat, 1, 30, (i) => this.kerbL[i]);
     this.ribbon(W, W + 4.5, 0.02, roMat, 1, 30, (i) => this.kerbR[i]);
 
@@ -356,7 +377,7 @@ export class Track {
 
     // kerbs
     const kt = TX.kerb();
-    const kMat = new THREE.MeshStandardMaterial({ map: kt, roughness: wet ? 0.3 : 0.7 });
+    const kMat = (this.kerbMat = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.7 }));
     this.ribbon(-W - KERB_W, -W + 0.1, 0.045, kMat, 1, 8, (i) => this.kerbL[i]);
     this.ribbon(W - 0.1, W + KERB_W, 0.045, kMat, 1, 8, (i) => this.kerbR[i]);
 
@@ -450,7 +471,7 @@ export class Track {
       this.place(gs, s, -this.limL[this.idx(s)] - 4, 0, Math.PI / 2);
     }
     // pit lane + garages on the right
-    const pitMatT = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: wet ? 0.35 : 0.9 });
+    const pitMatT = (this.pitMat = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.9 }));
     this.ribbon(11.3, 28, 0.025, pitMatT, 1, 20, (i) => this.inPitStraight(i * this.ds));
     // pit wall
     const pitWallMat = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.7, side: THREE.DoubleSide });
@@ -535,7 +556,7 @@ export class Track {
     const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 6);
     const leafGeo = new THREE.IcosahedronGeometry(3.2, 1);
     const pineGeo = new THREE.ConeGeometry(2.6, 8, 7);
-    const count = 1400;
+    const count = this.quality === 'low' ? 500 : this.quality === 'medium' ? 900 : 1400;
     const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x4a3423 }), count);
     const leaves = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: wet ? 0x2f4a2a : 0x3c5f2e, roughness: 0.9, flatShading: true }), count);
     const pines = new THREE.InstancedMesh(pineGeo, new THREE.MeshStandardMaterial({ color: wet ? 0x22381f : 0x2c4a24, roughness: 0.9, flatShading: true }), count);

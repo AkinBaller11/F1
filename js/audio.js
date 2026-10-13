@@ -3,8 +3,8 @@ export class Audio {
   constructor() {
     this.ctx = null; this.muted = false;
   }
-  init(wet) {
-    if (this.ctx) return;
+  init() {
+    if (this.ctx) { this.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = (this.ctx = new AC());
@@ -47,7 +47,7 @@ export class Audio {
     this.wind = noise('bandpass', 800, 0.6);
     this.rain = noise('highpass', 3000, 0.3);
     this.rumble = noise('lowpass', 180, 1);
-    this.rainLevel = wet ? 0.12 : 0;
+    this.rainLevel = 0;
     this.crowd = noise('bandpass', 1200, 0.4);
   }
   resume() { this.ctx && this.ctx.state === 'suspended' && this.ctx.resume(); }

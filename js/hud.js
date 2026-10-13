@@ -22,6 +22,7 @@ export class HUD {
         <div class="sectors"><i id="h-s1"></i><i id="h-s2"></i><i id="h-s3"></i></div>
         <div class="posrow"><span class="pos"><b id="h-pos">-</b> / <span id="h-tot">20</span></span><span class="laptime" id="h-time">0.000</span></div>
         <div class="best">BESTE <span id="h-best">-:--.---</span></div>
+        <div class="wx" id="h-wx"></div>
       </div>
       <div class="dash">
         <div class="revs" id="h-revs">${'<i></i>'.repeat(15)}</div>
@@ -44,7 +45,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -105,10 +106,26 @@ export class HUD {
     e['h-tot'].textContent = race.total;
 
     this.lastRows -= dt;
-    if (this.lastRows <= 0) { this.lastRows = 0.25; this.renderRows(race); }
+    if (this.lastRows <= 0) { this.lastRows = 0.25; this.renderRows(race); this.renderWeather(race); }
 
     if (this.msgTimer > 0) { this.msgTimer -= dt; if (this.msgTimer <= 0) e['h-msg'].classList.remove('show'); }
     if (this.warnTimer > 0) { this.warnTimer -= dt; if (this.warnTimer <= 0) e['h-warn'].classList.remove('show'); }
+  }
+
+  renderWeather(race) {
+    const W = race.weather;
+    if (!W) return;
+    const icon = (r) => {
+      const cloud = '<path d="M7 17h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.4A3.3 3.3 0 0 0 7 17z" fill="currentColor"/>';
+      if (r < 0.05) return '<svg viewBox="0 0 24 24" class="sun"><circle cx="12" cy="12" r="5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></g></svg>';
+      const drops = r < 0.4 ? '<path d="M12 19l-1 3" />' : '<path d="M8 19l-1 3M12 19l-1 3M16 19l-1 3" />';
+      return `<svg viewBox="0 0 24 24" class="rain"><g transform="translate(0,-3)">${cloud}</g><g stroke="#5fb4ff" stroke-width="2" stroke-linecap="round">${drops}</g></svg>`;
+    };
+    const labels = ['JETZT', '+1\'', '+3\'', '+5\''];
+    const slots = W.forecast(race.time || 0).map((f, i) => `<div class="slot"><span>${labels[i]}</span>${icon(f.rain)}<b>${Math.round(f.rain * 100)}%</b></div>`).join('');
+    const w = W.wetness;
+    const state = w < 0.15 ? ['TROCKEN', 'dry'] : w < 0.5 ? ['FEUCHT', 'damp'] : ['NASS', 'wet'];
+    this.el['h-wx'].innerHTML = `<div class="slots">${slots}</div><div class="surf ${state[1]}">STRECKE <b>${state[0]}</b></div>`;
   }
 
   renderRows(race) {
