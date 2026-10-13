@@ -107,6 +107,22 @@ try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}
 if (!settings.lightIntro) { if (settings.profile === 'normal' && settings.steerAssist === false) settings.steerAssist = 'light'; settings.lightIntro = true; }
 if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
 document.body.classList.toggle('touch', IS_TOUCH);
+
+// behave like an app: no pinch/double-tap zoom, no long-press copy menu or blue text selection
+{
+  const editable = (t) => t && t.closest && t.closest('input, textarea, select, [contenteditable]');
+  const block = (e) => { if (!editable(e.target)) e.preventDefault(); };
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'selectstart', 'contextmenu', 'dragstart', 'dblclick']) document.addEventListener(ev, block, { passive: false });
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  let lastTap = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = e.timeStamp;
+    if (now - lastTap < 320 && e.changedTouches.length === 1 && !editable(e.target) && !e.target.closest('button, a, label')) e.preventDefault();
+    lastTap = now;
+  }, { passive: false });
+  document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) e.preventDefault(); });
+}
 const save = () => { try { localStorage.setItem('apexgp25', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
 function renderSettingsScreen() {

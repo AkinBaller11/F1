@@ -18,6 +18,14 @@
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; overflow: hidden; background: #000; color: var(--fg); font-family: var(--body); }
 button { font-family: inherit; color: inherit; cursor: pointer; }
+/* app feel: no text selection, copy callout, blue tap flash or zoom gestures; text fields stay editable */
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+*, *::before, *::after { -webkit-tap-highlight-color: transparent; }
+::selection { background: transparent; }
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+input::selection, textarea::selection { background: rgba(225, 6, 0, .45); }
+:focus:not(:focus-visible) { outline: none; }
+img, svg, canvas { -webkit-user-drag: none; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
 
 #game, #droplets { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
