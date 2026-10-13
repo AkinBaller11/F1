@@ -90,7 +90,8 @@
   <nav class="main-nav">
     <button data-action="start" class="primary"><span class="k">Schnelles Rennen</span><span class="d">Sofort losfahren mit deinen Einstellungen</span></button>
     <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Fahrer, Runden, Wetter, KI, Fahrhilfen</span></button>
-    <button data-action="controls"><span class="k">Steuerung</span><span class="d">Tastatur, Controller und Touch</span></button>
+    <button data-action="mp"><span class="k">Multiplayer</span><span class="d">Online gegen Freunde fahren</span></button>
+    <button data-action="controls"><span class="k">Steuerung</span><span class="d">Profile, Fahrhilfen, Tasten belegen</span></button>
   </nav>
   <aside class="selected">
     <div class="lbl">DEIN FAHRER</div>
@@ -118,6 +119,7 @@
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell (Q/E)"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="steerAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Lenkhilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="autoGas" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3 class="touch-only">TOUCH</h3>
@@ -132,31 +134,83 @@
 
 <!-- controls -->
 <section class="screen panel-screen" id="controls">
-  <div class="panel narrow">
-    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>STEUERUNG</h2><span></span></div>
-    <div class="ctrl-grid">
-      <div><h3>TASTATUR</h3>
-        <dl>
-          <dt>W / ↑</dt><dd>Gas</dd><dt>S / ↓</dt><dd>Bremse (im Stand: Rückwärts)</dd>
-          <dt>A D / ← →</dt><dd>Lenken</dd><dt>Leertaste</dt><dd>ERS Overtake</dd>
-          <dt>F</dt><dd>DRS öffnen (wenn verfügbar)</dd><dt>E / Q</dt><dd>Hoch- / Runterschalten (manuell)</dd>
-          <dt>C / V</dt><dd>Kamera vor / zurück</dd><dt>B (halten)</dt><dd>Nach hinten schauen</dd><dt>R</dt><dd>Auto zurücksetzen</dd>
-          <dt>M</dt><dd>Ton an/aus</dd><dt>Esc / P</dt><dd>Pause</dd>
-        </dl>
-      </div>
-      <div><h3>CONTROLLER</h3>
-        <dl>
+  <div class="panel">
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>STEUERUNG</h2><button class="back reset" id="ctrl-reset">STANDARD</button></div>
+    <h3>PROFIL</h3>
+    <div class="profiles" id="profiles">
+      <button class="prof" data-profile="easy"><b>Einfach</b><span>Auto-Gas, Lenk- und Bremshilfe, volle Ideallinie. Du lenkst nur noch grob und bremst.</span></button>
+      <button class="prof" data-profile="normal"><b>Normal</b><span>Bremshilfe und Ideallinie in Kurven. Gas und Lenken machst du selbst.</span></button>
+      <button class="prof" data-profile="pro"><b>Profi</b><span>Keine Hilfen, manuelles Schalten, keine Ideallinie. Wie im echten Auto.</span></button>
+    </div>
+    <div class="ctrl-cols">
+      <div class="col">
+        <h3>FAHRHILFEN</h3>
+        <div class="opt" data-key="autoGas" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="brakeAssist" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="steerAssist" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Lenkhilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="slider"><span>Lenkempfindlichkeit</span><input type="range" id="steer-sens" min="50" max="150" step="5"><b id="sens-val">100%</b></div>
+        <h3 class="touch-only">TOUCH</h3>
+        <div class="opt touch-only" data-key="touchSteer" data-vals='["wheel","joystick","buttons","tilt"]' data-labels='["Lenkrad","Joystick","Tasten","Neigen"]'><span>Lenkung</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt touch-only" data-key="wheelSize" data-vals='["s","m","l"]' data-labels='["Klein","Mittel","Groß"]'><span>Lenkrad-Größe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt touch-only" data-key="touchSide" data-vals='["right","left"]' data-labels='["Pedale rechts","Pedale links"]'><span>Pedale</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <h3>CONTROLLER</h3>
+        <dl class="pad">
           <dt>Linker Stick</dt><dd>Lenken</dd><dt>RT / LT</dt><dd>Gas / Bremse</dd>
           <dt>A</dt><dd>ERS Overtake</dd><dt>X</dt><dd>DRS</dd>
-          <dt>RB / LB</dt><dd>Schalten</dd><dt>Y</dt><dd>Kamera</dd><dt>B</dt><dd>Nach hinten schauen</dd><dt>Start</dt><dd>Pause</dd>
+          <dt>RB / LB</dt><dd>Schalten</dd><dt>Y</dt><dd>Kamera</dd><dt>B</dt><dd>Rückblick</dd><dt>Start</dt><dd>Pause</dd>
         </dl>
-        <h3>IPAD &amp; HANDY</h3>
-        <dl>
-          <dt>Lenkrad</dt><dd>Mit dem Daumen drehen oder seitlich ziehen, mit zwei Fingern wie ein echtes Lenkrad (alternativ Joystick, Tasten, Neigen)</dd><dt>DRS / OT</dt><dd>Grün = DRS, Gelb = Overtake (halten), CAM, ⟲ = Rückblick</dd><dt>GAS / BREMSE</dt><dd>Rechts unten</dd>
-          <dt>ERS / DRS</dt><dd>Über den Pedalen</dd><dt>CAM / ⟲</dt><dd>Kamera / Rückblick</dd><dt>❚❚</dt><dd>Pause</dd>
-        </dl>
+      </div>
+      <div class="col">
+        <h3>TASTATUR BELEGEN <small>Feld antippen, dann Taste drücken</small></h3>
+        <div class="keymap" id="keymap"></div>
         <h3>RENNREGELN</h3>
-        <p>Bei „Wechselhaft“ kann es jederzeit anfangen oder aufhören zu regnen. Die Vorhersage oben rechts zeigt dir, was kommt: Eine nasse Strecke hat deutlich weniger Grip und trocknet nach dem Regen langsam ab. DRS gibt es ab Runde 2 im Trockenen, wenn du an der Erkennungslinie weniger als 1 s hinter dem Vordermann bist. Verlässt du mit allen Rädern die Strecke, wird die Runde ungültig. Im Regen fährst du Intermediates mit weniger Grip, die Gischt der Vorderleute nimmt dir die Sicht.</p>
+        <p class="rules">Bei „Wechselhaft“ kann es jederzeit anfangen oder aufhören zu regnen; die Vorhersage oben rechts zeigt, was kommt. Eine nasse Strecke hat weniger Grip und trocknet danach langsam ab. DRS gibt es ab Runde 2 im Trockenen, wenn du an der Erkennungslinie weniger als 1 s hinter dem Vordermann bist. Verlässt du mit allen Rädern die Strecke, wird die Runde ungültig.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- multiplayer -->
+<section class="screen panel-screen" id="mp">
+  <div class="panel">
+    <div class="panel-head"><button data-action="mp-back" class="back">‹ ZURÜCK</button><h2>MULTIPLAYER</h2><span></span></div>
+    <div id="mp-offline" class="mp-note" hidden>
+      <b>Online-Rennen sind hier nicht verfügbar.</b>
+      <p>Mehrspieler läuft über die Claude-Version dieses Spiels: Teile den Link mit deinen Freunden, öffnet ihn gleichzeitig, und einer erstellt ein Rennen. Wer den Link nur öffentlich oder ohne Anmeldung öffnet, kann nicht mitfahren.</p>
+    </div>
+    <div id="mp-connecting" class="mp-note">Verbinde …</div>
+    <div id="mp-home" hidden>
+      <div class="mp-row">
+        <label class="field"><span>Dein Name</span><input id="mp-name" maxlength="14" autocomplete="off" spellcheck="false"></label>
+        <div class="field"><span>Auto</span><b id="mp-car">-</b></div>
+      </div>
+      <div class="mp-actions">
+        <button class="primary" id="mp-create">Rennen erstellen</button>
+        <label class="field code"><span>Code</span><input id="mp-code" maxlength="4" inputmode="numeric" placeholder="1234" autocomplete="off"></label>
+        <button id="mp-join">Beitreten</button>
+      </div>
+      <h3>OFFENE RENNEN</h3>
+      <div id="mp-list" class="mp-list"><p class="empty">Gerade ist kein Rennen offen. Erstelle eins und gib deinen Freunden den Code.</p></div>
+    </div>
+    <div id="mp-lobby" hidden>
+      <div class="lobby-head">
+        <div><span class="lbl">RENNEN</span><b class="code" id="lobby-code">0000</b><span class="hint">Code an Freunde geben</span></div>
+        <div class="lobby-set" id="lobby-set"></div>
+      </div>
+      <h3>FAHRER <span id="lobby-count"></span></h3>
+      <div id="lobby-players" class="lobby-players"></div>
+      <div class="host-only" id="host-opts">
+        <h3>EINSTELLUNGEN (DU BIST GASTGEBER)</h3>
+        <div class="opt" data-key="laps" data-vals='[3,5,8,12]' data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry"]' data-labels='["Wechselhaft","Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="mpAI" data-vals='[0,4,8,12]' data-labels='["Keine KI","+4 KI","+8 KI","+12 KI"]'><span>KI-Gegner</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+      </div>
+      <div class="mp-actions">
+        <button class="primary host-only" id="mp-start">Rennen starten</button>
+        <span class="guest-only waiting">Warte auf den Start durch den Gastgeber …</span>
+        <button id="mp-leave">Verlassen</button>
       </div>
     </div>
   </div>
@@ -181,7 +235,7 @@
       <thead><tr><th>POS</th><th>FAHRER</th><th>TEAM</th><th>START</th><th>ZEIT</th><th>PKT</th></tr></thead>
       <tbody id="results-body"></tbody>
     </table></div>
-    <div class="res-actions"><button data-action="restart" class="primary">Nochmal fahren</button><button data-action="menu">Hauptmenü</button></div>
+    <div class="res-actions"><button data-action="restart" class="primary" id="res-again">Nochmal fahren</button><button data-action="menu">Hauptmenü</button></div>
   </div>
 </section>
 

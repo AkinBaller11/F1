@@ -48,26 +48,43 @@ export class PlayerCar {
     if (a < HALF_W) this.surface = 'road';
     else if (kerb && a < HALF_W + KERB_W) { this.surface = 'kerb'; mu *= tr.wet ? 0.8 : 0.95; }
     else if (kerb && a < HALF_W + 4.5) { this.surface = 'runoff'; mu *= 0.85; }
-    else if (gravel) { this.surface = 'gravel'; mu *= 0.4; extraDrag = 7 + this.v * 0.08; }
-    else { this.surface = 'grass'; mu *= tr.wet ? 0.35 : 0.5; extraDrag = 1.5 + this.v * 0.02; }
+    else if (gravel) { this.surface = 'gravel'; mu *= 0.4; extraDrag = Math.min(7, Math.abs(this.v) * 0.5) + this.v * 0.08; }
+    else { this.surface = 'grass'; mu *= tr.wet ? 0.35 : 0.5; extraDrag = Math.min(1.5, Math.abs(this.v) * 0.3) + this.v * 0.02; }
     this.offTrack = a > HALF_W + KERB_W + 0.6;
 
     // --- inputs
     const thr = raceOn ? input.throttle : 0;
     let brk = input.brake;
     // steering smoothing (keyboard is digital -> ramp)
-    const st = input.steer;
-    const rate = input.analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 3.2);
-    const ret = input.analog ? 12 : 4.5;
+    let st = input.steer;
+    // steering assist: pulls the car toward the racing line, strongest when the player isn't steering
+    if (this.opts.steerAssist && this.v > 3) {
+      const ahead = this.s + Math.max(8, this.v * 0.45);
+      const f = tr.frame(ahead), lat = tr.racingLat(ahead);
+      const want = Math.atan2(-(f.x + f.rx * lat - this.x), -(f.z + f.rz * lat - this.z));
+      let err = want - this.yaw; err = Math.atan2(Math.sin(err), Math.cos(err));
+      const auto = Math.max(-1, Math.min(1, -err * 12));
+      st = st === 0 ? auto : Math.max(-1, Math.min(1, st + (auto - st) * 0.35));
+      this.assistErr = Math.abs(err);
+      this.assistAnalog = true;
+    }
+    const analog = input.analog || this.assistAnalog;
+    this.assistAnalog = false;
+    const rate = analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 3.2);
+    const ret = analog ? 12 : 4.5;
     if (st === 0) this.steer -= Math.sign(this.steer) * Math.min(Math.abs(this.steer), ret * dt);
     else this.steer += Math.max(-rate * dt, Math.min(rate * dt, st - this.steer));
 
     // braking assist
     if (this.opts.brakeAssist && raceOn) {
-      const ahead = tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.35) * 1.03;
-      if (this.v > ahead + 1) brk = Math.max(brk, Math.min(1, (this.v - ahead) / 8));
+      const safe = this.opts.steerAssist ? 0.92 : 1; // easy mode keeps a margin to the limit
+      const ahead = safe * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
+      if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(1, (this.v - ahead) / 4));
     }
-    this.throttle = thr; this.brake = brk;
+    let thrEff = thr;
+    if (this.opts.steerAssist && this.assistErr > 0.06) thrEff = thr * Math.max(0.2, 1 - (this.assistErr - 0.06) * 6);
+    this.assistErr = 0;
+    this.throttle = thrEff; this.brake = brk;
 
     // --- ERS / DRS
     let power = CAR.power;
@@ -104,7 +121,7 @@ export class PlayerCar {
     // low rpm in a tall gear (manual) -> weaker pull
     if (this.gear >= 1) eng *= Math.max(0.35, Math.min(1, (this.rpm - 3000) / 6000));
     if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
-    let acc = thr * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
+    let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
     const bd = brakeDecel(v, mu);
     if (this.v > 0.3) acc -= brk * bd;
@@ -120,7 +137,7 @@ export class PlayerCar {
     const wantYaw = (this.v / CAR.wheelBase) * Math.tan(this.steer * maxSteer);
     // friction circle: braking / traction eat into lateral grip
     const latMax = lateralGrip(v, mu);
-    const longUse = Math.min(0.85, (brk * bd + thr * eng * 0.4) / (latMax + 1e-3));
+    const longUse = Math.min(0.85, (brk * bd + this.throttle * eng * 0.4) / (latMax + 1e-3));
     const latAvail = latMax * Math.sqrt(1 - longUse * longUse);
     const maxYaw = latAvail / Math.max(Math.abs(this.v), 2);
     let yawRate = wantYaw;

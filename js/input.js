@@ -1,18 +1,41 @@
 // Keyboard, gamepad and touch input (virtual joystick, buttons or tilt steering)
 export const IS_TOUCH = (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
 
+// Rebindable keyboard actions (KeyboardEvent.code values)
+export const ACTIONS = [
+  ['throttle', 'Gas'], ['brake', 'Bremse'], ['left', 'Links lenken'], ['right', 'Rechts lenken'],
+  ['ers', 'ERS Overtake'], ['drs', 'DRS'], ['up', 'Hochschalten'], ['down', 'Runterschalten'],
+  ['cam', 'Kamera weiter'], ['camPrev', 'Kamera zurück'], ['look', 'Nach hinten schauen'],
+  ['reset', 'Auto zurücksetzen'], ['pause', 'Pause'], ['mute', 'Ton an/aus'],
+];
+export const DEFAULT_BINDS = {
+  throttle: ['KeyW', 'ArrowUp'], brake: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+  ers: ['Space'], drs: ['KeyF'], up: ['KeyE'], down: ['KeyQ'], cam: ['KeyC'], camPrev: ['KeyV'], look: ['KeyB'],
+  reset: ['KeyR'], pause: ['Escape', 'KeyP'], mute: ['KeyM'],
+};
+export function keyLabel(code) {
+  if (!code) return '—';
+  const map = { Space: 'Leertaste', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc', ShiftLeft: 'Shift L', ShiftRight: 'Shift R', ControlLeft: 'Strg L', ControlRight: 'Strg R', AltLeft: 'Alt', Enter: 'Enter', Tab: 'Tab', Backspace: '⌫' };
+  if (map[code]) return map[code];
+  return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
+}
+
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.pressed = new Set(); // edge-triggered this frame
+    this.pressed = new Set(); // actions triggered this frame
+    this.binds = JSON.parse(JSON.stringify(DEFAULT_BINDS));
+    this.capture = null; // rebinding callback
+    this.sens = 1;
     this.state = { throttle: 0, brake: 0, steer: 0, analog: false, overtake: false, drs: false, shiftUp: false, shiftDown: false };
     this.touch = { left: false, right: false, gas: false, brake: false, ers: false, drs: false, look: false, steer: 0, steerActive: false };
     this.mode = { touchSteer: 'wheel', autoGas: false };
     this.tilt = 0; this.tiltOn = false;
     this.padPrev = [];
     addEventListener('keydown', (e) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      if (this.capture) { e.preventDefault(); const cb = this.capture; this.capture = null; cb(e.code); return; }
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && !(e.target && e.target.tagName === 'INPUT')) e.preventDefault();
+      if (!this.keys.has(e.code)) for (const [a, codes] of Object.entries(this.binds)) if (codes.includes(e.code)) this.pressed.add(a);
       this.keys.add(e.code);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -22,6 +45,9 @@ export class Input {
   }
 
   setMode(m) { Object.assign(this.mode, m); }
+  setBinds(b) { this.binds = { ...JSON.parse(JSON.stringify(DEFAULT_BINDS)), ...(b || {}) }; }
+  held(a) { const c = this.binds[a]; return !!c && c.some((k) => this.keys.has(k)); }
+  act(a) { return this.pressed.has(a); }
 
   bindTouch() {
     const hold = { 'tc-left': 'left', 'tc-right': 'right', 'tc-gas': 'gas', 'tc-brake': 'brake', 'tc-ers': 'ers', 'tc-look': 'look' };
@@ -36,7 +62,7 @@ export class Input {
       el.addEventListener('lostpointercapture', off);
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     }
-    const tap = { 'tc-drs': 'KeyF', 'tc-cam': 'KeyC', 'tc-pause': 'Escape' };
+    const tap = { 'tc-drs': 'drs', 'tc-cam': 'cam', 'tc-pause': 'pause' };
     for (const [id, code] of Object.entries(tap)) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.pressed.add(code); });
@@ -107,8 +133,8 @@ export class Input {
       if (btn) {
         const b = btn.dataset.btn;
         btn.classList.add('on');
-        if (b === 'drs') this.pressed.add('KeyF');
-        if (b === 'cam') this.pressed.add('KeyC');
+        if (b === 'drs') this.pressed.add('drs');
+        if (b === 'cam') this.pressed.add('cam');
         if (b === 'ot') this.touch.ers = true;
         if (b === 'look') this.touch.look = true;
         const up = (ev) => {
@@ -161,21 +187,20 @@ export class Input {
     return true;
   }
 
-  was(code) { return this.pressed.has(code); }
-
   poll() {
-    const k = this.keys, s = this.state, T = this.touch;
-    let thr = k.has('KeyW') || k.has('ArrowUp') || T.gas ? 1 : 0;
-    let brk = k.has('KeyS') || k.has('ArrowDown') || T.brake ? 1 : 0;
+    const s = this.state, T = this.touch, H = (a) => this.held(a);
+    let thr = H('throttle') || T.gas ? 1 : 0;
+    let brk = H('brake') || T.brake ? 1 : 0;
     let steer = 0, analog = false;
-    if (k.has('KeyA') || k.has('ArrowLeft') || T.left) steer -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight') || T.right) steer += 1;
+    if (H('left') || T.left) steer -= 1;
+    if (H('right') || T.right) steer += 1;
     if (T.steerActive) { steer = T.steer; analog = true; }
     if (this.mode.touchSteer === 'tilt' && this.tiltOn && steer === 0) { steer = this.tilt; analog = true; }
-    s.overtake = k.has('Space') || T.ers;
-    s.drs = this.was('KeyF');
-    s.shiftUp = this.was('KeyE');
-    s.shiftDown = this.was('KeyQ');
+    s.overtake = H('ers') || T.ers;
+    s.drs = this.act('drs');
+    s.shiftUp = this.act('up');
+    s.shiftDown = this.act('down');
+    s.look = H('look') || T.look;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
@@ -190,14 +215,15 @@ export class Input {
       if (edge(2)) s.drs = true;
       if (edge(5)) s.shiftUp = true;
       if (edge(4)) s.shiftDown = true;
-      if (edge(3)) this.pressed.add('KeyC');
-      if (edge(9)) this.pressed.add('Escape');
+      if (edge(3)) this.pressed.add('cam');
+      if (edge(9)) this.pressed.add('pause');
       if (b(1)) T.look = true; else if (this.padLook) T.look = false;
       this.padLook = b(1);
       this.padPrev = p.buttons.map((x) => x.pressed);
       break;
     }
     if (this.mode.autoGas && brk < 0.05) thr = 1;
+    steer = Math.max(-1, Math.min(1, steer * this.sens));
     s.throttle = thr; s.brake = brk; s.steer = steer; s.analog = analog;
     return s;
   }

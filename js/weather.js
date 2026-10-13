@@ -6,8 +6,9 @@ import * as TX from './textures.js';
 const smooth = (t) => t * t * (3 - 2 * t);
 
 export class Weather {
-  constructor(scene, mode, raceSecs, quality = 'high') {
+  constructor(scene, mode, raceSecs, quality = 'high', rand = Math.random) {
     this.scene = scene;
+    this.rand = rand;
     this.mode = mode;
     this.buildSchedule(mode, raceSecs);
     this.rain = this.rainAt(0);
@@ -55,16 +56,16 @@ export class Weather {
     const k = [];
     if (mode === 'dry') k.push({ t: 0, rain: 0 });
     else if (mode === 'wet') {
-      for (let t = 0; t < raceSecs + 600; t += 70) k.push({ t, rain: 0.6 + Math.random() * 0.4 });
+      for (let t = 0; t < raceSecs + 600; t += 70) k.push({ t, rain: 0.6 + this.rand() * 0.4 });
     } else {
-      let t = 0, rain = Math.random() < 0.5 ? 0 : 0.45 + Math.random() * 0.4;
+      let t = 0, rain = this.rand() < 0.5 ? 0 : 0.45 + this.rand() * 0.4;
       k.push({ t, rain });
       // first change guaranteed early enough to be felt in the race
-      t = Math.max(35, raceSecs * (0.15 + Math.random() * 0.2));
+      t = Math.max(35, raceSecs * (0.15 + this.rand() * 0.2));
       while (t < raceSecs + 600) {
-        rain = rain > 0.2 ? (Math.random() < 0.65 ? 0 : 0.2 + Math.random() * 0.2) : 0.4 + Math.random() * 0.6;
+        rain = rain > 0.2 ? (this.rand() < 0.65 ? 0 : 0.2 + this.rand() * 0.2) : 0.4 + this.rand() * 0.6;
         k.push({ t, rain });
-        t += 70 + Math.random() * 110;
+        t += 70 + this.rand() * 110;
       }
     }
     this.keys = k;

@@ -5,7 +5,8 @@ import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
 import { Audio } from './audio.js';
 import { Weather } from './weather.js';
-import { Input, IS_TOUCH } from './input.js';
+import { Input, IS_TOUCH, ACTIONS, DEFAULT_BINDS, keyLabel } from './input.js';
+import { Net, rng, clean } from './net.js';
 import * as TX from './textures.js';
 
 const $ = (s) => document.querySelector(s);
@@ -15,9 +16,20 @@ const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const DRIVERS = [];
 TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d, number: t.numbers[i] })));
 
-const defaults = { driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, gearbox: 'auto', brakeAssist: false, autoGas: false, line: 'corners', camera: 'cockpit', quality: 'high', touchSteer: 'wheel' };
+const defaults = {
+  driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
+  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, line: 'corners', steerSens: 100, binds: {},
+  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
+};
+// assist profiles: one tap sets everything
+const PROFILES = {
+  easy: { autoGas: true, brakeAssist: true, steerAssist: true, line: 'full', gearbox: 'auto' },
+  normal: { autoGas: false, brakeAssist: true, steerAssist: false, line: 'corners', gearbox: 'auto' },
+  pro: { autoGas: false, brakeAssist: false, steerAssist: false, line: 'off', gearbox: 'manual' },
+};
+const PROFILE_KEYS = Object.keys(PROFILES.easy);
 // friendlier defaults on phones / tablets
-if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', brakeAssist: true, line: 'full', difficulty: 60 });
+if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', difficulty: 60, profile: 'easy', ...PROFILES.easy });
 let settings = { ...defaults };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}')); } catch (e) { /* storage unavailable */ }
 // the on-screen wheel replaced the joystick as default touch steering
@@ -36,21 +48,76 @@ function buildMenu() {
     grid.querySelectorAll('.drv').forEach((x) => x.classList.toggle('sel', x === b));
     updateLivery();
   }));
-  // option selectors
+  // option selectors (the same key can appear on several screens)
   document.querySelectorAll('.opt').forEach((o) => {
     const key = o.dataset.key;
-    const vals = JSON.parse(o.dataset.vals), labels = JSON.parse(o.dataset.labels);
-    const label = o.querySelector('.val');
-    const render = () => { const i = vals.indexOf(settings[key]); label.textContent = labels[i < 0 ? 0 : i]; };
-    const step = (d) => { let i = vals.indexOf(settings[key]); i = (i + d + vals.length) % vals.length; settings[key] = vals[i]; save(); render(); };
+    const vals = JSON.parse(o.dataset.vals);
+    const step = (d) => {
+      let i = vals.indexOf(settings[key]); i = (i + d + vals.length) % vals.length; settings[key] = vals[i];
+      if (PROFILE_KEYS.includes(key)) settings.profile = 'custom';
+      save(); renderOpts(); onSettingChanged(key);
+    };
     o.querySelector('.l').addEventListener('click', () => step(-1));
     o.querySelector('.r').addEventListener('click', () => step(1));
-    render();
   });
+  renderOpts();
+  // profiles
+  document.querySelectorAll('.prof').forEach((b) => b.addEventListener('click', () => {
+    settings.profile = b.dataset.profile; Object.assign(settings, PROFILES[b.dataset.profile]); save(); renderOpts();
+  }));
+  const sens = $('#steer-sens');
+  sens.value = settings.steerSens; $('#sens-val').textContent = settings.steerSens + '%';
+  sens.addEventListener('input', () => { settings.steerSens = +sens.value; $('#sens-val').textContent = sens.value + '%'; save(); });
+  $('#ctrl-reset').addEventListener('click', () => {
+    Object.assign(settings, { profile: defaults.profile, steerSens: 100, binds: {}, wheelSize: 'm', touchSide: 'right', touchSteer: 'wheel' }, PROFILES[defaults.profile]);
+    sens.value = 100; $('#sens-val').textContent = '100%';
+    save(); renderOpts(); renderKeymap();
+  });
+  renderKeymap();
   const diff = $('#difficulty');
   diff.value = settings.difficulty; $('#diff-val').textContent = settings.difficulty;
   diff.addEventListener('input', () => { settings.difficulty = +diff.value; $('#diff-val').textContent = diff.value; save(); });
   updateLivery();
+}
+
+function renderOpts() {
+  document.querySelectorAll('.opt').forEach((o) => {
+    const vals = JSON.parse(o.dataset.vals), labels = JSON.parse(o.dataset.labels);
+    const i = vals.indexOf(settings[o.dataset.key]);
+    o.querySelector('.val').textContent = labels[i < 0 ? 0 : i];
+  });
+  document.querySelectorAll('.prof').forEach((b) => b.classList.toggle('sel', b.dataset.profile === settings.profile));
+  applyTouchLayout();
+}
+
+function applyTouchLayout() {
+  const B = document.body.classList;
+  B.toggle('wheel-s', settings.wheelSize === 's'); B.toggle('wheel-l', settings.wheelSize === 'l');
+  B.toggle('touch-swap', settings.touchSide === 'left');
+}
+
+function onSettingChanged(key) {
+  if (['laps', 'weather', 'mpAI'].includes(key) && net.isHost) mpSendCfg();
+}
+
+// keyboard rebinding: two slots per action, a key belongs to one action only
+function renderKeymap() {
+  const box = $('#keymap');
+  const binds = { ...DEFAULT_BINDS, ...settings.binds };
+  box.innerHTML = ACTIONS.map(([a, label]) => `<div class="krow"><span>${label}</span>${[0, 1].map((i) => `<button class="kbtn" data-a="${a}" data-i="${i}">${keyLabel(binds[a][i])}</button>`).join('')}</div>`).join('');
+  box.querySelectorAll('.kbtn').forEach((b) => b.addEventListener('click', () => {
+    box.querySelectorAll('.kbtn.wait').forEach((x) => x.classList.remove('wait'));
+    b.classList.add('wait'); b.textContent = 'Taste …';
+    input.capture = (code) => {
+      const cur = { ...DEFAULT_BINDS, ...settings.binds };
+      const next = {};
+      for (const [k, v] of Object.entries(cur)) next[k] = v.filter((c) => c !== code);
+      const slot = next[b.dataset.a].slice();
+      slot[+b.dataset.i] = code;
+      next[b.dataset.a] = slot.filter(Boolean).slice(0, 2);
+      settings.binds = next; save(); input.setBinds(settings.binds); renderKeymap();
+    };
+  }));
 }
 
 function updateLivery() {
@@ -97,13 +164,44 @@ const CAMS = {
   far: { label: 'VERFOLGER WEIT', pos: [0, 3.3, 10.5], pitch: -0.15, fov: 60, shake: 0.2, chase: true },
 };
 
+// ------------------------------------------------------------------ other players' cars
+class RemoteCar {
+  constructor(track) {
+    this.track = track; this.remote = true;
+    this.x = 0; this.z = 0; this.yaw = 0; this.v = 0; this.dist = 0; this.lat = 0; this.wheelRot = 0; this.steerVis = 0;
+    this.t = null;
+  }
+  get s() { return this.track.wrapS(this.dist + this.track.startS); }
+  set(x, z, yaw, dist, lat) { this.x = x; this.z = z; this.yaw = yaw; this.dist = dist; this.lat = lat; }
+  target(c, now) { this.t = { x: c[0], z: c[1], yaw: c[2], v: c[3], dist: c[4], lat: c[5], steer: c[6], at: now }; }
+  update(dt) {
+    const t = this.t;
+    if (!t) return;
+    // dead-reckon from the last packet (max 0.25 s), then ease toward it
+    const age = Math.min(0.25, (performance.now() - t.at) / 1000);
+    const tx = t.x - Math.sin(t.yaw) * t.v * age, tz = t.z - Math.cos(t.yaw) * t.v * age;
+    const k = Math.min(1, dt * 12);
+    if (Math.hypot(tx - this.x, tz - this.z) > 15) { this.x = tx; this.z = tz; } else { this.x += (tx - this.x) * k; this.z += (tz - this.z) * k; }
+    let dy = t.yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    this.yaw += dy * k;
+    this.v = t.v;
+    const td = t.dist + t.v * age;
+    this.dist += Math.abs(td - this.dist) > 30 ? td - this.dist : (td - this.dist) * k;
+    this.lat += (t.lat - this.lat) * k;
+    this.steerVis = t.steer * 0.3;
+    this.wheelRot += (this.v * dt) / 0.36;
+  }
+}
+
 // ------------------------------------------------------------------ game
 class Game {
   constructor(opts) {
     this.opts = opts;
+    const mp = (this.mp = opts.mp || null);
+    const rand = mp ? rng(mp.start.seed) : Math.random;
     const scene = (this.scene = new THREE.Scene());
     // weather first: it decides how wet the track starts
-    this.weather = new Weather(scene, opts.weather, opts.laps * 95, opts.quality);
+    this.weather = new Weather(scene, opts.weather, opts.laps * 95, opts.quality, rand);
     const wet = this.weather.wetness > 0.4; // tyre choice at the start
     this.startWet = wet;
     scene.fog = new THREE.FogExp2(0xc9dcec, 0.0006);
@@ -141,7 +239,7 @@ class Game {
 
     // player
     const pd = DRIVERS.find((d) => d.name === opts.driver) || DRIVERS[0];
-    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist });
+    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist, steerAssist: opts.steerAssist });
     this.player.onShift = (down) => !down && audio.shift();
     this.playerRoot = new THREE.Group(); scene.add(this.playerRoot);
     this.playerBody = new THREE.Group(); this.playerRoot.add(this.playerBody);
@@ -155,46 +253,68 @@ class Game {
     this.playerBody.add(this.rearCam);
     this.playerBody.add(this.camera);
 
-    // grid order: player at chosen slot, others ordered by pace with some randomness
-    const others = DRIVERS.filter((d) => d !== pd);
-    others.sort((a, b) => (b.team.pace + Math.random() * 0.02) - (a.team.pace + Math.random() * 0.02));
-    const gridSlot = opts.grid === 'random' ? (Math.random() * 20) | 0 : Math.min(19, opts.grid - 1);
-    const lineup = others.slice(); lineup.splice(gridSlot, 0, pd);
+    // grid: single player = chosen slot among the AI field; multiplayer = the host's grid
+    const byName = (n) => DRIVERS.find((d) => d.name === n);
+    let lineup;
+    if (mp) {
+      const myPeer = mp.net.myPeer;
+      lineup = mp.start.slots.map((s) => s.h
+        ? (s.h === myPeer ? { kind: 'player', d: pd, name: clean(s.n).toUpperCase() } : { kind: 'remote', d: byName(s.d) || DRIVERS[0], name: clean(s.n).toUpperCase(), peer: s.h })
+        : { kind: mp.net.isHost ? 'ai' : 'netai', d: byName(s.a) || DRIVERS[0] });
+      if (!lineup.some((l) => l.kind === 'player')) lineup.push({ kind: 'player', d: pd, name: pd.name });
+    } else {
+      const others = DRIVERS.filter((d) => d !== pd);
+      others.sort((a, b) => (b.team.pace + Math.random() * 0.02) - (a.team.pace + Math.random() * 0.02));
+      const gridSlot = opts.grid === 'random' ? (Math.random() * 20) | 0 : Math.min(19, opts.grid - 1);
+      lineup = others.map((d) => ({ kind: 'ai', d }));
+      lineup.splice(gridSlot, 0, { kind: 'player', d: pd });
+    }
     const diffF = 0.86 + (opts.difficulty / 110) * 0.14;
     this.cars = [];
     const L = this.track.length;
     this.cpN = Math.ceil((opts.laps * L + 1200) / 50);
-    lineup.forEach((d, g) => {
+    let aiSlot = 0;
+    lineup.forEach((it, g) => {
+      const d = it.d;
       const gs = this.track.startS - 8 - g * 8;
       const lat = g % 2 === 0 ? -2.6 : 2.6;
       const dist0 = gs - this.track.startS;
       let entry;
-      if (d === pd) {
+      const name = it.name || d.name;
+      if (it.kind === 'player') {
         this.player.placeAt(gs, lat);
         this.player.dist = dist0;
-        entry = { isPlayer: true, team: d.team, name: d.name, number: d.number, obj: this.player, mesh: this.playerRoot };
+        entry = { isPlayer: true, team: d.team, name, number: d.number, obj: this.player, mesh: this.playerRoot };
+      } else if (it.kind === 'remote') {
+        const rc = new RemoteCar(this.track);
+        rc.set(...this.track.posAt(gs, lat), dist0, lat);
+        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1 });
+        scene.add(mesh);
+        entry = { isPlayer: false, remote: true, peer: it.peer, team: d.team, name, number: d.number, obj: rc, mesh };
       } else {
-        const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (0.993 + Math.random() * 0.007);
+        const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (0.993 + rand() * 0.007);
         const ai = new AICar(this.track, d.team, d.name, d.number, skill);
         ai.dist = dist0; ai.lat = lat; ai.latOff = lat - this.track.racingLat(gs);
+        ai.net = it.kind === 'netai'; ai.slot = aiSlot++;
         ai.computePose();
         const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1 });
         scene.add(mesh);
-        entry = { isPlayer: false, team: d.team, name: d.name, number: d.number, obj: ai, mesh };
+        entry = { isPlayer: false, team: d.team, name, number: d.number, obj: ai, mesh };
       }
       entry.cp = new Float32Array(this.cpN).fill(-1); entry.lastCp = -1;
       entry.finished = false; entry.finishTime = 0; entry.grid = g + 1;
       this.cars.push(entry);
     });
     this.playerEntry = this.cars.find((c) => c.isPlayer);
-    this.aiList = this.cars.filter((c) => !c.isPlayer).map((c) => c.obj);
+    this.aiList = this.cars.filter((c) => !c.isPlayer && !c.remote).map((c) => c.obj);
+    this.others = this.cars.filter((c) => !c.isPlayer).map((c) => c.obj);
 
     this.buildRacingLineMesh();
 
     // race state
     this.laps = opts.laps;
     this.state = 'grid'; this.stateT = 0; this.time = 0; this.raceTime = 0;
-    this.lightsHold = 0.6 + Math.random() * 2.2;
+    this.lightsHold = 0.6 + rand() * 2.2;
     this.lap = { start: 0, best: Infinity, sectorStart: 0, sector: 0, sectorBest: [Infinity, Infinity, Infinity], states: ['', '', ''], invalid: false, lapNo: 0 };
     this.trackWarnings = 0; this.offWasOn = false;
     this.hud = new HUD($('#hud'), opts.laps);
@@ -325,6 +445,7 @@ class Game {
   computeOrder() {
     const cars = this.cars.slice();
     cars.sort((a, b) => {
+      if (a.gone !== b.gone) return a.gone ? 1 : -1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
       if (a.finished) return -1; if (b.finished) return 1;
       return b.obj.dist - a.obj.dist;
@@ -334,13 +455,13 @@ class Game {
 
   update(dt) {
     const inp = input.poll();
-    if (input.was('Escape') || input.was('KeyP')) { this.togglePause(); }
-    if (this.paused) { input.endFrame(); return; }
-    if (input.was('KeyC')) this.cycleCamera();
-    if (input.was('KeyV')) this.cycleCamera(-1);
-    this.lookBack = input.keys.has('KeyB') || input.touch.look;
-    if (input.was('KeyM')) { const m = audio.toggleMute(); this.hud.camHint(m ? 'TON AUS' : 'TON AN'); }
-    if (input.was('KeyR') && this.state === 'race') this.resetCar();
+    if (input.act('pause')) { this.togglePause(); }
+    if (this.paused && !this.mp) { input.endFrame(); return; }
+    if (input.act('cam')) this.cycleCamera();
+    if (input.act('camPrev')) this.cycleCamera(-1);
+    this.lookBack = inp.look;
+    if (input.act('mute')) { const m = audio.toggleMute(); this.hud.camHint(m ? 'TON AUS' : 'TON AN'); }
+    if (input.act('reset') && this.state === 'race') this.resetCar();
 
     this.time += dt;
     // ---- start procedure
@@ -361,6 +482,7 @@ class Game {
       }
     }
     const racing = this.state === 'race' || this.state === 'finished';
+    const mpSync = !!this.mp;
     if (racing) this.raceTime += dt;
     const wEvent = this.weather.step(dt, this.raceTime);
     // grip + AI speed profile follow the track wetness (cheap, so twice a second)
@@ -380,7 +502,8 @@ class Game {
       if (this.playerEntry.finished) { p.throttle = 0; }
     }
     // shift edges consumed
-    if (racing) for (const ai of this.aiList) ai.update(dt, this.raceTime, this.allObjs(), this.track.mu);
+    if (racing) for (const ai of this.aiList) if (!ai.net) ai.update(dt, this.raceTime, this.allObjs(), this.track.mu);
+    if (mpSync) this.netSync(dt, racing);
     this.resolveCollisions();
     if (p.impact > 0.25 && !this.lastImpact) { audio.crash(p.impact); this.hud.warn('KOLLISION', 1.2); }
     this.lastImpact = p.impact > 0.25;
@@ -403,12 +526,17 @@ class Game {
     for (const c of this.cars) {
       this.recordCheckpoints(c, t);
       const L = this.track.length;
+      if (c.remote) continue;
       if (!c.finished && racing && c.obj.dist >= this.laps * L) {
         c.finished = true; c.finishTime = t;
         if (c.isPlayer) this.onPlayerFinish();
       }
     }
     if (racing) this.updateLapTiming();
+
+    // ---- stuck (off track, barely moving) -> put the car back on the racing line
+    if (this.state === 'race' && Math.abs(p.v) < 3 && (p.offTrack || p.impact > 0.1)) { this.stuckT = (this.stuckT || 0) + dt; if (this.stuckT > 3.5) { this.stuckT = 0; this.resetCar(); } }
+    else this.stuckT = 0;
 
     // ---- track limits
     if (p.offTrack && !this.offWasOn && this.state === 'race') {
@@ -426,6 +554,53 @@ class Game {
       if (this.stateT > 5 && !this.resultsShown) this.showResults();
     }
     input.endFrame();
+  }
+
+  // multiplayer: publish our car (and the host's AI), read everyone else's
+  netSync(dt, racing) {
+    const net = this.mp.net, p = this.player, r2 = (v, k) => Math.round(v * k) / k;
+    const msg = { car: [r2(p.x, 100), r2(p.z, 100), r2(p.yaw, 1000), r2(p.v, 10), r2(p.dist, 10), r2(p.lat, 100), r2(p.steer, 100)], fin: this.playerEntry.finished ? r2(this.playerEntry.finishTime, 1000) : null };
+    if (net.isHost) msg.ai = this.aiList.map((a) => [r2(a.dist, 10), r2(a.lat, 100), r2(a.v, 10)]);
+    this.netT = (this.netT || 0) - dt;
+    if (this.netT <= 0) { this.netT = 1 / 30; net.sendCar(msg); }
+    const now = performance.now();
+    for (const c of this.cars) {
+      if (!c.remote) continue;
+      const st = net.peerState(c.peer);
+      if (!st) {
+        // missing for a few seconds = left the race (comes back if the connection recovers)
+        c.missing = (c.missing || 0) + dt;
+        if (!c.gone && c.missing > 4 && this.raceTime > 3) { c.gone = true; this.hud.warn(`${c.name} HAT DAS RENNEN VERLASSEN`, 2.5); }
+        c.obj.update(dt); continue;
+      }
+      c.missing = 0; if (c.gone) c.gone = false;
+      const car = st.presence.car;
+      if (Array.isArray(car) && car.length >= 7 && st.updatedAt !== c.lastUpd) { c.lastUpd = st.updatedAt; c.obj.target(car, now); }
+      if (typeof st.presence.fin === 'number' && !c.finished) { c.finished = true; c.finishTime = st.presence.fin; }
+      c.obj.update(dt);
+    }
+    // AI simulated by the host
+    if (!net.isHost) {
+      const h = net.hostPeer();
+      const ai = h && Array.isArray(h.presence.ai) ? h.presence.ai : null;
+      if (ai && h.updatedAt !== this.hostUpd) { this.hostUpd = h.updatedAt; this.hostSeen = now; }
+      const hostLost = !this.hostSeen ? this.raceTime > 6 : now - this.hostSeen > 3000;
+      for (const a of this.aiList) {
+        if (!a.net) continue;
+        if (hostLost && racing) { a.net = false; continue; } // host gone: drive them ourselves
+        const s = ai && ai[a.slot];
+        if (racing) a.dist += a.v * dt;
+        if (Array.isArray(s)) {
+          const err = s[0] - a.dist;
+          a.dist += Math.abs(err) > 25 ? err : err * Math.min(1, dt * 4);
+          a.lat += (s[1] - a.lat) * Math.min(1, dt * 6);
+          a.v = s[2];
+          a.latOff = a.lat - this.track.racingLat(a.s);
+        }
+        a.wheelRot += (a.v * dt) / 0.36;
+        a.computePose();
+      }
+    }
   }
 
   allObjs() { if (!this._objs) this._objs = this.cars.map((c) => c.obj); return this._objs; }
@@ -501,6 +676,7 @@ class Game {
   }
 
   shiftCar(o, ds, dl) {
+    if (o.remote || o.net) return; // other players' cars are moved by their own devices
     if (o === this.player) {
       const f = this.track.frame(o.s);
       o.x += f.tx * ds + f.rx * dl; o.z += f.tz * ds + f.rz * dl;
@@ -557,7 +733,7 @@ class Game {
     for (const c of this.cars) {
       if (c.isPlayer) continue;
       const o = c.obj, m = c.mesh;
-      const far = Math.hypot(o.x - p.x, o.z - p.z) > 650;
+      const far = c.gone || Math.hypot(o.x - p.x, o.z - p.z) > 650;
       m.visible = !far;
       if (far) continue;
       m.position.set(o.x, 0, o.z);
@@ -572,7 +748,7 @@ class Game {
     this.sky.position.set(p.x, 0, p.z);
 
     this.updateRacingLine();
-    this.weather.update(dt, this.camWorld(), p.v, this.aiList.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), this.camMode === 'cockpit');
+    this.weather.update(dt, this.camWorld(), p.v, this.others.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), this.camMode === 'cockpit');
     if (this.camMode !== 'cockpit') this.weather.emitSpray(p, dt);
 
     // steering wheel display
@@ -596,7 +772,7 @@ class Game {
       bestLap: this.lap.best, playerPos: this.playerPos || this.playerEntry.grid, total: this.cars.length,
       order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather,
     });
-    audio.update(p, this.aiList, this.camMode === 'cockpit');
+    audio.update(p, this.others, this.camMode === 'cockpit');
   }
 
   // on-screen touch wheel: rotation follows the car's steering, display mirrors the dash
@@ -655,7 +831,7 @@ class Game {
     if (this.resultsShown) return;
     this.paused = force ?? !this.paused;
     $('#pause').classList.toggle('active', this.paused);
-    if (this.paused) audio.ctx && audio.ctx.suspend(); else audio.resume();
+    if (this.paused && !this.mp) audio.ctx && audio.ctx.suspend(); else audio.resume();
   }
 
   showResults() {
@@ -706,13 +882,15 @@ function frame(now) {
   last = now;
   if (!game) return;
   game.update(dt);
-  if (!game.paused) game.render(dt);
+  if (!game.paused || game.mp) game.render(dt);
 }
 requestAnimationFrame(frame);
 
-function startRace() {
+function startRace(mpStart) {
   audio.init(); // create / unlock audio inside the user gesture (iOS)
   input.setMode({ touchSteer: settings.touchSteer, autoGas: settings.autoGas });
+  input.setBinds(settings.binds); input.sens = settings.steerSens / 100;
+  applyTouchLayout();
   if (IS_TOUCH && settings.touchSteer === 'tilt') input.enableTilt();
   document.body.classList.toggle('steer-buttons', settings.touchSteer === 'buttons');
   document.body.classList.toggle('steer-tilt', settings.touchSteer === 'tilt');
@@ -721,7 +899,10 @@ function startRace() {
   $('#hud').classList.remove('active');
   setTimeout(() => {
     if (game) { game.dispose(); game = null; }
-    game = new Game({ ...settings });
+    const opts = { ...settings };
+    if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, mp: { net, start: mpStart } });
+    game = new Game(opts);
+    $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
     window.__game = game; window.__input = input;
     showScreen('none');
     $('#hud').classList.add('active');
@@ -730,6 +911,7 @@ function startRace() {
 }
 
 function quitToMenu() {
+  if (game && game.mp) net.leave();
   if (game) { game.dispose(); game = null; }
   $('#pause').classList.remove('active');
   $('#hud').classList.remove('active');
@@ -748,10 +930,145 @@ document.addEventListener('click', (e) => {
   if (act === 'controls') showScreen('controls');
   if (act === 'menu') quitToMenu();
   if (act === 'resume') game && game.togglePause(false);
-  if (act === 'restart') { $('#pause').classList.remove('active'); startRace(); }
+  if (act === 'restart') {
+    $('#pause').classList.remove('active');
+    if (game && game.mp) backToLobby(); else startRace();
+  }
+  if (act === 'mp') mpEnter();
+  if (act === 'mp-back') { net.leave(); showScreen('menu'); }
   if (act === 'quit') quitToMenu();
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && game && !game.paused) game.togglePause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && game && !game.paused && !game.mp) game.togglePause(true); });
+
+// ------------------------------------------------------------------ multiplayer lobby
+const net = new Net();
+const myName = () => clean(settings.mpName) || (DRIVERS.find((d) => d.name === settings.driver) || DRIVERS[0]).name;
+const meInfo = () => ({ name: myName(), drv: settings.driver });
+function mpShow(part) { for (const id of ['mp-offline', 'mp-connecting', 'mp-home', 'mp-lobby']) $('#' + id).hidden = id !== part; }
+function mpToast(text) { const l = $('#mp-list'); const p = document.createElement('p'); p.className = 'err'; p.textContent = text; l.prepend(p); setTimeout(() => p.remove(), 4000); }
+
+async function mpEnter() {
+  showScreen('mp');
+  const d = DRIVERS.find((x) => x.name === settings.driver) || DRIVERS[0];
+  $('#mp-car').textContent = `${d.name} · ${d.team.name}`;
+  $('#mp-name').value = myName();
+  if (net.race) { mpShow('mp-lobby'); renderLobby(); return; }
+  mpShow('mp-connecting');
+  const room = await net.init();
+  if (!room) { mpShow('mp-offline'); return; }
+  mpShow('mp-home'); renderLobby();
+}
+
+function renderLobby() {
+  const list = $('#mp-list');
+  if (!$('#mp-home').hidden) {
+    const races = net.openRaces();
+    const keep = [...list.querySelectorAll('.err')];
+    list.innerHTML = '';
+    keep.forEach((k) => list.appendChild(k));
+    if (!races.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'Gerade ist kein Rennen offen. Erstelle eins und gib deinen Freunden den Code.'; list.appendChild(p); }
+    for (const r of races) {
+      const b = document.createElement('button'); b.className = 'race-item'; b.disabled = r.racing;
+      const code = document.createElement('b'); code.textContent = r.code;
+      const who = document.createElement('span'); who.textContent = `${r.name} · ${r.n} Fahrer`;
+      const st = document.createElement('i'); st.textContent = r.racing ? 'läuft' : 'beitreten ›';
+      b.append(code, who, st);
+      b.addEventListener('click', () => mpJoin(r.code));
+      list.appendChild(b);
+    }
+  }
+  if (!$('#mp-lobby').hidden && net.race) {
+    $('#lobby-code').textContent = net.code;
+    const ps = net.players();
+    $('#lobby-count').textContent = `(${ps.length})`;
+    const box = $('#lobby-players'); box.innerHTML = '';
+    for (const p of ps) {
+      const d = DRIVERS.find((x) => x.name === p.drv) || DRIVERS[0];
+      const row = document.createElement('div'); row.className = 'lp' + (p.me ? ' me' : '');
+      row.style.setProperty('--tc', hex(d.team.body === 0xf0f0f0 || d.team.body === 0x161616 ? d.team.accent : d.team.body));
+      const n = document.createElement('b'); n.textContent = p.name;
+      const c = document.createElement('span'); c.textContent = `${d.name} · ${d.team.name}`;
+      row.append(n, c);
+      if (p.host) { const t = document.createElement('i'); t.textContent = 'GASTGEBER'; row.append(t); }
+      if (p.me) { const t = document.createElement('i'); t.className = 'you'; t.textContent = 'DU'; row.append(t); }
+      box.appendChild(row);
+    }
+    document.body.classList.toggle('mp-host', net.isHost);
+    const h = net.hostPeer();
+    const cfg = h && h.presence.cfg;
+    const W = { dynamic: 'Wechselhaft', wet: 'Regen', dry: 'Trocken' };
+    $('#lobby-set').textContent = cfg ? `${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}` : '';
+    // only in the lobby screen: a host missing for 6 s straight has left
+    const inLobby = !game && document.querySelector('.screen.active')?.id === 'mp';
+    if (h) net.hostSeenAt = performance.now();
+    if (inLobby && !h && !net.isHost && performance.now() - (net.hostSeenAt || net.joinedAt || 0) > 6000) { mpLeave(); mpToast(`Der Gastgeber von Rennen ${net.code || ''} ist nicht mehr da.`); }
+  }
+}
+net.on(renderLobby);
+
+function mpSendCfg() {
+  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI } }).catch(() => {});
+}
+
+async function mpCreate() {
+  const code = String(1000 + Math.floor(Math.random() * 9000));
+  net.myName = myName();
+  try { await net.open(code, true, meInfo()); } catch (_) { mpToast('Rennen konnte nicht erstellt werden. Versuch es gleich nochmal.'); return; }
+  mpSendCfg();
+  mpShow('mp-lobby'); renderLobby();
+}
+
+async function mpJoin(code) {
+  code = String(code || '').replace(/\D/g, '').slice(0, 4);
+  if (code.length !== 4) { mpToast('Gib den 4-stelligen Code ein.'); return; }
+  try { await net.open(code, false, meInfo()); } catch (_) { mpToast('Beitreten hat nicht geklappt. Versuch es gleich nochmal.'); return; }
+  net.joinedAt = performance.now(); net.hostSeenAt = 0;
+  mpShow('mp-lobby'); renderLobby();
+  setTimeout(() => { if (!game && net.race && net.code === code && !net.hostSeenAt) { mpLeave(); mpToast(`Kein offenes Rennen mit Code ${code}.`); } }, 5000);
+}
+
+async function mpLeave() { await net.leave(); mpShow('mp-home'); renderLobby(); }
+
+function mpStart() {
+  if (!net.isHost || !net.race) return;
+  const humans = net.players();
+  for (let i = humans.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [humans[i], humans[j]] = [humans[j], humans[i]]; }
+  const taken = new Set(humans.map((h) => h.drv));
+  const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 20 - humans.length));
+  const start = {
+    id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36),
+    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty,
+    slots: [...humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv })), ...ai.map((d) => ({ a: d.name }))],
+  };
+  net.startRace(start);
+  startRace(start);
+}
+net.onStart = (start) => {
+  // a client follows the host's start signal from the lobby or the results screen
+  const where = document.querySelector('.screen.active');
+  if (game && game.mp && !game.resultsShown) { game.dispose(); game = null; }
+  if (!game || (where && where.id === 'results')) startRace(start);
+};
+
+function backToLobby() {
+  if (game) { game.dispose(); game = null; }
+  $('#hud').classList.remove('active');
+  document.body.classList.remove('ingame');
+  net.backToLobby();
+  showScreen('mp'); mpShow('mp-lobby'); renderLobby();
+}
+
+$('#mp-create').addEventListener('click', mpCreate);
+$('#mp-join').addEventListener('click', () => mpJoin($('#mp-code').value));
+$('#mp-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') mpJoin($('#mp-code').value); });
+$('#mp-leave').addEventListener('click', mpLeave);
+$('#mp-start').addEventListener('click', mpStart);
+$('#mp-name').addEventListener('change', () => {
+  settings.mpName = clean($('#mp-name').value); save();
+  $('#mp-name').value = myName();
+  if (net.race) net.race.presence({ name: myName() }).catch(() => {});
+  net.myName = myName(); net.advertise();
+});
 addEventListener('keydown', (e) => {
   if (game) return;
   if (e.code === 'Enter') {
