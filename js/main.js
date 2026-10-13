@@ -15,11 +15,13 @@ const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const DRIVERS = [];
 TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d, number: t.numbers[i] })));
 
-const defaults = { driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, gearbox: 'auto', brakeAssist: false, autoGas: false, line: 'corners', camera: 'cockpit', quality: 'high', touchSteer: 'joystick' };
+const defaults = { driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, gearbox: 'auto', brakeAssist: false, autoGas: false, line: 'corners', camera: 'cockpit', quality: 'high', touchSteer: 'wheel' };
 // friendlier defaults on phones / tablets
 if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', brakeAssist: true, line: 'full', difficulty: 60 });
 let settings = { ...defaults };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}')); } catch (e) { /* storage unavailable */ }
+// the on-screen wheel replaced the joystick as default touch steering
+if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
 document.body.classList.toggle('touch', IS_TOUCH);
 const save = () => { try { localStorage.setItem('apexgp25', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
@@ -545,6 +547,9 @@ class Game {
       }
     }
     this.cockpit.userData.steering.rotation.z = -p.steer * 0.9;
+    const touchWheel = IS_TOUCH && document.body.classList.contains('steer-wheel');
+    this.cockpit.userData.steering.visible = !touchWheel;
+    if (touchWheel) this.updateTouchWheel(dt);
     // AI meshes
     const blink = (performance.now() / 250 | 0) % 2;
     const rainLights = this.weather.rain > 0.15 || this.weather.wetness > 0.5;
@@ -592,6 +597,34 @@ class Game {
       order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather,
     });
     audio.update(p, this.aiList, this.camMode === 'cockpit');
+  }
+
+  // on-screen touch wheel: rotation follows the car's steering, display mirrors the dash
+  updateTouchWheel(dt) {
+    const p = this.player;
+    if (!this.tw) {
+      const leds = $('#wheel-leds');
+      if (!leds.childElementCount) for (let i = 0; i < 15; i++) {
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', 130 + i * 10); c.setAttribute('cy', 38); c.setAttribute('r', 3.6); c.setAttribute('fill', '#222');
+        leds.appendChild(c);
+      }
+      this.tw = { rot: $('#wheel-rot'), leds: [...leds.children], speed: $('#wd-speed'), gear: $('#wd-gear'), ers: $('#wd-ers'), pos: $('#wd-pos'), lap: $('#wd-lap'), drs: $('#wd-drs'), t: 0 };
+    }
+    const tw = this.tw;
+    tw.rot.style.transform = `rotate(${p.steer * 100}deg)`;
+    tw.t -= dt;
+    if (tw.t > 0) return;
+    tw.t = 0.06;
+    tw.speed.textContent = Math.round(p.speedKmh);
+    tw.gear.textContent = p.gear <= 0 ? (p.v < -0.5 ? 'R' : 'N') : p.gear;
+    tw.ers.textContent = Math.round(p.ers * 100) + '%';
+    tw.pos.textContent = 'P' + (this.playerPos || '-');
+    tw.lap.textContent = 'L' + Math.max(1, this.lap.lapNo + 1) + '/' + this.laps;
+    tw.drs.setAttribute('fill', p.drsOpen ? '#19d65b' : p.drsAvailable ? '#0d5c2a' : '#1a1a1a');
+    const lit = Math.round(((p.rpm - 9000) / 3300) * 15);
+    const flash = p.rpm > 12100 && (performance.now() / 70 | 0) % 2;
+    tw.leds.forEach((c, i) => c.setAttribute('fill', i < lit ? (flash ? '#39a8ff' : i < 5 ? '#19e019' : i < 10 ? '#ff2020' : '#a24bff') : '#222'));
   }
 
   camWorld() { if (!this._cw) this._cw = new THREE.Object3D(); this.camera.getWorldPosition(this._cw.position); return this._cw; }
@@ -683,6 +716,7 @@ function startRace() {
   if (IS_TOUCH && settings.touchSteer === 'tilt') input.enableTilt();
   document.body.classList.toggle('steer-buttons', settings.touchSteer === 'buttons');
   document.body.classList.toggle('steer-tilt', settings.touchSteer === 'tilt');
+  document.body.classList.toggle('steer-wheel', settings.touchSteer === 'wheel' || settings.touchSteer === 'tilt');
   showScreen('loading');
   $('#hud').classList.remove('active');
   setTimeout(() => {

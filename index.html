@@ -24,6 +24,52 @@
 <!-- touch controls -->
 <div id="touch">
   <div id="tz-steer" aria-label="Lenken: Daumen nach links oder rechts ziehen"><div class="ring"><i id="tz-knob"></i></div><span class="hint">ZIEHEN ZUM LENKEN</span></div>
+  <div id="wheelpad" aria-label="Lenkrad: drehen oder seitlich ziehen">
+    <svg id="wheel-svg" viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="cf" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="6" height="6" fill="#16181c"/><rect width="3" height="3" fill="#2a2d33"/><rect x="3" y="3" width="3" height="3" fill="#24272c"/>
+        </pattern>
+        <linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        <radialGradient id="btn" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></radialGradient>
+      </defs>
+      <g id="wheel-rot">
+        <!-- shift paddles -->
+        <path d="M70 70 L40 118 L58 128 L92 86 Z" fill="#b9bcc2"/><path d="M330 70 L360 118 L342 128 L308 86 Z" fill="#b9bcc2"/>
+        <!-- grips -->
+        <path d="M58 52 Q18 58 14 120 Q12 196 54 240 Q72 252 82 232 Q66 196 70 150 Q72 112 92 84 Z" fill="#141416"/>
+        <path d="M342 52 Q382 58 386 120 Q388 196 346 240 Q328 252 318 232 Q334 196 330 150 Q328 112 308 84 Z" fill="#141416"/>
+        <path d="M30 120 Q30 180 58 226" stroke="#2c2c30" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M370 120 Q370 180 342 226" stroke="#2c2c30" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <!-- carbon faceplate -->
+        <path d="M66 46 Q200 18 334 46 Q356 52 360 76 Q366 120 348 160 Q326 214 276 222 L124 222 Q74 214 52 160 Q34 120 40 76 Q44 52 66 46 Z" fill="url(#cf)" stroke="#0b0c0e" stroke-width="3"/>
+        <path d="M66 46 Q200 18 334 46 Q356 52 360 76 L40 76 Q44 52 66 46 Z" fill="url(#gl)"/>
+        <!-- rev lights -->
+        <g id="wheel-leds"></g>
+        <!-- display -->
+        <rect x="132" y="50" width="136" height="70" rx="5" fill="#050608" stroke="#000" stroke-width="2"/>
+        <text x="146" y="66" class="wd-s" id="wd-speed">0</text><text x="146" y="76" class="wd-l">KM/H</text>
+        <text x="254" y="66" class="wd-s r" id="wd-ers">100%</text><text x="254" y="76" class="wd-l r">BAT</text>
+        <text x="200" y="104" class="wd-g" id="wd-gear">N</text>
+        <text x="146" y="113" class="wd-l" id="wd-pos">P-</text><text x="254" y="113" class="wd-l r" id="wd-lap">L1</text>
+        <rect x="186" y="54" width="28" height="9" rx="2" fill="#1a1a1a" id="wd-drs"/><text x="200" y="61.5" class="wd-l c" id="wd-drs-t">DRS</text>
+        <!-- multi-function rotaries (decorative) -->
+        <g transform="translate(200 165)"><circle r="27" fill="#e10600"/><path d="M0 0 L0 -27 A27 27 0 0 1 23.4 -13.5 Z" fill="#f5c400"/><path d="M0 0 L23.4 -13.5 A27 27 0 0 1 23.4 13.5 Z" fill="#19d65b"/><path d="M0 0 L23.4 13.5 A27 27 0 0 1 0 27 Z" fill="#2e7dff"/><path d="M0 0 L0 27 A27 27 0 0 1 -23.4 13.5 Z" fill="#fff"/><path d="M0 0 L-23.4 13.5 A27 27 0 0 1 -23.4 -13.5 Z" fill="#a24bff"/><circle r="15" fill="#111"/><g transform="skewX(-22)"><rect x="-5" y="-6" width="3" height="12" fill="#e10600"/><rect x="0" y="-6" width="3" height="12" fill="#fff"/><rect x="5" y="-6" width="6" height="12" fill="#e10600"/></g></g>
+        <g transform="translate(138 192)"><circle r="18" fill="#ff8000"/><circle r="18" fill="none" stroke="#f5c400" stroke-width="5" stroke-dasharray="9 7"/><circle r="10" fill="#111"/><rect x="-2" y="-14" width="4" height="10" fill="#ddd"/></g>
+        <g transform="translate(262 192)"><circle r="18" fill="#19d65b"/><circle r="18" fill="none" stroke="#2e7dff" stroke-width="5" stroke-dasharray="9 7"/><circle r="10" fill="#111"/><rect x="-2" y="-14" width="4" height="10" fill="#ddd"/></g>
+        <g transform="translate(108 148)"><circle r="15" fill="#2e7dff"/><circle r="15" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><circle r="8" fill="#111"/></g>
+        <g transform="translate(292 148)"><circle r="15" fill="#a24bff"/><circle r="15" fill="none" stroke="#f5c400" stroke-width="3" stroke-dasharray="4 4"/><circle r="8" fill="#111"/></g>
+        <circle cx="200" cy="210" r="4" fill="#888"/>
+        <!-- functional buttons -->
+        <g class="wbtn" data-btn="drs" transform="translate(80 70)"><circle r="17" fill="#19d65b" stroke="#0a0a0a" stroke-width="3"/><circle r="17" fill="url(#btn)"/><text y="4.5" class="wb">DRS</text></g>
+        <g class="wbtn" data-btn="ot" transform="translate(320 70)"><circle r="17" fill="#f5c400" stroke="#0a0a0a" stroke-width="3"/><circle r="17" fill="url(#btn)"/><text y="4.5" class="wb dark">OT</text></g>
+        <g class="wbtn" data-btn="cam" transform="translate(102 108)"><circle r="14" fill="#e8e8e8" stroke="#0a0a0a" stroke-width="3"/><circle r="14" fill="url(#btn)"/><text y="4" class="wb dark sm">CAM</text></g>
+        <g class="wbtn" data-btn="look" transform="translate(298 108)"><circle r="14" fill="#e10600" stroke="#0a0a0a" stroke-width="3"/><circle r="14" fill="url(#btn)"/><text y="4.5" class="wb">⟲</text></g>
+        <g class="wbtn deco" transform="translate(62 108)"><circle r="8" fill="#ff8000" stroke="#0a0a0a" stroke-width="2"/></g>
+        <g class="wbtn deco" transform="translate(338 108)"><circle r="8" fill="#2e7dff" stroke="#0a0a0a" stroke-width="2"/></g>
+      </g>
+    </svg>
+  </div>
   <div id="tc-arrows"><button id="tc-left" aria-label="Links">◀</button><button id="tc-right" aria-label="Rechts">▶</button></div>
   <div class="tside">
     <div class="tsmall"><button id="tc-drs">DRS</button><button id="tc-ers">ERS</button><button id="tc-look" aria-label="Nach hinten schauen">⟲</button><button id="tc-cam" aria-label="Kamera wechseln">CAM</button></div>
@@ -75,7 +121,7 @@
         <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="autoGas" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3 class="touch-only">TOUCH</h3>
-        <div class="opt touch-only" data-key="touchSteer" data-vals='["joystick","buttons","tilt"]' data-labels='["Joystick","Tasten","Neigen"]'><span>Lenkung</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt touch-only" data-key="touchSteer" data-vals='["wheel","joystick","buttons","tilt"]' data-labels='["Lenkrad","Joystick","Tasten","Neigen"]'><span>Lenkung</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>ANZEIGE</h3>
         <div class="opt" data-key="camera" data-vals='["cockpit","tcam","nose","wing","chase","far"]' data-labels='["Cockpit","T-Kamera","Nase","Flügel","Verfolger","Verfolger weit"]'><span>Kamera</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="quality" data-vals='["high","medium","low"]' data-labels='["Hoch","Mittel","Niedrig"]'><span>Grafik</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -106,7 +152,7 @@
         </dl>
         <h3>IPAD &amp; HANDY</h3>
         <dl>
-          <dt>Linke Hälfte</dt><dd>Daumen ziehen = Lenken (oder Tasten / Neigen)</dd><dt>GAS / BREMSE</dt><dd>Rechts unten</dd>
+          <dt>Lenkrad</dt><dd>Mit dem Daumen drehen oder seitlich ziehen, mit zwei Fingern wie ein echtes Lenkrad (alternativ Joystick, Tasten, Neigen)</dd><dt>DRS / OT</dt><dd>Grün = DRS, Gelb = Overtake (halten), CAM, ⟲ = Rückblick</dd><dt>GAS / BREMSE</dt><dd>Rechts unten</dd>
           <dt>ERS / DRS</dt><dd>Über den Pedalen</dd><dt>CAM / ⟲</dt><dd>Kamera / Rückblick</dd><dt>❚❚</dt><dd>Pause</dd>
         </dl>
         <h3>RENNREGELN</h3>

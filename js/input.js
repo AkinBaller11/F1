@@ -7,7 +7,7 @@ export class Input {
     this.pressed = new Set(); // edge-triggered this frame
     this.state = { throttle: 0, brake: 0, steer: 0, analog: false, overtake: false, drs: false, shiftUp: false, shiftDown: false };
     this.touch = { left: false, right: false, gas: false, brake: false, ers: false, drs: false, look: false, steer: 0, steerActive: false };
-    this.mode = { touchSteer: 'joystick', autoGas: false };
+    this.mode = { touchSteer: 'wheel', autoGas: false };
     this.tilt = 0; this.tiltOn = false;
     this.padPrev = [];
     addEventListener('keydown', (e) => {
@@ -18,6 +18,7 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => { this.keys.clear(); for (const k of ['left', 'right', 'gas', 'brake', 'ers', 'look']) this.touch[k] = false; });
     this.bindTouch();
+    this.bindWheel();
   }
 
   setMode(m) { Object.assign(this.mode, m); }
@@ -67,6 +68,75 @@ export class Input {
       };
       zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end); zone.addEventListener('lostpointercapture', end);
     }
+  }
+
+  // On-screen F1 wheel: one thumb drags sideways / around the rim, two fingers rotate it like a real wheel.
+  bindWheel() {
+    const pad = document.getElementById('wheelpad');
+    if (!pad) return;
+    const MAX = 100 * Math.PI / 180; // wheel rotation at full lock
+    const pts = new Map();
+    let base = null;
+    const centre = () => { const r = pad.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height * 0.55, r.width]; };
+    const recompute = () => {
+      if (!pts.size) { this.touch.steerActive = false; this.touch.steer = 0; base = null; return; }
+      const arr = [...pts.values()];
+      if (arr.length >= 2) {
+        const [a, b] = arr;
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        if (!base || base.mode !== 2) base = { mode: 2, ang, steer: this.touch.steer };
+        let d = ang - base.ang; d = Math.atan2(Math.sin(d), Math.cos(d));
+        this.touch.steer = Math.max(-1, Math.min(1, base.steer + d / MAX));
+      } else {
+        const p = arr[0];
+        const [cx, cy, w] = centre();
+        if (!base || base.mode !== 1) base = { mode: 1, x: p.x, ang: Math.atan2(p.y - cy, p.x - cx), steer: this.touch.steer };
+        // sideways drag, plus rotation around the hub when the thumb is out on the rim
+        const lin = (p.x - base.x) / (w * 0.32);
+        const rDist = Math.hypot(p.x - cx, p.y - cy);
+        let rot = 0;
+        if (rDist > w * 0.22) { rot = Math.atan2(p.y - cy, p.x - cx) - base.ang; rot = Math.atan2(Math.sin(rot), Math.cos(rot)) / MAX; }
+        const v = Math.abs(rot) > Math.abs(lin) ? rot : lin;
+        this.touch.steer = Math.max(-1, Math.min(1, base.steer + v));
+      }
+      this.touch.steerActive = true;
+    };
+    pad.addEventListener('pointerdown', (e) => {
+      const btn = e.target.closest('[data-btn]');
+      e.preventDefault();
+      if (btn) {
+        const b = btn.dataset.btn;
+        btn.classList.add('on');
+        if (b === 'drs') this.pressed.add('KeyF');
+        if (b === 'cam') this.pressed.add('KeyC');
+        if (b === 'ot') this.touch.ers = true;
+        if (b === 'look') this.touch.look = true;
+        const up = (ev) => {
+          if (ev.pointerId !== e.pointerId) return;
+          btn.classList.remove('on');
+          if (b === 'ot') this.touch.ers = false;
+          if (b === 'look') this.touch.look = false;
+          removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+        };
+        addEventListener('pointerup', up); addEventListener('pointercancel', up);
+        return;
+      }
+      try { pad.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      base = null; recompute();
+    });
+    pad.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      recompute();
+    });
+    const end = (e) => {
+      if (!pts.delete(e.pointerId)) return;
+      base = null;
+      if (pts.size) { this.touch.steer = this.touch.steer; recompute(); } else recompute();
+    };
+    pad.addEventListener('pointerup', end); pad.addEventListener('pointercancel', end); pad.addEventListener('lostpointercapture', end);
+    pad.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   // must be called from a user gesture on iOS

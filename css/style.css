@@ -127,6 +127,23 @@ body.touch.ingame, body.touch.ingame #game { touch-action: none; overscroll-beha
 #tz-steer.active .ring { border-color: rgba(255,255,255,.5); }
 #tz-steer.active .hint { opacity: 0; }
 #tz-knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 2px 10px rgba(0,0,0,.4); transform: translate(-50%, -50%); }
+#wheelpad { display: none; position: absolute; left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(4px + env(safe-area-inset-bottom, 0px)); width: min(40vw, 330px); pointer-events: auto; touch-action: none; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+#wheelpad svg { display: block; width: 100%; height: auto; overflow: visible; }
+#wheel-rot { transform-origin: 200px 140px; transform-box: view-box; }
+#wheelpad .wd-s { fill: #7CFC00; font: 700 13px var(--body); }
+#wheelpad #wd-ers { fill: #f5c400; }
+#wheelpad .wd-l { fill: #9ad; font: 700 8px var(--body); letter-spacing: .06em; }
+#wheelpad .wd-g { fill: #fff; font: 900 40px var(--display); text-anchor: middle; }
+#wheelpad .r { text-anchor: end; } #wheelpad .c { text-anchor: middle; fill: #fff; }
+#wheelpad .wb { fill: #fff; font: 900 10px var(--body); text-anchor: middle; pointer-events: none; }
+#wheelpad .wb.dark { fill: #111; } #wheelpad .wb.sm { font-size: 8px; }
+#wheelpad .wbtn:not(.deco) { cursor: pointer; }
+#wheelpad .wbtn.on circle:first-child { filter: brightness(1.6); stroke: #fff; }
+body.steer-wheel #wheelpad { display: block; }
+body.steer-wheel #tz-steer, body.steer-wheel .tsmall { display: none; }
+body.touch.steer-wheel .dash { display: none; }
+body.steer-tilt #wheelpad { pointer-events: none; }
+body.steer-tilt #wheelpad .wbtn { pointer-events: auto; }
 #tc-arrows { display: none; position: absolute; left: calc(18px + env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); gap: 14px; }
 #tc-arrows button { width: 88px; height: 88px; font-size: 26px; }
 body.steer-buttons #tc-arrows { display: flex; }
@@ -163,6 +180,7 @@ body.touch .pedals { display: none; }
   .tsmall button { width: 44px; height: 44px; }
 }
 @media (min-width: 1000px) and (pointer: coarse) {
+  #wheelpad { width: min(40vw, 470px); }
   #tc-gas { width: 120px; height: 150px; }
   #tc-brake { width: 104px; height: 104px; }
   .tsmall button { width: 60px; height: 60px; font-size: 13px; }
