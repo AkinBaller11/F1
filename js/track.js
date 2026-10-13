@@ -1,10 +1,7 @@
 // Circuit generation: centre-line, racing line, speed profile and all trackside geometry.
 import * as THREE from 'three';
 import * as TX from './textures.js';
-
-// Plan view control points (metres, x east / y north), driven clockwise.
-// Loosely modelled on the Circuit de Barcelona-Catalunya layout.
-const CTRL = [[-450,0],[0,0],[450,0],[560,-5],[610,-45],[625,-100],[660,-140],[730,-170],[780,-230],[785,-310],[745,-375],[670,-405],[590,-410],[540,-440],[530,-500],[545,-560],[590,-590],[630,-630],[625,-690],[580,-720],[500,-720],[430,-700],[370,-720],[300,-735],[150,-735],[0,-728],[-150,-720],[-220,-705],[-255,-660],[-265,-560],[-270,-450],[-275,-370],[-285,-320],[-320,-295],[-360,-310],[-375,-350],[-372,-420],[-368,-470],[-380,-530],[-430,-565],[-500,-560],[-560,-530],[-590,-470],[-600,-300],[-600,-150],[-585,-60],[-540,-10]];
+import { buildScenery } from './scenery.js';
 
 export const HALF_W = 7;      // half track width (m)
 export const KERB_W = 1.6;
@@ -48,18 +45,22 @@ export function driveAccel(v, power, cdA, mu) {
 
 export class Track {
   constructor(scene, opts) {
+    this.def = opts.def;
+    this.style = this.def.style || 'park';
+    this.tod = opts.tod;
     this.wetness = opts.wetness ?? 0;
     this.quality = opts.quality || 'high';
     this.mu = 1 - 0.28 * this.wetness;
     this.wet = false; // materials are built dry, then tinted by setWetness()
     this.buildCentreLine();
+    this.findStart();
     this.buildRacingLine();
     this.buildSpeedProfile();
     this.buildLimits();
     this.group = new THREE.Group();
     scene.add(this.group);
     this.buildMeshes();
-    this.buildScenery();
+    buildScenery(this);
     this.profileMu = this.mu;
     this.setWetness(this.wetness, true);
   }
@@ -82,14 +83,49 @@ export class Track {
   }
 
   buildCentreLine() {
-    // dense spline, then resample uniformly every DS metres
+    // dense polyline (spline or straights + arcs), then resample uniformly every DS metres
     const dense = [];
-    const n = CTRL.length;
-    for (let i = 0; i < n; i++) {
-      const a = CTRL[(i - 1 + n) % n], b = CTRL[i], c = CTRL[(i + 1) % n], d = CTRL[(i + 2) % n];
-      for (let k = 0; k < 60; k++) {
-        const t = k / 60;
-        dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t)]);
+    const def = this.def;
+    if (def.poly) {
+      const P = def.poly, n = P.length;
+      for (let i = 0; i < n; i++) {
+        const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n];
+        const r = def.r ? def.r[i] : 25;
+        const d1 = [b[0] - a[0], b[1] - a[1]], d2 = [c[0] - b[0], c[1] - b[1]];
+        const l1 = Math.hypot(...d1), l2 = Math.hypot(...d2);
+        const u1 = [d1[0] / l1, d1[1] / l1], u2 = [d2[0] / l2, d2[1] / l2];
+        const turn = Math.atan2(u1[0] * u2[1] - u1[1] * u2[0], u1[0] * u2[0] + u1[1] * u2[1]);
+        const tdist = Math.min(r * Math.tan(Math.abs(turn) / 2), l1 * 0.45, l2 * 0.45);
+        const rr = tdist / Math.tan(Math.abs(turn) / 2);
+        const p0 = [b[0] - u1[0] * tdist, b[1] - u1[1] * tdist];
+        const sgn = Math.sign(turn);
+        const cx = p0[0] - u1[1] * rr * sgn, cy = p0[1] + u1[0] * rr * sgn;
+        const a0 = Math.atan2(p0[1] - cy, p0[0] - cx);
+        const steps = Math.max(6, Math.ceil(Math.abs(turn) * rr / 1.5));
+        for (let k = 0; k <= steps; k++) {
+          const ang = a0 + (turn * k) / steps;
+          dense.push([cx + Math.cos(ang) * rr, -(cy + Math.sin(ang) * rr)]);
+        }
+        // straight to the next corner start, sampled every ~4 m
+        const nb = c, nc = P[(i + 2) % n];
+        const e1 = [nb[0] - b[0], nb[1] - b[1]], e2 = [nc[0] - nb[0], nc[1] - nb[1]];
+        const el1 = Math.hypot(...e1), el2 = Math.hypot(...e2);
+        const v1 = [e1[0] / el1, e1[1] / el1], v2 = [e2[0] / el2, e2[1] / el2];
+        const t2 = Math.atan2(v1[0] * v2[1] - v1[1] * v2[0], v1[0] * v2[0] + v1[1] * v2[1]);
+        const r2 = def.r ? def.r[(i + 1) % n] : 25;
+        const td2 = Math.min(r2 * Math.tan(Math.abs(t2) / 2), el1 * 0.45, el2 * 0.45);
+        const s0 = [b[0] + u2[0] * tdist, b[1] + u2[1] * tdist], s1 = [nb[0] - v1[0] * td2, nb[1] - v1[1] * td2];
+        const sl = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]), ns = Math.max(1, Math.ceil(sl / 4));
+        for (let k = 1; k < ns; k++) dense.push([s0[0] + (s1[0] - s0[0]) * (k / ns), -(s0[1] + (s1[1] - s0[1]) * (k / ns))]);
+      }
+    } else {
+      const C = def.ctrl, n = C.length;
+      for (let i = 0; i < n; i++) {
+        const a = C[(i - 1 + n) % n], b = C[i], c = C[(i + 1) % n], d = C[(i + 2) % n];
+        for (let k = 0; k < 60; k++) {
+          const t = k / 60;
+          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t)]);
+        }
       }
     }
     const cum = [0];
@@ -239,10 +275,17 @@ export class Track {
       if (corner) { this.kerbL[i] = 1; this.kerbR[i] = 1; }
       if (Math.abs(k) > 1 / 400) { if (k > 0) this.gravelL[i] = 1; else this.gravelR[i] = 1; }
     }
+    // street circuit: walls right next to the track, no gravel
+    if (this.style === 'city') {
+      for (let i = 0; i < N; i++) {
+        left[i] = right[i] = HALF_W + 3.2 + Math.min(4, Math.abs(ks[i]) * 220);
+        this.gravelL[i] = this.gravelR[i] = 0;
+      }
+    }
     // pit straight: pit wall on the right
     for (let i = 0; i < N; i++) {
       const s = i * this.ds;
-      if (this.inPitStraight(s)) { right[i] = 11; left[i] = 15; this.gravelL[i] = this.gravelR[i] = 0; }
+      if (this.inPitStraight(s)) { right[i] = 11; left[i] = this.style === 'city' ? 11 : 15; this.gravelL[i] = this.gravelR[i] = 0; }
     }
     this.limL = smoothArr(left, 6, 2);
     this.limR = smoothArr(right, 6, 2);
@@ -252,10 +295,24 @@ export class Track {
     this.gravelL = dil(this.gravelL); this.gravelR = dil(this.gravelR);
   }
 
-  // main straight: from final corner exit through to T1 braking (start line at s=450 from first ctrl point)
-  inPitStraight(s) { return s > 40 && s < 900; }
-
-  get startS() { return 450; }
+  // longest near-straight section hosts start line, grid and pit lane
+  findStart() {
+    const N = this.N, ks = smoothArr(this.k, 10, 2);
+    const straight = (i) => Math.abs(ks[i % N]) < 1 / 700;
+    let i0 = 0; while (straight(i0) && i0 < N) i0++;
+    let best = [0, 0], run = -1;
+    for (let c = 0; c <= N; c++) {
+      const i = i0 + c;
+      if (straight(i) && run < 0) run = i;
+      if ((!straight(i) || c === N) && run >= 0) { if (i - run > best[1] - best[0]) best = [run, i]; run = -1; }
+    }
+    const a = best[0] * this.ds, len = (best[1] - best[0]) * this.ds;
+    this.mainStraight = [a, a + len];
+    this.startS = this.wrapS(a + Math.max(200, Math.min(len - 160, len * 0.5)));
+    this.pit = [a + 15, a + len - 50];
+  }
+  inRange(s, a, b) { const L = this.length; s = this.wrapS(s - a); return s < b - a && s >= 0 && b - a < L; }
+  inPitStraight(s) { return this.inRange(s, this.pit[0], this.pit[1]); }
 
   // Find nearest centre-line sample around a hint index
   locate(x, z, hint, out = {}) {
@@ -347,14 +404,6 @@ export class Track {
   buildMeshes() {
     const wet = this.wet;
     const W = HALF_W;
-    // ground
-    const grassTex = TX.grass(); grassTex.repeat.set(220, 220);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000),
-      (this.grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 })));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(100, -0.02, 360);
-    ground.receiveShadow = true;
-    this.group.add(ground);
-
     // asphalt
     const asp = TX.asphalt(wet);
     const roadMat = new THREE.MeshStandardMaterial({
@@ -392,31 +441,6 @@ export class Track {
       this.place(new THREE.Mesh(slotGeo, lineMat), s, lat, 0.045);
     }
 
-    // barriers with sponsor banners
-    const bannerMats = [];
-    for (let b = 0; b < TX.SPONSOR_COUNT; b++) {
-      const t = TX.banner(b);
-      bannerMats.push(new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, side: THREE.DoubleSide }));
-    }
-    const segLen = Math.round(240 / this.ds);
-    for (let side = 0; side < 2; side++) {
-      for (let seg = 0; seg * segLen < this.N; seg++) {
-        const a = seg * segLen, b = a + segLen;
-        const mat = bannerMats[(seg * 3 + side * 5) % bannerMats.length];
-        const lat = side ? (i) => this.limR[i] : (i) => -this.limL[i];
-        this.wall(lat, 1.2, 0, mat, 22, (i) => i >= a && i <= b, side === 1);
-      }
-    }
-    // catch fence
-    const fc = document.createElement('canvas'); fc.width = fc.height = 64;
-    const fg = fc.getContext('2d');
-    fg.strokeStyle = 'rgba(40,40,40,0.55)'; fg.lineWidth = 2;
-    for (let i = 0; i < 64; i += 16) { fg.beginPath(); fg.moveTo(i, 0); fg.lineTo(i + 64, 64); fg.stroke(); fg.beginPath(); fg.moveTo(i + 64, 0); fg.lineTo(i, 64); fg.stroke(); }
-    fg.fillStyle = 'rgba(30,30,30,0.9)'; fg.fillRect(0, 0, 3, 64);
-    const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
-    const fenceMat = new THREE.MeshBasicMaterial({ map: ft, transparent: true, side: THREE.DoubleSide, depthWrite: false });
-    this.wall((i) => -this.limL[i] - 0.3, 3.2, 1.2, fenceMat, 3);
-    this.wall((i) => this.limR[i] + 0.3, 3.2, 1.2, fenceMat, 3, (i) => !this.inPitStraight(i * this.ds));
   }
 
   posAt(s, lat) {
@@ -430,178 +454,6 @@ export class Track {
     obj.rotation.y = yaw + yawOff;
     this.group.add(obj);
     return obj;
-  }
-
-  buildScenery() {
-    const wet = this.wet;
-    const crowdTex = TX.crowd();
-    const crowdMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.9 });
-    const greyMat = new THREE.MeshStandardMaterial({ color: 0x8b9096, roughness: 0.8 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.7 });
-    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
-
-    const grandstand = (len, depth, height) => {
-      const g = new THREE.Group();
-      const slope = new THREE.Mesh(new THREE.PlaneGeometry(len, Math.hypot(depth, height)), crowdMat);
-      slope.material = crowdMat.clone(); slope.material.map = crowdTex.clone(); slope.material.map.repeat.set(len / 30, 1); slope.material.map.needsUpdate = true;
-      slope.rotation.x = -Math.atan2(height, depth);
-      slope.position.set(0, height / 2 + 1.5, -depth / 2);
-      g.add(slope);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(len, height + 4, 1), greyMat);
-      back.position.set(0, (height + 4) / 2, -depth - 0.5);
-      g.add(back);
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(len + 2, 0.6, depth + 6), whiteMat);
-      roof.position.set(0, height + 7, -depth / 2 + 2);
-      roof.rotation.x = 0.06;
-      g.add(roof);
-      for (let x = -len / 2; x <= len / 2; x += len / 6) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.5, height + 7, 0.5), darkMat);
-        p.position.set(x, (height + 7) / 2, -depth - 0.5);
-        g.add(p);
-      }
-      const base = new THREE.Mesh(new THREE.BoxGeometry(len, 1.5, 1), greyMat);
-      base.position.set(0, 0.75, 0);
-      g.add(base);
-      return g;
-    };
-
-    // main straight: grandstands left, pit building right
-    for (let s = 120; s < 880; s += 95) {
-      const gs = grandstand(90, 22, 14);
-      this.place(gs, s, -this.limL[this.idx(s)] - 4, 0, Math.PI / 2);
-    }
-    // pit lane + garages on the right
-    const pitMatT = (this.pitMat = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.9 }));
-    this.ribbon(11.3, 28, 0.025, pitMatT, 1, 20, (i) => this.inPitStraight(i * this.ds));
-    // pit wall
-    const pitWallMat = new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.7, side: THREE.DoubleSide });
-    this.wall(() => 11, 1.3, 0, pitWallMat, 10, (i) => this.inPitStraight(i * this.ds));
-    // garages
-    const garageMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.6 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.15, metalness: 0.6 });
-    for (let s = 70; s < 870; s += 40) {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(40, 9, 16), garageMat);
-      body.position.set(0, 4.5, -8); g.add(body);
-      const top = new THREE.Mesh(new THREE.BoxGeometry(40, 5, 18), glassMat);
-      top.position.set(0, 11.5, -8); g.add(top);
-      const ban = new THREE.Mesh(new THREE.PlaneGeometry(38, 3.2),
-        new THREE.MeshStandardMaterial({ map: TX.banner(1 + ((s / 40) | 0) % 3), roughness: 0.6 }));
-      ban.position.set(0, 7.2, 0.05); g.add(ban);
-      for (let d = -15; d <= 15; d += 10) {
-        const door = new THREE.Mesh(new THREE.PlaneGeometry(8, 5.5), new THREE.MeshStandardMaterial({ color: 0x0c0f14 }));
-        door.position.set(d, 2.75, 0.03); g.add(door);
-      }
-      this.place(g, s, 29, 0, -Math.PI / 2);
-    }
-
-    // start gantry with lights
-    this.lights = [];
-    const gantry = new THREE.Group();
-    const span = 2 * HALF_W + 6;
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(span, 1.6, 1.2), darkMat);
-    beam.position.y = 7.5; gantry.add(beam);
-    for (const x of [-span / 2, span / 2]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.8, 8.3, 0.8), darkMat);
-      leg.position.set(x, 4.15, 0); gantry.add(leg);
-    }
-    const lb = new THREE.Mesh(new THREE.PlaneGeometry(span - 1, 1.3), new THREE.MeshStandardMaterial({ map: TX.banner(3) }));
-    lb.position.set(0, 8.9, 0.6); gantry.add(lb);
-    for (let i = 0; i < 5; i++) {
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.4, 0.4), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-      pod.position.set(-3 + i * 1.5, 6.2, 0.55); gantry.add(pod);
-      const lamps = [];
-      for (let r = 0; r < 2; r++) {
-        const l = new THREE.Mesh(new THREE.CircleGeometry(0.28, 16), new THREE.MeshBasicMaterial({ color: 0x220000 }));
-        l.position.set(-3 + i * 1.5, 6.5 - r * 0.6, 0.76); gantry.add(l);
-        lamps.push(l);
-      }
-      this.lights.push(lamps);
-    }
-    this.place(gantry, this.startS + 6, 0, 0, 0);
-
-    // position tower
-    const tower = new THREE.Group();
-    const tb = new THREE.Mesh(new THREE.BoxGeometry(3, 26, 3), darkMat);
-    tb.position.y = 13; tower.add(tb);
-    const tsign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 20), new THREE.MeshStandardMaterial({ map: TX.liveryText('1 2 3', '#111', '#fff', 64, 512, 40) }));
-    tsign.position.set(0, 14, 1.55); tower.add(tsign);
-    this.place(tower, this.startS + 120, -this.limL[this.idx(this.startS + 120)] - 2, 0, Math.PI / 2);
-
-    // distance boards before heavy braking zones
-    const boards = [150, 100, 50].map((n) => new THREE.MeshStandardMaterial({ map: TX.distanceBoard(n), roughness: 0.6 }));
-    const N = this.N;
-    for (let i = 0; i < N; i++) {
-      const prev = (i - 1 + N) % N;
-      if (this.brakeZone[i] && !this.brakeZone[prev]) {
-        // find how much speed is lost
-        let j = i; while (this.brakeZone[j % N]) j++;
-        const drop = this.vProf[i] - this.vProf[j % N];
-        if (drop < 22) continue;
-        const sStart = i * this.ds;
-        for (let b = 0; b < 3; b++) {
-          const s = sStart + 30 + b * 50;
-          const side = this.k[(j) % N] > 0 ? -1 : 1; // outside of the corner
-          const lat = side > 0 ? this.limR[this.idx(s)] - 1.5 : -this.limL[this.idx(s)] + 1.5;
-          const bd = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), boards[b]);
-          const g = new THREE.Group(); bd.position.y = 1.9; g.add(bd);
-          const pole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.4, 0.12), greyMat);
-          pole.position.y = 0.7; g.add(pole);
-          this.place(g, s, lat, 0, 0);
-        }
-      }
-    }
-
-    // trees (instanced) outside the barriers
-    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.35, 3, 6);
-    const leafGeo = new THREE.IcosahedronGeometry(3.2, 1);
-    const pineGeo = new THREE.ConeGeometry(2.6, 8, 7);
-    const count = this.quality === 'low' ? 500 : this.quality === 'medium' ? 900 : 1400;
-    const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x4a3423 }), count);
-    const leaves = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: wet ? 0x2f4a2a : 0x3c5f2e, roughness: 0.9, flatShading: true }), count);
-    const pines = new THREE.InstancedMesh(pineGeo, new THREE.MeshStandardMaterial({ color: wet ? 0x22381f : 0x2c4a24, roughness: 0.9, flatShading: true }), count);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
-    let placed = 0, pc = 0, lc = 0;
-    let seed = 1234;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const tmp = {};
-    while (placed < count) {
-      const x = -900 + rnd() * 1900, z = -400 + rnd() * 1300;
-      this.locate(x, z, -1, tmp);
-      const lim = tmp.lat > 0 ? this.limR[tmp.i] : this.limL[tmp.i];
-      const d = Math.abs(tmp.lat);
-      if (d < lim + 14) { placed++; continue; }
-      if (this.inPitStraight(tmp.s) && d < 70) { placed++; continue; }
-      const s = 0.7 + rnd() * 0.8;
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6.28);
-      if (rnd() < 0.5) {
-        p.set(x, 1.5 * s, z); sc.set(s, s, s); m.compose(p, q, sc); trunks.setMatrixAt(lc, m);
-        p.set(x, 4.6 * s, z); sc.set(s, s * 0.9, s); m.compose(p, q, sc); leaves.setMatrixAt(lc, m); lc++;
-      } else {
-        p.set(x, 4 * s, z); sc.set(s, s, s); m.compose(p, q, sc); pines.setMatrixAt(pc, m); pc++;
-      }
-      placed++;
-    }
-    trunks.count = lc; leaves.count = lc; pines.count = pc;
-    this.group.add(trunks, leaves, pines);
-
-    // distant hills
-    const hillMat = new THREE.MeshStandardMaterial({ color: wet ? 0x56664f : 0x5d7a4a, roughness: 1, flatShading: true });
-    for (let i = 0; i < 26; i++) {
-      const a = (i / 26) * Math.PI * 2;
-      const r = 1700 + (i % 3) * 200;
-      const h = new THREE.Mesh(new THREE.ConeGeometry(260 + (i * 37) % 200, 120 + (i * 53) % 140, 7), hillMat);
-      h.position.set(100 + Math.cos(a) * r, 30, 360 + Math.sin(a) * r);
-      this.group.add(h);
-    }
-
-    // TV crane near the hairpin / T1 for flavour
-    const crane = new THREE.Group();
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 26), new THREE.MeshStandardMaterial({ color: 0xf2b705 }));
-    arm.position.set(0, 18, -8); arm.rotation.x = -0.5; crane.add(arm);
-    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.8, 14, 0.8), darkMat);
-    mast.position.y = 7; crane.add(mast);
-    this.place(crane, 1150, 45, 0, 0.5);
   }
 
   setStartLights(n, out) {

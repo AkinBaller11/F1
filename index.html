@@ -85,11 +85,11 @@
   <div class="menu-shade"></div>
   <header class="brand">
     <div class="mark"><i></i><i></i><i></i></div>
-    <div><h1>APEX GP <em>25</em></h1><p>Barcelona · Rennwochenende</p></div>
+    <div><h1>APEX GP <em>25</em></h1><p id="brand-sub">Barcelona · Rennwochenende</p></div>
   </header>
   <nav class="main-nav">
     <button data-action="start" class="primary"><span class="k">Schnelles Rennen</span><span class="d">Sofort losfahren mit deinen Einstellungen</span></button>
-    <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Fahrer, Runden, Wetter, KI, Fahrhilfen</span></button>
+    <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Strecke, Tageszeit, Runden, Wetter, Fahrer, KI</span></button>
     <button data-action="mp"><span class="k">Multiplayer</span><span class="d">Online gegen Freunde fahren</span></button>
     <button data-action="controls"><span class="k">Steuerung</span><span class="d">Profile, Fahrhilfen, Tasten belegen</span></button>
   </nav>
@@ -111,6 +111,10 @@
         <div id="driver-grid"></div>
       </div>
       <div class="col opts">
+        <h3>STRECKE</h3>
+        <div class="track-card"><canvas id="track-preview" width="360" height="170"></canvas><p id="track-info"></p></div>
+        <div class="opt" data-key="track" data-vals='["barcelona","monza","city"]' data-labels='["Barcelona","Monza","Neon City"]'><span>Strecke</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tod" data-vals='["morning","noon","evening","night"]' data-labels='["Morgen","Mittag","Abend","Nacht"]'><span>Tageszeit</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>RENNEN</h3>
         <div class="opt" data-key="laps" data-vals="[3,5,8,12]" data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry"]' data-labels='["Wechselhaft","Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -203,6 +207,8 @@
       <div id="lobby-players" class="lobby-players"></div>
       <div class="host-only" id="host-opts">
         <h3>EINSTELLUNGEN (DU BIST GASTGEBER)</h3>
+        <div class="opt" data-key="track" data-vals='["barcelona","monza","city"]' data-labels='["Barcelona","Monza","Neon City"]'><span>Strecke</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tod" data-vals='["morning","noon","evening","night"]' data-labels='["Morgen","Mittag","Abend","Nacht"]'><span>Tageszeit</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="laps" data-vals='[3,5,8,12]' data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry"]' data-labels='["Wechselhaft","Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="mpAI" data-vals='[0,4,8,12]' data-labels='["Keine KI","+4 KI","+8 KI","+12 KI"]'><span>KI-Gegner</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -229,7 +235,7 @@
 <!-- results -->
 <section class="screen panel-screen" id="results">
   <div class="panel">
-    <div class="panel-head"><span></span><h2>ERGEBNIS · GROSSER PREIS VON SPANIEN</h2><span></span></div>
+    <div class="panel-head"><span></span><h2 id="res-title">ERGEBNIS</h2><span></span></div>
     <div class="res-sum"><div><span>Position</span><b id="res-pos">P1</b></div><div><span>Schnellste Runde</span><b id="res-best">-</b></div><div><span>Streckenverstöße</span><b id="res-warn">0</b></div></div>
     <div class="tablewrap"><table class="res">
       <thead><tr><th>POS</th><th>FAHRER</th><th>TEAM</th><th>START</th><th>ZEIT</th><th>PKT</th></tr></thead>

@@ -366,3 +366,11 @@ body.touch-swap .tpedals { flex-direction: row-reverse; }
 @media (max-width: 820px) {
   .profiles, .ctrl-cols { grid-template-columns: 1fr; }
 }
+
+.track-card { background: rgba(255,255,255,.04); padding: 8px; margin-bottom: 4px; display: grid; gap: 4px; }
+.track-card canvas { width: 100%; max-width: 360px; height: auto; display: block; margin: 0 auto; }
+.track-card p { margin: 0; font-size: 12px; color: var(--muted); text-align: center; }
+
+.minimap { position: absolute; left: 1.4vw; top: calc(2vh + clamp(170px, 14vw, 215px)); width: clamp(110px, 9vw, 160px); height: auto; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+body.touch .minimap { left: calc(1.4vw + env(safe-area-inset-left, 0px)); }
+@media (max-height: 520px) { .minimap { top: 150px; width: 92px; } }

@@ -42,10 +42,11 @@ export class HUD {
       <div class="warn" id="h-warn"></div>
       <div class="startlights" id="h-lights">${'<div class="pod"><i></i><i></i></div>'.repeat(5)}</div>
       <div class="camhint" id="h-cam"></div>
+      <canvas class="minimap" id="h-map" width="220" height="220"></canvas>
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -107,9 +108,47 @@ export class HUD {
 
     this.lastRows -= dt;
     if (this.lastRows <= 0) { this.lastRows = 0.25; this.renderRows(race); this.renderWeather(race); }
+    this.mapT = (this.mapT || 0) - dt;
+    if (this.mapT <= 0) { this.mapT = 0.1; this.renderMap(race); }
 
     if (this.msgTimer > 0) { this.msgTimer -= dt; if (this.msgTimer <= 0) e['h-msg'].classList.remove('show'); }
     if (this.warnTimer > 0) { this.warnTimer -= dt; if (this.warnTimer <= 0) e['h-warn'].classList.remove('show'); }
+  }
+
+  // circuit outline for the minimap (world -> canvas transform, rotated so the map is roughly landscape)
+  setMap(tr) {
+    const pts = [];
+    for (let i = 0; i < tr.N; i += 6) pts.push([tr.px[i], tr.pz[i]]);
+    const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const c = this.el['h-map'], W = c.width, H = c.height, pad = 14;
+    const s = Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxZ - minZ));
+    const ox = (W - (maxX - minX) * s) / 2, oy = (H - (maxZ - minZ) * s) / 2;
+    this.map = { pts, f: (x, z) => [ox + (x - minX) * s, oy + (z - minZ) * s], start: [tr.posAt(tr.startS, 0)] };
+    c.style.aspectRatio = '1';
+  }
+
+  renderMap(race) {
+    if (!this.map) return;
+    const c = this.el['h-map'], g = c.getContext('2d'), M = this.map;
+    g.clearRect(0, 0, c.width, c.height);
+    g.lineJoin = 'round';
+    g.beginPath();
+    M.pts.forEach(([x, z], i) => { const [a, b] = M.f(x, z); i ? g.lineTo(a, b) : g.moveTo(a, b); });
+    g.closePath();
+    g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 9; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 4; g.stroke();
+    const [sx, sz] = M.start[0];
+    const [a0, b0] = M.f(sx, sz); g.fillStyle = '#e10600'; g.fillRect(a0 - 3, b0 - 3, 6, 6);
+    const order = race.order || [];
+    for (let k = order.length - 1; k >= 0; k--) {
+      const car = order[k];
+      if (car.gone) continue;
+      const [x, y] = M.f(car.obj.x, car.obj.z);
+      g.beginPath(); g.arc(x, y, car.isPlayer ? 6 : 4.2, 0, 7);
+      g.fillStyle = hex(car.team.body === 0xf0f0f0 || car.team.body === 0x161616 ? car.team.accent : car.team.body); g.fill();
+      g.lineWidth = car.isPlayer ? 2.5 : 1.2; g.strokeStyle = car.isPlayer ? '#fff' : 'rgba(0,0,0,.7)'; g.stroke();
+    }
   }
 
   renderWeather(race) {

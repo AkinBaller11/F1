@@ -1,6 +1,6 @@
 # Apex GP 25
 
-Browser-Rennspiel im Stil von F1 25: Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, Barcelona-ähnliche Strecke, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
+Browser-Rennspiel im Stil von F1 25 mit drei Strecken (Barcelona, Monza, Neon City) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, Barcelona-ähnliche Strecke, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
 
 Läuft ohne Build-Schritt mit Three.js vom CDN:
 

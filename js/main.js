@@ -8,6 +8,12 @@ import { Weather } from './weather.js';
 import { Input, IS_TOUCH, ACTIONS, DEFAULT_BINDS, keyLabel } from './input.js';
 import { Net, rng, clean } from './net.js';
 import * as TX from './textures.js';
+import { TRACKS, TIMES, trackById } from './tracks.js';
+import { TOD, skyTexture, sunDir, sunSprite } from './tod.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const $ = (s) => document.querySelector(s);
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -17,7 +23,7 @@ const DRIVERS = [];
 TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d, number: t.numbers[i] })));
 
 const defaults = {
-  driver: 'HAMILTON', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
+  driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
   profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
 };
@@ -80,6 +86,26 @@ function buildMenu() {
   updateLivery();
 }
 
+// small outline of the selected circuit for the setup screen
+function drawTrackPreview() {
+  const cv = $('#track-preview');
+  if (!cv) return;
+  const def = trackById(settings.track);
+  const pts = [];
+  if (def.poly) for (const p of def.poly) pts.push(p); else for (const p of def.ctrl) pts.push(p);
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = cv.width, H = cv.height, s = Math.min((W - 30) / (maxX - minX), (H - 30) / (maxY - minY));
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, W, H);
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  const path = () => { g.beginPath(); pts.forEach((p, i) => { const x = 15 + (p[0] - minX) * s + (W - 30 - (maxX - minX) * s) / 2, y = 15 + (maxY - p[1]) * s; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); };
+  path(); g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 10; g.stroke();
+  path(); g.strokeStyle = '#fff'; g.lineWidth = 3.5; g.stroke();
+  const p0 = pts[1]; g.fillStyle = '#e10600'; g.fillRect(15 + (p0[0] - minX) * s + (W - 30 - (maxX - minX) * s) / 2 - 3, 15 + (maxY - p0[1]) * s - 7, 6, 14);
+  $('#track-info').textContent = `${def.gp} · ${def.info}`;
+}
+
 function renderOpts() {
   document.querySelectorAll('.opt').forEach((o) => {
     const vals = JSON.parse(o.dataset.vals), labels = JSON.parse(o.dataset.labels);
@@ -97,7 +123,8 @@ function applyTouchLayout() {
 }
 
 function onSettingChanged(key) {
-  if (['laps', 'weather', 'mpAI'].includes(key) && net.isHost) mpSendCfg();
+  if (['laps', 'weather', 'mpAI', 'track', 'tod'].includes(key) && net.isHost) mpSendCfg();
+  if (key === 'track' || key === 'tod') updateLivery();
 }
 
 // keyboard rebinding: two slots per action, a key belongs to one action only
@@ -122,6 +149,9 @@ function renderKeymap() {
 
 function updateLivery() {
   const d = DRIVERS.find((x) => x.name === settings.driver) || DRIVERS[0];
+  const t = trackById(settings.track);
+  $('#brand-sub').textContent = `${t.name} · ${(TIMES.find((x) => x.id === settings.tod) || TIMES[1]).name} · Rennwochenende`;
+  drawTrackPreview();
   $('#sel-driver').textContent = d.name;
   $('#sel-team').textContent = d.team.name;
   $('#sel-num').textContent = d.number;
@@ -150,7 +180,10 @@ function resize() {
   const q = settings.quality;
   renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
   renderer.setSize(w, h, false);
-  if (game) { game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); }
+  if (game) {
+    game.camera.aspect = w / h; game.camera.updateProjectionMatrix();
+    if (game.composer) { game.composer.setPixelRatio(renderer.getPixelRatio()); game.composer.setSize(w, h); }
+  }
 }
 addEventListener('resize', resize);
 
@@ -207,34 +240,57 @@ class Game {
     scene.fog = new THREE.FogExp2(0xc9dcec, 0.0006);
     renderer.shadowMap.enabled = opts.quality !== 'low';
 
-    // sky (dry dome + overcast dome cross-faded by the weather) + environment
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(false), side: THREE.BackSide, fog: false }));
-    const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
+    // time of day + circuit
+    const tod = (this.tod = TOD[opts.tod] || TOD.noon);
+    this.def = trackById(opts.track);
+    this.sunDir = sunDir(tod);
+    // sky (clear dome + overcast dome cross-faded by the weather) + environment
+    const skyTex = skyTexture(tod);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+    const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 48, 24), new THREE.MeshBasicMaterial({ map: skyTexture(tod, true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
     sky.add(skyWet);
     scene.add(sky); this.sky = sky; this.skyWet = skyWet;
+    this.sunSprite = sunSprite(tod);
+    if (this.sunSprite) scene.add(this.sunSprite);
     const pm = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
-    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: TX.sky(false), side: THREE.BackSide })));
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: 0x51703f }));
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: tod.lamps > 0.5 ? 0x141a14 : 0x51703f }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; envScene.add(ground);
     scene.environment = pm.fromScene(envScene, 0.04).texture;
 
-    const hemi = (this.hemi = new THREE.HemisphereLight(0xdbe8ff, 0x5a6b3c, 1.1));
+    const hemi = (this.hemi = new THREE.HemisphereLight(tod.hemiSky, tod.hemiGround, tod.hemiInt));
     scene.add(hemi);
-    const sun = (this.sun = new THREE.DirectionalLight(0xfff1dd, 2.6));
-    sun.position.set(80, 140, 60);
+    const sun = (this.sun = new THREE.DirectionalLight(tod.sun, tod.sunInt));
     sun.castShadow = opts.quality !== 'low';
     const sz = opts.quality === 'high' ? 2048 : 1024;
     sun.shadow.mapSize.set(sz, sz);
-    const sc = sun.shadow.camera; sc.left = -60; sc.right = 60; sc.top = 60; sc.bottom = -60; sc.near = 10; sc.far = 400;
+    const sc = sun.shadow.camera; sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 10; sc.far = 600;
     sun.shadow.bias = -0.0005;
     scene.add(sun, sun.target);
+    this.fogClear = new THREE.Color(tod.fog);
+    this.fogWet = new THREE.Color(tod.lamps > 0.5 ? 0x1a2030 : 0xa9afb5);
+    this.hemiClear = new THREE.Color(tod.hemiSky);
+    this.sunClear = new THREE.Color(tod.sun);
 
-    this.track = new Track(scene, { wetness: this.weather.wetness, quality: opts.quality });
+    // bloom makes lamps, neon and the sun glow (skipped on low quality)
+    this.composer = null;
+    if (opts.quality === 'high' || (opts.quality === 'medium' && tod.lamps > 0.5)) {
+      const c = new EffectComposer(renderer);
+      this.renderPass = new RenderPass(scene, null);
+      c.addPass(this.renderPass);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.32, 0.5, tod.lamps > 0.5 ? 0.62 : 0.86);
+      c.addPass(this.bloom);
+      c.addPass(new OutputPass());
+      this.composer = c;
+    }
+
+    this.track = new Track(scene, { def: this.def, tod, wetness: this.weather.wetness, quality: opts.quality });
     this.applyWeather(0, true);
 
     // camera
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 5000);
+    if (this.renderPass) this.renderPass.camera = this.camera;
     this.camMode = opts.camera;
 
     // player
@@ -318,6 +374,7 @@ class Game {
     this.lap = { start: 0, best: Infinity, sectorStart: 0, sector: 0, sectorBest: [Infinity, Infinity, Infinity], states: ['', '', ''], invalid: false, lapNo: 0 };
     this.trackWarnings = 0; this.offWasOn = false;
     this.hud = new HUD($('#hud'), opts.laps);
+    this.hud.setMap(this.track);
     this.hud.setLights(0, false);
     this.paused = false;
     this.applyCamera();
@@ -333,16 +390,18 @@ class Game {
     const W = this.weather, r = W.rain, w = W.wetness;
     const o = Math.min(1, r * 1.3 + w * 0.25);
     const L = (a, b, t = o) => a + (b - a) * t;
+    const T = this.tod;
     this.skyWet.material.opacity = o;
-    this.scene.fog.density = L(0.00055, 0.0042 * (0.45 + 0.55 * r));
-    this.scene.fog.color.setRGB(L(0.79, 0.66), L(0.86, 0.69), L(0.93, 0.71));
-    this.sun.intensity = L(2.6, 0.9);
-    this.sun.color.setRGB(1, L(0.945, 0.9), L(0.87, 0.92));
+    this.scene.fog.density = L(T.fogD, (T.lamps > 0.5 ? 0.0035 : 0.0042) * (0.45 + 0.55 * r));
+    this.scene.fog.color.copy(this.fogClear).lerp(this.fogWet, o);
+    this.sun.intensity = T.sunInt * (1 - 0.62 * o);
+    this.sun.color.copy(this.sunClear).lerp(new THREE.Color(0xdfe5ea), o * 0.7);
     this.sun.shadow.radius = L(2, 6);
-    this.hemi.intensity = L(1.1, 1.2);
-    this.hemi.color.setRGB(L(0.86, 0.77), L(0.91, 0.8), L(1, 0.83));
-    this.scene.environmentIntensity = L(0.9, 0.7);
-    renderer.toneMappingExposure = L(1.05, 0.95);
+    this.hemi.intensity = T.hemiInt * L(1, 1.05);
+    this.hemi.color.copy(this.hemiClear).lerp(new THREE.Color(T.lamps > 0.5 ? 0x3a4458 : 0xc5ccd4), o);
+    this.scene.environmentIntensity = T.env * L(1, 0.8);
+    renderer.toneMappingExposure = T.exposure * L(1, 0.92);
+    if (this.sunSprite) this.sunSprite.material.opacity = 1 - o;
     if (force) this.track.setWetness(w);
     audio.rainLevel = r * 0.14;
   }
@@ -743,7 +802,8 @@ class Game {
     }
     this.playerModel.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     // sun/shadow follow
-    this.sun.position.set(p.x + 80, 140, p.z + 60);
+    this.sun.position.set(p.x + this.sunDir.x * 300, Math.max(60, this.sunDir.y * 300), p.z + this.sunDir.z * 300);
+    if (this.sunSprite) { const cw = this.camWorld().position; this.sunSprite.position.set(cw.x + this.sunDir.x * 2500, cw.y + this.sunDir.y * 2500, cw.z + this.sunDir.z * 2500); }
     this.sun.target.position.set(p.x, 0, p.z);
     this.sky.position.set(p.x, 0, p.z);
 
@@ -765,7 +825,7 @@ class Game {
       renderer.setRenderTarget(null);
       this.cockpit.visible = true; this.playerModel.visible = true;
     }
-    renderer.render(this.scene, cam);
+    if (this.composer) this.composer.render(); else renderer.render(this.scene, cam);
 
     this.hud.update(dt, p, {
       playerLap: Math.max(1, this.lap.lapNo + 1), curLapTime: this.state === 'grid' ? 0 : this.raceTime - this.lap.start,
@@ -856,6 +916,7 @@ class Game {
       </tr>`).join('');
     const pos = rows.findIndex((r) => r.c === p) + 1;
     $('#res-pos').textContent = 'P' + pos;
+    $('#res-title').textContent = 'ERGEBNIS · ' + this.def.gp.toUpperCase();
     $('#res-best').textContent = fmtTime(this.lap.best);
     $('#res-warn').textContent = this.trackWarnings;
     showScreen('results');
@@ -870,6 +931,7 @@ class Game {
       if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { m.map && m.map.dispose(); m.dispose(); });
     });
     this.mirrorRT.dispose();
+    if (this.composer) this.composer.dispose();
     $('#hud').innerHTML = '';
   }
 }
@@ -900,7 +962,7 @@ function startRace(mpStart) {
   setTimeout(() => {
     if (game) { game.dispose(); game = null; }
     const opts = { ...settings };
-    if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, mp: { net, start: mpStart } });
+    if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } });
     game = new Game(opts);
     $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
     window.__game = game; window.__input = input;
@@ -998,7 +1060,9 @@ function renderLobby() {
     const h = net.hostPeer();
     const cfg = h && h.presence.cfg;
     const W = { dynamic: 'Wechselhaft', wet: 'Regen', dry: 'Trocken' };
-    $('#lobby-set').textContent = cfg ? `${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}` : '';
+    const tName = cfg && cfg.track ? trackById(cfg.track).name : '';
+    const tTime = cfg && cfg.tod ? (TIMES.find((x) => x.id === cfg.tod) || {}).name : '';
+    $('#lobby-set').textContent = cfg ? `${tName} · ${tTime} · ${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}` : '';
     // only in the lobby screen: a host missing for 6 s straight has left
     const inLobby = !game && document.querySelector('.screen.active')?.id === 'mp';
     if (h) net.hostSeenAt = performance.now();
@@ -1008,7 +1072,7 @@ function renderLobby() {
 net.on(renderLobby);
 
 function mpSendCfg() {
-  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI } }).catch(() => {});
+  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI, track: settings.track, tod: settings.tod } }).catch(() => {});
 }
 
 async function mpCreate() {
@@ -1044,7 +1108,7 @@ function mpStart() {
   const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 20 - humans.length));
   const start = {
     id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36),
-    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty,
+    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty, track: settings.track, tod: settings.tod,
     slots: [...humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv })), ...ai.map((d) => ({ a: d.name }))],
   };
   net.startRace(start);
