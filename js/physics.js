@@ -124,7 +124,8 @@ export class PlayerCar {
     // --- longitudinal
     let eng = engineAccel(v, power, mu);
     // low rpm in a tall gear (manual) -> weaker pull
-    if (this.gear >= 1) eng *= Math.max(0.35, Math.min(1, (this.rpm - 3000) / 6000));
+    // only a manual driver lugging a tall gear loses pull; launches in 1st are traction-limited, not rpm-limited
+    if (this.opts.manual && this.gear >= 2) eng *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
     if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
     let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
@@ -201,6 +202,7 @@ export class AICar {
     this.reaction = 0.15 + Math.random() * 0.35;
     this.laneTimer = 0; this.wheelRot = 0; this.yaw = 0; this.x = 0; this.z = 0;
     this.wobble = Math.random() * 100;
+    this.launch = 0.86 + Math.random() * 0.18; // good or bad getaway
   }
   get s() { return this.track.wrapS(this.dist + this.track.startS); }
 
@@ -249,7 +251,7 @@ export class AICar {
     if (this.laneTimer <= 0) this.latOff *= Math.exp(-dt * 0.6);
 
     const acc = Math.max(0.5, (CAR.power / (CAR.mass * Math.max(this.v, 4))) - (0.5 * 1.2 * CAR.cdA * this.v * this.v) / CAR.mass);
-    const traction = wetMu * (12 + 0.002 * this.v * this.v);
+    const traction = wetMu * (12 + 0.002 * this.v * this.v) * (raceTime < 4 ? this.launch : 1);
     if (this.v < target) this.v = Math.min(target, this.v + Math.min(acc, traction) * dt);
     else this.v = Math.max(target, this.v - brakeDecel(this.v, wetMu) * dt);
     this.v = Math.max(0, this.v);

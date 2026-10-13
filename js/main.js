@@ -816,12 +816,12 @@ class Game {
     // ---- start procedure
     if (this.state === 'grid') {
       this.stateT += dt;
-      const n = Math.min(5, Math.floor((this.stateT - 1.2) / 1.0) + 1);
-      if (this.stateT > 1.2) {
+      const n = Math.min(5, Math.floor((this.stateT - 0.8) / 1.0) + 1);
+      if (this.stateT > 0.8) {
         if (n !== this.lastLights) { this.lastLights = n; if (n > 0) audio.beep(520, 0.18); }
         this.hud.setLights(n, true); this.track.setStartLights(n, false);
       }
-      if (this.stateT > 1.2 + 5 + this.lightsHold) {
+      if (this.stateT > 0.8 + 5 + this.lightsHold) {
         this.state = 'race'; this.raceTime = 0;
         this.hud.setLights(0, true); this.track.setStartLights(0, true);
         audio.beep(1040, 0.4);
