@@ -33,7 +33,7 @@ export class HUD {
         <div class="gear" id="h-gear">N</div>
         <div class="dial spd">
           <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="trk"/><circle cx="50" cy="50" r="42" class="val" id="h-rpmring"/></svg>
-          <div class="lbl">KM/H</div><div class="num" id="h-speed">0</div><div class="rpm" id="h-rpm">4000</div>
+          <div class="lbl" id="h-unit">KM/H</div><div class="num" id="h-speed">0</div><div class="rpm" id="h-rpm">4000</div>
         </div>
         <div class="flags"><span id="h-drs" class="drs">DRS</span><span id="h-ot" class="ot">OVERTAKE</span></div>
         <div class="pedals"><i id="h-thr"></i><i id="h-brk"></i></div>
@@ -46,7 +46,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -85,7 +85,8 @@ export class HUD {
     // dash
     const g = car.gear;
     e['h-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
-    e['h-speed'].textContent = Math.round(car.speedKmh);
+    e['h-speed'].textContent = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
+    e['h-unit'].textContent = race.mph ? 'MPH' : 'KM/H';
     e['h-rpm'].textContent = Math.round(car.rpm);
     e['h-ers'].textContent = Math.round(car.ers * 100) + '%';
     e['h-ersring'].style.strokeDashoffset = this.C * (1 - car.ers);

@@ -15,6 +15,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; overflow: hidden; background: #000; color: var(--fg); font-family: var(--body); }
 button { font-family: inherit; color: inherit; cursor: pointer; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
@@ -155,7 +156,9 @@ body.steer-buttons #tz-steer, body.steer-tilt #tz-steer { display: none; }
 #tc-brake { width: 86px; height: 86px; font-size: 12px; border-radius: 18px; }
 #tc-gas { width: 100px; height: 124px; font-size: 15px; border-radius: 20px; background: rgba(25,214,91,.22); }
 #tc-gas.on { background: rgba(25,214,91,.7); }
-#tc-pause { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: 44px; height: 44px; font-size: 13px; }
+#touch .tc-top { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; gap: 10px; pointer-events: none; }
+#touch .tc-top button { width: 44px; height: 44px; padding: 10px; display: grid; place-items: center; }
+#touch .tc-top svg { width: 100%; height: 100%; }
 body.touch.ingame .camhint { bottom: auto; top: 64px; right: 50%; transform: translateX(50%); }
 body.touch.ingame .startlights { top: 64px; }
 
@@ -374,3 +377,36 @@ body.touch-swap .tpedals { flex-direction: row-reverse; }
 .minimap { position: absolute; left: 1.4vw; top: calc(2vh + clamp(170px, 14vw, 215px)); width: clamp(110px, 9vw, 160px); height: auto; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
 body.touch .minimap { left: calc(1.4vw + env(safe-area-inset-left, 0px)); }
 @media (max-height: 520px) { .minimap { top: 150px; width: 92px; } }
+
+/* ---------------- HUD visibility & scale ---------------- */
+.tower { transform-origin: top left; } .posbox { transform-origin: top right; }
+#hud .tower, #hud .posbox, #hud .minimap { scale: var(--hud-scale, 1); }
+#hud .minimap { transform-origin: top left; }
+#hud .dash { scale: var(--hud-scale, 1); transform-origin: bottom center; }
+body.hide-tower .tower, body.hide-timing .posbox, body.hide-weather .wx, body.hide-map .minimap,
+body.hide-dash .dash, body.hide-msg .msg, body.hide-msg .warn, body.hide-msg .camhint { display: none !important; }
+#touch button, #wheelpad { opacity: var(--touch-opacity, .85); }
+
+/* ---------------- helmet visor + speed vignette ---------------- */
+#visor, #speedfx { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+#visor { display: none; }
+body.cam-helmet.ingame #visor { display: block;
+  background:
+    radial-gradient(ellipse 78% 64% at 50% 58%, rgba(0,0,0,0) 72%, rgba(8,9,12,.75) 86%, #050608 94%),
+    linear-gradient(180deg, #050608 0, #050608 5%, rgba(5,6,8,.0) 15%);
+}
+body.cam-helmet.ingame #visor::after { content: ''; position: absolute; inset: 0; background: linear-gradient(170deg, rgba(255,255,255,.07), rgba(255,255,255,0) 30%), rgba(40,60,90,.06); }
+#speedfx { opacity: 0; background: radial-gradient(ellipse 70% 62% at 50% 52%, rgba(0,0,0,0) 58%, rgba(0,0,0,.65) 100%); transition: opacity .2s; }
+body:not(.ingame) #speedfx { display: none; }
+
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); z-index: 60; background: rgba(16,18,30,.95); border-left: 4px solid var(--yellow); padding: 10px 16px; max-width: min(560px, calc(100vw - 32px)); font-weight: 600; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------------- settings screen ---------------- */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+.tab { background: rgba(255,255,255,.05); border: 0; padding: 10px 18px; font-weight: 900; font-style: italic; letter-spacing: .04em; text-transform: uppercase; font-size: 15px; clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.tab.sel { background: var(--red); }
+.pane { display: grid; gap: 4px; max-width: 760px; }
+.set-hint { margin: -2px 0 6px 12px; font-size: 12px; color: var(--muted); }
+.set-range { grid-template-columns: 1fr minmax(140px, 1.3fr) 56px; }
+.set-note { color: var(--muted); font-size: 12px; margin-top: 16px; }

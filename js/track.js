@@ -50,6 +50,7 @@ export class Track {
     this.tod = opts.tod;
     this.wetness = opts.wetness ?? 0;
     this.quality = opts.quality || 'high';
+    this.trees = opts.trees || this.quality;
     this.mu = 1 - 0.28 * this.wetness;
     this.wet = false; // materials are built dry, then tinted by setWetness()
     this.buildCentreLine();

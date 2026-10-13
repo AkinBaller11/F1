@@ -398,7 +398,7 @@ export function buildScenery(tr) {
 
 // ------------------------------------------------------------------ park / forest
 function buildNature(tr, df, height, lakeAt, R) {
-  const G = tr.group, q = tr.quality, forest = tr.style === 'forest';
+  const G = tr.group, q = tr.trees || tr.quality, forest = tr.style === 'forest';
   const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : 2400) * (forest ? 1.5 : 1));
   const trunkGeo = new THREE.CylinderGeometry(0.25, 0.38, 3.4, 6);
   const leafGeo = new THREE.IcosahedronGeometry(3.2, 1);

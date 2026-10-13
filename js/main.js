@@ -26,7 +26,66 @@ const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
   profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
+  // graphics
+  renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
+  // camera
+  fov: 72, dynFov: true, headMove: 70, shake: 60, mirrors: true, hands: true, speedFx: true,
+  // display
+  hudTower: true, hudTiming: true, hudWeather: true, hudMap: true, hudDash: true, hudMsg: true, droplets: true, hudScale: 100, units: 'kmh', hudMode: 'full',
+  // audio
+  volMaster: 80, volEngine: 80, volFx: 80, volAmb: 70,
+  // touch
+  touchOpacity: 85, vibrate: true,
 };
+
+// settings screen definition: tab, key, label, options or range; `next` = applies from the next race
+const ONOFF = { vals: [true, false], labels: ['An', 'Aus'] };
+const SETTINGS = [
+  { tab: 'Grafik', items: [
+    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['high', 'medium', 'low'], labels: ['Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Setzt Auflösung, Schatten und Details auf einmal.' },
+    { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
+    { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
+    { key: 'bloom', label: 'Glüheffekt', vals: ['auto', 'on', 'off'], labels: ['Automatisch', 'An', 'Aus'], next: true, hint: 'Leuchtende Lampen, Neon und Sonne.' },
+    { key: 'trees', label: 'Bäume & Details', vals: ['auto', 'high', 'medium', 'low'], labels: ['Automatisch', 'Viele', 'Mittel', 'Wenige'], next: true },
+    { key: 'fpsLimit', label: 'Bildrate begrenzen', vals: [0, 60, 30], labels: ['Unbegrenzt', '60 FPS', '30 FPS'], hint: '30 FPS schont den Akku.' },
+  ] },
+  { tab: 'Kamera', items: [
+    { key: 'camera', label: 'Start-Kamera', vals: ['helmet', 'cockpit', 'tcam', 'nose', 'wing', 'chase', 'far'], labels: ['Helm', 'Cockpit', 'T-Kamera', 'Nase', 'Flügel', 'Verfolger', 'Verfolger weit'] },
+    { key: 'fov', label: 'Sichtfeld (Cockpit & Helm)', range: [55, 95, 1], unit: '°' },
+    { key: 'dynFov', label: 'Sichtfeld wächst mit Tempo', ...ONOFF },
+    { key: 'headMove', label: 'Kopfbewegung (G-Kräfte)', range: [0, 100, 5], unit: '%' },
+    { key: 'shake', label: 'Kamera-Wackeln', range: [0, 100, 5], unit: '%' },
+    { key: 'speedFx', label: 'Tempo-Effekt am Bildrand', ...ONOFF },
+    { key: 'mirrors', label: 'Rückspiegel', ...ONOFF },
+    { key: 'hands', label: 'Hände am Lenkrad', ...ONOFF },
+  ] },
+  { tab: 'Anzeige', items: [
+    { key: 'hudMode', label: 'HUD', vals: ['full', 'minimal', 'off'], labels: ['Voll', 'Minimal', 'Aus'], hint: 'Schnell umschalten mit H oder dem Augen-Knopf.' },
+    { key: 'hudTower', label: 'Positionsliste', ...ONOFF },
+    { key: 'hudTiming', label: 'Position & Rundenzeit', ...ONOFF },
+    { key: 'hudWeather', label: 'Wettervorhersage', ...ONOFF },
+    { key: 'hudMap', label: 'Minikarte', ...ONOFF },
+    { key: 'hudDash', label: 'Tacho & Gang', ...ONOFF },
+    { key: 'hudMsg', label: 'Meldungen', ...ONOFF },
+    { key: 'line', label: 'Ideallinie', vals: ['corners', 'full', 'off'], labels: ['Nur Kurven', 'Voll', 'Aus'], next: true },
+    { key: 'droplets', label: 'Regentropfen auf dem Visier', ...ONOFF },
+    { key: 'units', label: 'Einheit', vals: ['kmh', 'mph'], labels: ['km/h', 'mph'] },
+    { key: 'hudScale', label: 'HUD-Größe', range: [70, 130, 5], unit: '%' },
+  ] },
+  { tab: 'Audio', items: [
+    { key: 'volMaster', label: 'Gesamt', range: [0, 100, 5], unit: '%' },
+    { key: 'volEngine', label: 'Motor', range: [0, 100, 5], unit: '%' },
+    { key: 'volFx', label: 'Effekte & Signale', range: [0, 100, 5], unit: '%' },
+    { key: 'volAmb', label: 'Umgebung (Wind, Regen)', range: [0, 100, 5], unit: '%' },
+  ] },
+  { tab: 'Touch', items: [
+    { key: 'touchSteer', label: 'Lenkung', vals: ['wheel', 'joystick', 'buttons', 'tilt'], labels: ['Lenkrad', 'Joystick', 'Tasten', 'Neigen'], next: true },
+    { key: 'wheelSize', label: 'Lenkrad-Größe', vals: ['s', 'm', 'l'], labels: ['Klein', 'Mittel', 'Groß'] },
+    { key: 'touchSide', label: 'Pedale', vals: ['right', 'left'], labels: ['Rechts', 'Links'] },
+    { key: 'touchOpacity', label: 'Deckkraft der Tasten', range: [30, 100, 5], unit: '%' },
+    { key: 'vibrate', label: 'Vibration (Android)', ...ONOFF, hint: 'Bei Kollisionen und auf Kerbs. iPhone unterstützt das im Browser nicht.' },
+  ] },
+];
 // assist profiles: one tap sets everything
 const PROFILES = {
   easy: { autoGas: true, brakeAssist: true, steerAssist: true, line: 'full', gearbox: 'auto' },
@@ -43,7 +102,96 @@ if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.tou
 document.body.classList.toggle('touch', IS_TOUCH);
 const save = () => { try { localStorage.setItem('apexgp25', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
+function renderSettingsScreen() {
+  const tabs = $('#set-tabs'), panes = $('#set-panes');
+  tabs.innerHTML = ''; panes.innerHTML = '';
+  let active = 0;
+  try { active = +(sessionStorage.getItem('apexgp25-tab') || 0); } catch (_) { /* ignore */ }
+  SETTINGS.forEach((sec, ti) => {
+    if (sec.tab === 'Touch' && !IS_TOUCH) return;
+    const b = document.createElement('button');
+    b.className = 'tab'; b.textContent = sec.tab; b.setAttribute('role', 'tab');
+    const pane = document.createElement('div'); pane.className = 'pane';
+    for (const it of sec.items) {
+      const row = document.createElement('div');
+      const name = it.label + (it.next ? ' ●' : '');
+      if (it.range) {
+        row.className = 'slider set-range';
+        row.innerHTML = `<span></span><input type="range" min="${it.range[0]}" max="${it.range[1]}" step="${it.range[2]}" id="set-${it.key}"><b></b>`;
+        row.querySelector('span').textContent = name;
+        const inp = row.querySelector('input'), out = row.querySelector('b');
+        inp.value = settings[it.key]; out.textContent = settings[it.key] + it.unit;
+        inp.addEventListener('input', () => { settings[it.key] = +inp.value; out.textContent = inp.value + it.unit; save(); applyLive(); });
+      } else {
+        row.className = 'opt';
+        row.dataset.key = it.key; row.dataset.vals = JSON.stringify(it.vals); row.dataset.labels = JSON.stringify(it.labels);
+        row.innerHTML = '<span></span><button class="l">‹</button><span class="val"></span><button class="r">›</button>';
+        row.querySelector('span').textContent = name;
+      }
+      pane.appendChild(row);
+      if (it.hint) { const h = document.createElement('p'); h.className = 'set-hint'; h.textContent = it.hint; pane.appendChild(h); }
+    }
+    const idx = panes.childElementCount;
+    b.addEventListener('click', () => {
+      tabs.querySelectorAll('.tab').forEach((x, i) => x.classList.toggle('sel', i === idx));
+      panes.querySelectorAll('.pane').forEach((x, i) => { x.hidden = i !== idx; });
+      try { sessionStorage.setItem('apexgp25-tab', idx); } catch (_) { /* ignore */ }
+    });
+    tabs.appendChild(b); panes.appendChild(pane);
+  });
+  const n = panes.childElementCount, sel = Math.min(active, n - 1);
+  tabs.querySelectorAll('.tab').forEach((x, i) => x.classList.toggle('sel', i === sel));
+  panes.querySelectorAll('.pane').forEach((x, i) => { x.hidden = i !== sel; });
+}
+
+// settings that take effect immediately (HUD, audio, camera, touch, resolution)
+function applyLive() {
+  const B = document.body.classList, S = settings, mode = S.hudMode;
+  B.toggle('hide-tower', !S.hudTower || mode !== 'full');
+  B.toggle('hide-timing', !S.hudTiming || mode === 'off');
+  B.toggle('hide-weather', !S.hudWeather || mode !== 'full');
+  B.toggle('hide-map', !S.hudMap || mode !== 'full');
+  B.toggle('hide-dash', !S.hudDash || mode === 'off');
+  B.toggle('hide-msg', !S.hudMsg || mode === 'off');
+  document.documentElement.style.setProperty('--hud-scale', S.hudScale / 100);
+  document.documentElement.style.setProperty('--touch-opacity', S.touchOpacity / 100);
+  audio.setVolumes({ master: S.volMaster, engine: S.volEngine, fx: S.volFx, amb: S.volAmb });
+  input.sens = S.steerSens / 100;
+  applyTouchLayout();
+  resize();
+  if (game) { game.applyCamera(true); game.updateMirrors(); }
+}
+
+function cycleHud() {
+  const order = ['full', 'minimal', 'off'];
+  settings.hudMode = order[(order.indexOf(settings.hudMode) + 1) % 3]; save(); renderOpts(); applyLive();
+  showToast({ full: 'HUD: Voll', minimal: 'HUD: Minimal', off: 'HUD: Aus' }[settings.hudMode], 1200);
+}
+
+let toastT = 0;
+function showToast(text, ms = 3500) {
+  const t = $('#toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// fullscreen: works on desktop, Android and iPad; iPhone Safari only via "Add to Home Screen"
+function fsSupported() { const el = document.documentElement; return !!(el.requestFullscreen || el.webkitRequestFullscreen) && (document.fullscreenEnabled || document.webkitFullscreenEnabled); }
+async function toggleFullscreen() {
+  const el = document.documentElement;
+  const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!fsSupported()) {
+    const ios = /iPhone|iPod/.test(navigator.userAgent);
+    showToast(ios ? 'Auf dem iPhone geht Vollbild über „Teilen → Zum Home-Bildschirm“. Dann startet das Spiel als Vollbild-App.' : 'Vollbild ist hier nicht verfügbar. Öffne das Spiel direkt im Browser.', 6000);
+    return;
+  }
+  try {
+    if (isFs) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else { await (el.requestFullscreen || el.webkitRequestFullscreen).call(el); try { await screen.orientation.lock('landscape'); } catch (_) { /* optional */ } }
+  } catch (_) { showToast('Vollbild wurde vom Browser blockiert. Öffne das Spiel direkt im Browser (nicht eingebettet).', 5000); }
+}
+
 function buildMenu() {
+  renderSettingsScreen();
   const grid = $('#driver-grid');
   grid.innerHTML = DRIVERS.map((d) => `
     <button class="drv${d.name === settings.driver ? ' sel' : ''}" data-name="${d.name}" style="--tc:${hex(d.team.body === 0xf0f0f0 || d.team.body === 0x161616 ? d.team.accent : d.team.body)}">
@@ -54,18 +202,7 @@ function buildMenu() {
     grid.querySelectorAll('.drv').forEach((x) => x.classList.toggle('sel', x === b));
     updateLivery();
   }));
-  // option selectors (the same key can appear on several screens)
-  document.querySelectorAll('.opt').forEach((o) => {
-    const key = o.dataset.key;
-    const vals = JSON.parse(o.dataset.vals);
-    const step = (d) => {
-      let i = vals.indexOf(settings[key]); i = (i + d + vals.length) % vals.length; settings[key] = vals[i];
-      if (PROFILE_KEYS.includes(key)) settings.profile = 'custom';
-      save(); renderOpts(); onSettingChanged(key);
-    };
-    o.querySelector('.l').addEventListener('click', () => step(-1));
-    o.querySelector('.r').addEventListener('click', () => step(1));
-  });
+  bindOpts();
   renderOpts();
   // profiles
   document.querySelectorAll('.prof').forEach((b) => b.addEventListener('click', () => {
@@ -80,6 +217,10 @@ function buildMenu() {
     save(); renderOpts(); renderKeymap();
   });
   renderKeymap();
+  $('#set-reset').addEventListener('click', () => {
+    for (const sec of SETTINGS) for (const it of sec.items) settings[it.key] = defaults[it.key];
+    save(); renderSettingsScreen(); bindOpts(); renderOpts(); applyLive();
+  });
   const diff = $('#difficulty');
   diff.value = settings.difficulty; $('#diff-val').textContent = settings.difficulty;
   diff.addEventListener('input', () => { settings.difficulty = +diff.value; $('#diff-val').textContent = diff.value; save(); });
@@ -106,6 +247,23 @@ function drawTrackPreview() {
   $('#track-info').textContent = `${def.gp} · ${def.info}`;
 }
 
+function bindOpts() {
+  // option selectors (the same key can appear on several screens); bind each element once
+  document.querySelectorAll('.opt').forEach((o) => {
+    if (o.dataset.bound) return;
+    o.dataset.bound = '1';
+    const key = o.dataset.key;
+    const vals = JSON.parse(o.dataset.vals);
+    const step = (d) => {
+      let i = vals.indexOf(settings[key]); i = (i + d + vals.length) % vals.length; settings[key] = vals[i];
+      if (PROFILE_KEYS.includes(key)) settings.profile = 'custom';
+      save(); renderOpts(); onSettingChanged(key);
+    };
+    o.querySelector('.l').addEventListener('click', () => step(-1));
+    o.querySelector('.r').addEventListener('click', () => step(1));
+  });
+}
+
 function renderOpts() {
   document.querySelectorAll('.opt').forEach((o) => {
     const vals = JSON.parse(o.dataset.vals), labels = JSON.parse(o.dataset.labels);
@@ -123,6 +281,7 @@ function applyTouchLayout() {
 }
 
 function onSettingChanged(key) {
+  applyLive();
   if (['laps', 'weather', 'mpAI', 'track', 'tod'].includes(key) && net.isHost) mpSendCfg();
   if (key === 'track' || key === 'tod') updateLivery();
 }
@@ -178,7 +337,7 @@ let game = null;
 function resize() {
   const w = innerWidth, h = innerHeight;
   const q = settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100);
   renderer.setSize(w, h, false);
   if (game) {
     game.camera.aspect = w / h; game.camera.updateProjectionMatrix();
@@ -189,7 +348,8 @@ addEventListener('resize', resize);
 
 // ------------------------------------------------------------------ cameras
 const CAMS = {
-  cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1 },
+  helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
+  cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
   tcam: { label: 'T-KAMERA', pos: [0, 1.3, 0.42], pitch: -0.06, fov: 70, shake: 0.8 },
   nose: { label: 'NASEN-KAMERA', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FLÜGEL-KAMERA', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
@@ -238,7 +398,7 @@ class Game {
     const wet = this.weather.wetness > 0.4; // tyre choice at the start
     this.startWet = wet;
     scene.fog = new THREE.FogExp2(0xc9dcec, 0.0006);
-    renderer.shadowMap.enabled = opts.quality !== 'low';
+    renderer.shadowMap.enabled = opts.quality !== 'low' && opts.shadows;
 
     // time of day + circuit
     const tod = (this.tod = TOD[opts.tod] || TOD.noon);
@@ -262,7 +422,7 @@ class Game {
     const hemi = (this.hemi = new THREE.HemisphereLight(tod.hemiSky, tod.hemiGround, tod.hemiInt));
     scene.add(hemi);
     const sun = (this.sun = new THREE.DirectionalLight(tod.sun, tod.sunInt));
-    sun.castShadow = opts.quality !== 'low';
+    sun.castShadow = opts.quality !== 'low' && opts.shadows;
     const sz = opts.quality === 'high' ? 2048 : 1024;
     sun.shadow.mapSize.set(sz, sz);
     const sc = sun.shadow.camera; sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 10; sc.far = 600;
@@ -275,7 +435,8 @@ class Game {
 
     // bloom makes lamps, neon and the sun glow (skipped on low quality)
     this.composer = null;
-    if (opts.quality === 'high' || (opts.quality === 'medium' && tod.lamps > 0.5)) {
+    const wantBloom = opts.bloom === 'on' || (opts.bloom !== 'off' && (opts.quality === 'high' || (opts.quality === 'medium' && tod.lamps > 0.5)));
+    if (wantBloom) {
       const c = new EffectComposer(renderer);
       this.renderPass = new RenderPass(scene, null);
       c.addPass(this.renderPass);
@@ -285,7 +446,7 @@ class Game {
       this.composer = c;
     }
 
-    this.track = new Track(scene, { def: this.def, tod, wetness: this.weather.wetness, quality: opts.quality });
+    this.track = new Track(scene, { def: this.def, tod, wetness: this.weather.wetness, quality: opts.quality, trees: opts.trees === 'auto' ? opts.quality : opts.trees });
     this.applyWeather(0, true);
 
     // camera
@@ -303,7 +464,7 @@ class Game {
     this.mirrorRT.texture.colorSpace = THREE.SRGBColorSpace;
     this.playerModel = buildCar(pd.team, wet, pd.number, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1 });
     this.playerBody.add(this.playerModel);
-    this.cockpit = buildCockpit(); this.playerBody.add(this.cockpit);
+    this.cockpit = buildCockpit(pd.team); this.playerBody.add(this.cockpit);
     this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 3500);
     this.rearCam.position.set(0, 0.95, 0.9); this.rearCam.rotation.y = Math.PI;
     this.playerBody.add(this.rearCam);
@@ -378,6 +539,7 @@ class Game {
     this.hud.setLights(0, false);
     this.paused = false;
     this.applyCamera();
+    this.updateMirrors();
     resize();
     audio.init();
     audio.resume();
@@ -460,15 +622,24 @@ class Game {
     this.lineMesh.geometry.attributes.color.needsUpdate = true;
   }
 
-  applyCamera() {
+  applyCamera(quiet = false) {
+    if (!CAMS[this.camMode]) this.camMode = 'cockpit';
     const m = this.camMode;
     const cam = this.camera;
-    const v = CAMS[m] || CAMS.cockpit;
-    this.cockpit.visible = m === 'cockpit';
-    this.playerModel.userData.helmet.visible = m !== 'cockpit';
-    cam.position.set(...v.pos); cam.rotation.set(v.pitch, 0, 0); cam.fov = v.fov;
+    const v = CAMS[m];
+    this.cockpit.visible = !!v.ego;
+    this.playerModel.userData.helmet.visible = !v.ego;
+    this.cockpit.userData.hands.visible = settings.hands;
+    document.body.classList.toggle('cam-helmet', m === 'helmet');
+    cam.position.set(...v.pos); cam.rotation.set(v.pitch, 0, 0);
+    this.baseFov = v.ego ? settings.fov - (m === 'helmet' ? 4 : 0) : v.fov;
+    cam.fov = this.baseFov;
     cam.updateProjectionMatrix();
-    this.hud.camHint(v.label);
+    if (!quiet) this.hud.camHint(v.label);
+  }
+
+  updateMirrors() {
+    for (const g of this.playerModel.userData.mirrors) { g.material.map = settings.mirrors ? this.mirrorRT.texture : null; g.material.color.setHex(settings.mirrors ? 0xffffff : 0x0b0d10); g.material.needsUpdate = true; }
   }
 
   cycleCamera(dir = 1) {
@@ -518,6 +689,7 @@ class Game {
     if (this.paused && !this.mp) { input.endFrame(); return; }
     if (input.act('cam')) this.cycleCamera();
     if (input.act('camPrev')) this.cycleCamera(-1);
+    if (input.act('hud')) cycleHud();
     this.lookBack = inp.look;
     if (input.act('mute')) { const m = audio.toggleMute(); this.hud.camHint(m ? 'TON AUS' : 'TON AN'); }
     if (input.act('reset') && this.state === 'race') this.resetCar();
@@ -760,18 +932,45 @@ class Game {
     this.roll = (this.roll || 0) + (clamp(p.yawRate * p.v * 0.0009, 0.03) - (this.roll || 0)) * Math.min(1, dt * 6);
     this.playerBody.rotation.set(this.pitch, 0, this.roll);
     const v = CAMS[this.camMode] || CAMS.cockpit;
-    const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * v.shake;
+    const shakeK = settings.shake / 60;
+    const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * v.shake * shakeK;
     const rx = () => (Math.random() - 0.5) * shake;
+    // ego cams: head reacts to g-forces (lean out of corners, nod under braking), looks into the apex
+    const hm = settings.headMove / 100, k = Math.min(1, dt * 7);
+    const latG = p.yawRate * p.v, lonG = (p.v - (this.prevV2 ?? p.v)) / Math.max(dt, 1e-3);
+    this.prevV2 = p.v;
+    const clampv = (x, a) => Math.max(-a, Math.min(a, x));
+    this.head = this.head || { x: 0, z: 0, roll: 0, pitch: 0 };
+    const H = this.head;
+    H.x += (clampv(-latG * 0.0011 * hm, 0.06) - H.x) * k;
+    H.roll += (clampv(-latG * 0.0016 * hm, 0.09) - H.roll) * k;
+    H.z += (clampv(-lonG * 0.0016 * hm, 0.05) - H.z) * k;
+    H.pitch += (clampv(lonG * 0.0011 * hm, 0.05) - H.pitch) * k;
     if (this.lookBack) {
       cam.position.set(0, 1.25, 0.6); cam.rotation.set(-0.08, Math.PI, 0);
     } else if (v.chase) {
       // chase cams swing out a little in corners
       cam.position.set(p.yawRate * -0.25, v.pos[1], v.pos[2]);
       cam.rotation.set(v.pitch, p.yawRate * 0.12, 0);
+    } else if (v.ego) {
+      const t = performance.now() / 1000;
+      const buzz = Math.min(1, p.v / 85) * 0.0009 * shakeK; // high-speed vibration
+      cam.position.set(v.pos[0] + H.x + rx() + Math.sin(t * 61) * buzz, v.pos[1] + rx() + Math.sin(t * 47) * buzz + p.bump * Math.sin(t * 38) * 0.004 * shakeK, v.pos[2] + H.z);
+      cam.rotation.set(v.pitch + H.pitch, -p.steer * 0.05 * hm, H.roll);
     } else {
       cam.position.set(v.pos[0] + rx(), v.pos[1] + rx(), v.pos[2]);
-      if (this.camMode === 'cockpit') cam.rotation.set(v.pitch + this.pitch * 0.5, -p.steer * 0.03, -this.roll * 0.6);
-      else cam.rotation.set(v.pitch, 0, 0);
+      cam.rotation.set(v.pitch, 0, 0);
+    }
+    // field of view widens with speed
+    const fovT = (this.baseFov || cam.fov) + (settings.dynFov && v.ego && !this.lookBack ? Math.min(1, Math.max(0, (p.v - 20) / 70)) * 8 : 0);
+    if (Math.abs(cam.fov - fovT) > 0.05) { cam.fov += (fovT - cam.fov) * Math.min(1, dt * 3); cam.updateProjectionMatrix(); }
+    // speed vignette
+    const sfx = settings.speedFx && v.ego && !this.lookBack ? Math.max(0, Math.min(1, (p.v - 45) / 45)) : 0;
+    if (Math.abs(sfx - (this.sfx || 0)) > 0.01) { this.sfx = sfx; $('#speedfx').style.opacity = (sfx * 0.6).toFixed(2); }
+    // vibration feedback on phones (Android)
+    if (IS_TOUCH && settings.vibrate && navigator.vibrate) {
+      this.vibT = (this.vibT || 0) - dt;
+      if (this.vibT <= 0 && (p.impact > 0.3 || (p.bump > 0.9 && p.v > 15))) { navigator.vibrate(p.impact > 0.3 ? 60 : 15); this.vibT = p.impact > 0.3 ? 0.5 : 0.25; }
     }
     // wheels
     const maxSteer = 0.42 / (1 + Math.abs(p.v) / 16);
@@ -808,17 +1007,17 @@ class Game {
     this.sky.position.set(p.x, 0, p.z);
 
     this.updateRacingLine();
-    this.weather.update(dt, this.camWorld(), p.v, this.others.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), this.camMode === 'cockpit');
-    if (this.camMode !== 'cockpit') this.weather.emitSpray(p, dt);
+    this.weather.update(dt, this.camWorld(), p.v, this.others.filter((a) => Math.hypot(a.x - p.x, a.z - p.z) < 160), !!(CAMS[this.camMode] || {}).ego && settings.droplets && !this.lookBack);
+    if (!(CAMS[this.camMode] || {}).ego) this.weather.emitSpray(p, dt);
 
     // steering wheel display
     this.displayT -= dt;
-    if (this.displayT <= 0 && this.camMode === 'cockpit') { this.displayT = 0.1; this.drawWheelDisplay(); }
+    if (this.displayT <= 0 && (CAMS[this.camMode] || {}).ego) { this.displayT = 0.1; this.drawWheelDisplay(); }
 
     // mirrors
     this.mirrorFrame = (this.mirrorFrame || 0) + 1;
     const every = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 2 : 3;
-    if (this.camMode === 'cockpit' && !this.lookBack && this.mirrorFrame % every === 0) {
+    if ((CAMS[this.camMode] || {}).ego && settings.mirrors && !this.lookBack && this.mirrorFrame % every === 0) {
       this.cockpit.visible = false; this.playerModel.visible = false;
       renderer.setRenderTarget(this.mirrorRT);
       renderer.render(this.scene, this.rearCam);
@@ -830,9 +1029,9 @@ class Game {
     this.hud.update(dt, p, {
       playerLap: Math.max(1, this.lap.lapNo + 1), curLapTime: this.state === 'grid' ? 0 : this.raceTime - this.lap.start,
       bestLap: this.lap.best, playerPos: this.playerPos || this.playerEntry.grid, total: this.cars.length,
-      order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather,
+      order: this.order || this.cars, gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather, mph: settings.units === 'mph',
     });
-    audio.update(p, this.others, this.camMode === 'cockpit');
+    audio.update(p, this.others, !!(CAMS[this.camMode] || {}).ego);
   }
 
   // on-screen touch wheel: rotation follows the car's steering, display mirrors the dash
@@ -852,7 +1051,8 @@ class Game {
     tw.t -= dt;
     if (tw.t > 0) return;
     tw.t = 0.06;
-    tw.speed.textContent = Math.round(p.speedKmh);
+    tw.speed.textContent = Math.round(settings.units === 'mph' ? p.speedKmh * 0.621371 : p.speedKmh);
+    tw.unit = tw.unit || $('#wheel-svg .wd-l'); tw.unit.textContent = settings.units === 'mph' ? 'MPH' : 'KM/H';
     tw.gear.textContent = p.gear <= 0 ? (p.v < -0.5 ? 'R' : 'N') : p.gear;
     tw.ers.textContent = Math.round(p.ers * 100) + '%';
     tw.pos.textContent = 'P' + (this.playerPos || '-');
@@ -940,6 +1140,7 @@ class Game {
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  if (settings.fpsLimit && now - last < 1000 / settings.fpsLimit - 2) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!game) return;
@@ -990,6 +1191,11 @@ document.addEventListener('click', (e) => {
   if (act === 'start') startRace();
   if (act === 'setup') showScreen('setup');
   if (act === 'controls') showScreen('controls');
+  if (act === 'settings') { renderOpts(); $('#pause').classList.remove('active'); showScreen('settings'); }
+  if (act === 'settings-back') {
+    if (game && !game.resultsShown) { showScreen('none'); if (game.paused) $('#pause').classList.add('active'); else game.togglePause(true); }
+    else showScreen('menu');
+  }
   if (act === 'menu') quitToMenu();
   if (act === 'resume') game && game.togglePause(false);
   if (act === 'restart') {
@@ -1150,19 +1356,9 @@ addEventListener('keydown', (e) => {
 
 buildMenu();
 resize();
-// fullscreen (not available on iPhone Safari; add to home screen instead)
-{
-  const fsBtn = $('#fs-btn');
-  const el = document.documentElement;
-  const req = el.requestFullscreen || el.webkitRequestFullscreen;
-  if (!req || !(document.fullscreenEnabled || document.webkitFullscreenEnabled)) fsBtn.hidden = true;
-  fsBtn.addEventListener('click', async () => {
-    try {
-      if (document.fullscreenElement || document.webkitFullscreenElement) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-      else { await req.call(el); try { await screen.orientation.lock('landscape'); } catch (_) { /* optional */ } }
-    } catch (_) { fsBtn.hidden = true; }
-  });
-}
+$('#fs-btn').addEventListener('click', toggleFullscreen);
+$('#tc-fs').addEventListener('click', (e) => { e.preventDefault(); toggleFullscreen(); });
+applyLive();
 showScreen('menu');
 // Menu backdrop: slowly orbiting camera around a car
 (function menuBackdrop() {

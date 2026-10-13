@@ -9,6 +9,10 @@ export class Audio {
     if (!AC) return;
     const ctx = (this.ctx = new AC());
     this.master = ctx.createGain(); this.master.gain.value = 0.5; this.master.connect(ctx.destination);
+    // separate buses so engine, effects and ambience have their own volume
+    this.engBus = ctx.createGain(); this.fxBus = ctx.createGain(); this.ambBus = ctx.createGain();
+    for (const b of [this.engBus, this.fxBus, this.ambBus]) b.connect(this.master);
+    if (this.vol) this.setVolumes(this.vol);
 
     // engine: two detuned saws + square sub through a resonant lowpass and soft clip
     this.engGain = ctx.createGain(); this.engGain.gain.value = 0;
@@ -25,12 +29,12 @@ export class Audio {
       this.oscs.push(o); return o;
     };
     this.o1 = mk('sawtooth', 0.35); this.o2 = mk('sawtooth', 0.25); this.o3 = mk('square', 0.18); this.o4 = mk('triangle', 0.3);
-    shaper.connect(this.engFilter); this.engFilter.connect(this.engGain); this.engGain.connect(this.master);
+    shaper.connect(this.engFilter); this.engFilter.connect(this.engGain); this.engGain.connect(this.engBus);
 
     // turbo / MGU-K whine
     this.whine = ctx.createOscillator(); this.whine.type = 'sine';
     this.whineGain = ctx.createGain(); this.whineGain.gain.value = 0;
-    this.whine.connect(this.whineGain); this.whineGain.connect(this.master); this.whine.start();
+    this.whine.connect(this.whineGain); this.whineGain.connect(this.engBus); this.whine.start();
 
     // noise buffer for rain / wind / gravel
     const len = ctx.sampleRate * 2;
@@ -41,7 +45,7 @@ export class Audio {
       const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
       const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = q;
       const g = ctx.createGain(); g.gain.value = 0;
-      src.connect(f); f.connect(g); g.connect(this.master); src.start();
+      src.connect(f); f.connect(g); g.connect(this.ambBus); src.start();
       return { g, f };
     };
     this.wind = noise('bandpass', 800, 0.6);
@@ -51,7 +55,17 @@ export class Audio {
     this.crowd = noise('bandpass', 1200, 0.4);
   }
   resume() { this.ctx && this.ctx.state === 'suspended' && this.ctx.resume(); }
-  setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.5; }
+  setMuted(m) { this.muted = m; this.applyMaster(); }
+  // volumes 0..100
+  setVolumes(v) {
+    this.vol = { ...v };
+    if (!this.ctx) return;
+    this.engBus.gain.value = (v.engine ?? 80) / 80;
+    this.fxBus.gain.value = (v.fx ?? 80) / 80;
+    this.ambBus.gain.value = (v.amb ?? 70) / 70;
+    this.applyMaster();
+  }
+  applyMaster() { if (this.master) this.master.gain.value = this.muted ? 0 : 0.5 * (((this.vol && this.vol.master) ?? 80) / 80); }
   toggleMute() { this.setMuted(!this.muted); return this.muted; }
 
   update(car, others, inCockpit) {
@@ -84,14 +98,14 @@ export class Audio {
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator(); o.type = 'square'; o.frequency.value = 90;
     const g = this.ctx.createGain(); g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.1);
+    o.connect(g); g.connect(this.fxBus); o.start(t); o.stop(t + 0.1);
   }
   beep(freq = 880, dur = 0.25) {
     if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
     const g = this.ctx.createGain(); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.02);
+    o.connect(g); g.connect(this.fxBus); o.start(t); o.stop(t + dur + 0.02);
   }
   crash(intensity) {
     if (!this.ctx || this.muted) return;
@@ -103,7 +117,7 @@ export class Audio {
     const src = this.ctx.createBufferSource(); src.buffer = buf;
     const g = this.ctx.createGain(); g.gain.value = 0.4 * intensity;
     const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
-    src.connect(f); f.connect(g); g.connect(this.master); src.start(t);
+    src.connect(f); f.connect(g); g.connect(this.fxBus); src.start(t);
   }
   stop() { if (this.ctx) { this.ctx.close(); this.ctx = null; } }
 }

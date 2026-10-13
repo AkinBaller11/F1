@@ -6,12 +6,12 @@ export const ACTIONS = [
   ['throttle', 'Gas'], ['brake', 'Bremse'], ['left', 'Links lenken'], ['right', 'Rechts lenken'],
   ['ers', 'ERS Overtake'], ['drs', 'DRS'], ['up', 'Hochschalten'], ['down', 'Runterschalten'],
   ['cam', 'Kamera weiter'], ['camPrev', 'Kamera zurück'], ['look', 'Nach hinten schauen'],
-  ['reset', 'Auto zurücksetzen'], ['pause', 'Pause'], ['mute', 'Ton an/aus'],
+  ['reset', 'Auto zurücksetzen'], ['pause', 'Pause'], ['mute', 'Ton an/aus'], ['hud', 'HUD umschalten'],
 ];
 export const DEFAULT_BINDS = {
   throttle: ['KeyW', 'ArrowUp'], brake: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   ers: ['Space'], drs: ['KeyF'], up: ['KeyE'], down: ['KeyQ'], cam: ['KeyC'], camPrev: ['KeyV'], look: ['KeyB'],
-  reset: ['KeyR'], pause: ['Escape', 'KeyP'], mute: ['KeyM'],
+  reset: ['KeyR'], pause: ['Escape', 'KeyP'], mute: ['KeyM'], hud: ['KeyH'],
 };
 export function keyLabel(code) {
   if (!code) return '—';
@@ -62,7 +62,7 @@ export class Input {
       el.addEventListener('lostpointercapture', off);
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     }
-    const tap = { 'tc-drs': 'drs', 'tc-cam': 'cam', 'tc-pause': 'pause' };
+    const tap = { 'tc-drs': 'drs', 'tc-cam': 'cam', 'tc-pause': 'pause', 'tc-camtop': 'cam', 'tc-hud': 'hud' };
     for (const [id, code] of Object.entries(tap)) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.pressed.add(code); });

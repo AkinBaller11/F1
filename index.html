@@ -19,6 +19,9 @@
 <body>
 <canvas id="game"></canvas>
 <canvas id="droplets"></canvas>
+<div id="visor" aria-hidden="true"></div>
+<div id="speedfx" aria-hidden="true"></div>
+<div id="toast" role="status"></div>
 <div id="hud"></div>
 
 <!-- touch controls -->
@@ -75,7 +78,12 @@
     <div class="tsmall"><button id="tc-drs">DRS</button><button id="tc-ers">ERS</button><button id="tc-look" aria-label="Nach hinten schauen">⟲</button><button id="tc-cam" aria-label="Kamera wechseln">CAM</button></div>
     <div class="tpedals"><button id="tc-brake">BREMSE</button><button id="tc-gas">GAS</button></div>
   </div>
-  <button id="tc-pause" aria-label="Pause">❚❚</button>
+  <div class="tc-top">
+    <button id="tc-camtop" aria-label="Kamera wechseln"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-2h6l2 2h3v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+    <button id="tc-hud" aria-label="Anzeige ein- oder ausblenden"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
+    <button id="tc-fs" aria-label="Vollbild"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+    <button id="tc-pause" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg></button>
+  </div>
 </div>
 <div id="rotate"><div><div class="phone"></div><p>Dreh dein Gerät ins Querformat</p></div></div>
 
@@ -92,6 +100,7 @@
     <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Strecke, Tageszeit, Runden, Wetter, Fahrer, KI</span></button>
     <button data-action="mp"><span class="k">Multiplayer</span><span class="d">Online gegen Freunde fahren</span></button>
     <button data-action="controls"><span class="k">Steuerung</span><span class="d">Profile, Fahrhilfen, Tasten belegen</span></button>
+    <button data-action="settings"><span class="k">Einstellungen</span><span class="d">Grafik, Kamera, Anzeige, Audio, Touch</span></button>
   </nav>
   <aside class="selected">
     <div class="lbl">DEIN FAHRER</div>
@@ -176,6 +185,16 @@
   </div>
 </section>
 
+<!-- settings -->
+<section class="screen panel-screen" id="settings">
+  <div class="panel">
+    <div class="panel-head"><button data-action="settings-back" class="back">‹ ZURÜCK</button><h2>EINSTELLUNGEN</h2><button class="back reset" id="set-reset">STANDARD</button></div>
+    <div class="tabs" id="set-tabs" role="tablist"></div>
+    <div id="set-panes"></div>
+    <p class="set-note">Mit ● markierte Einstellungen gelten ab dem nächsten Rennen, alle anderen sofort.</p>
+  </div>
+</section>
+
 <!-- multiplayer -->
 <section class="screen panel-screen" id="mp">
   <div class="panel">
@@ -229,6 +248,7 @@
   <h2>PAUSE</h2>
   <button data-action="resume" class="primary">Weiterfahren</button>
   <button data-action="restart">Rennen neu starten</button>
+  <button data-action="settings">Einstellungen</button>
   <button data-action="quit">Zum Hauptmenü</button>
 </div></div>
 

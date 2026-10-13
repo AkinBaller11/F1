@@ -557,7 +557,7 @@ function contactShadow() {
 }
 
 // First-person extras only shown in the cockpit view (steering wheel with display)
-export function buildCockpit() {
+export function buildCockpit(team) {
   const g = new THREE.Group();
   const mCarbon = sharedMats().carbon;
   const mPad = new THREE.MeshStandardMaterial({ color: 0x1d1d1d, roughness: 0.9 });
@@ -583,6 +583,27 @@ export function buildCockpit() {
   const revTex = new THREE.CanvasTexture(revCanvas);
   const rev = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.012), new THREE.MeshBasicMaterial({ map: revTex }));
   rev.position.set(0, 0.056, 0.01); sw.add(rev);
+  // driver's gloves on the grips
+  const hands = new THREE.Group();
+  const gloveMat = new THREE.MeshStandardMaterial({ color: 0x1c1d22, roughness: 0.75 });
+  const cuffMat = new THREE.MeshStandardMaterial({ color: team ? team.accent : 0xe10600, roughness: 0.5 });
+  for (const s of [-1, 1]) {
+    const hand = new THREE.Group();
+    const palm = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, 0.075, 4, 10), gloveMat);
+    palm.position.set(0, 0, 0.03); hand.add(palm);
+    const fingers = new THREE.Mesh(new THREE.CapsuleGeometry(0.026, 0.05, 4, 8), gloveMat);
+    fingers.rotation.z = Math.PI / 2; fingers.position.set(-s * 0.03, 0.02, -0.02); hand.add(fingers);
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.014, 0.04, 3, 6), gloveMat);
+    thumb.rotation.z = s * 0.9; thumb.position.set(-s * 0.035, 0.035, 0.035); hand.add(thumb);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.042, 0.05, 12), cuffMat);
+    cuff.position.set(s * 0.01, -0.07, 0.06); cuff.rotation.x = 0.5; hand.add(cuff);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.32, 10), new THREE.MeshStandardMaterial({ color: team ? team.body : 0xd40000, roughness: 0.6 }));
+    arm.position.set(s * 0.05, -0.2, 0.16); arm.rotation.x = 0.9; arm.rotation.z = -s * 0.25; hand.add(arm);
+    hand.position.set(s * 0.165, 0.005, 0.0);
+    hands.add(hand);
+  }
+  sw.add(hands);
+  g.userData.hands = hands;
   g.add(sw);
   g.userData.steering = sw;
   g.userData.display = { canvas: dispCanvas, tex: dispTex, rev: revCanvas, revTex };
