@@ -199,7 +199,7 @@ body.touch .pedals { display: none; }
 .screen.active { display: block; }
 #menu { background: #07080c; }
 #menu-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.menu-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,8,12,.96) 0%, rgba(7,8,12,.75) 38%, rgba(7,8,12,0) 70%), linear-gradient(0deg, rgba(7,8,12,.9), rgba(7,8,12,0) 30%); }
+.menu-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,8,12,.97) 0%, rgba(7,8,12,.85) 30%, rgba(7,8,12,.2) 52%, rgba(7,8,12,0) 64%), linear-gradient(0deg, rgba(7,8,12,.85), rgba(7,8,12,0) 28%); }
 .brand { position: absolute; left: max(16px, 6vw); top: calc(7vh + env(safe-area-inset-top, 0px)); display: flex; align-items: center; gap: 18px; }
 .mark { display: flex; gap: 4px; transform: skewX(-24deg); }
 .mark i { width: 12px; height: 46px; }
@@ -291,9 +291,9 @@ table.res { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 @media (max-height: 520px) and (orientation: landscape) {
   .brand { top: calc(14px + env(safe-area-inset-top, 0px)); left: calc(max(16px, 5vw) + env(safe-area-inset-left, 0px)); }
   .brand h1 { font-size: 34px; } .mark i { height: 30px; width: 8px; } .mark i:nth-child(3) { width: 20px; }
-  .main-nav { top: 92px; left: calc(max(16px, 5vw) + env(safe-area-inset-left, 0px)); width: min(380px, 48vw); gap: 6px; }
-  .main-nav button { padding: 9px 16px; }
-  .main-nav .k { font-size: 18px; } .main-nav .d { font-size: 11px; }
+  .main-nav { top: 88px; left: calc(max(16px, 5vw) + env(safe-area-inset-left, 0px)); width: min(330px, 40vw); gap: 5px; }
+  .main-nav button { padding: 8px 16px; }
+  .main-nav .k { font-size: 17px; } .main-nav .d { display: none; }
   .selected { bottom: 18px; right: calc(max(16px, 4vw) + env(safe-area-inset-right, 0px)); }
   .selected #sel-num { font-size: 44px; } .selected b { font-size: 22px; }
   .fs-btn { top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(max(16px, 4vw) + env(safe-area-inset-right, 0px)); }
@@ -410,3 +410,10 @@ body:not(.ingame) #speedfx { display: none; }
 .set-hint { margin: -2px 0 6px 12px; font-size: 12px; color: var(--muted); }
 .set-range { grid-template-columns: 1fr minmax(140px, 1.3fr) 56px; }
 .set-note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+
+/* portrait phones: keep the menu readable, car as a faint backdrop, fullscreen button out of the title */
+@media (max-aspect-ratio: 1/1) {
+  #menu-bg { opacity: .4; }
+  .fs-btn { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); right: 16px; }
+  .brand h1 { font-size: 34px; }
+}

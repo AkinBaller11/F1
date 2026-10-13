@@ -1367,9 +1367,16 @@ showScreen('menu');
   const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.4));
   const key = new THREE.DirectionalLight(0xffffff, 3); key.position.set(4, 6, 3); scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff3030, 4); rim.position.set(-5, 2, -4); scene.add(rim);
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(8, 48), new THREE.MeshStandardMaterial({ color: 0x15181f, roughness: 0.25, metalness: 0.6 }));
+  const rim = new THREE.DirectionalLight(0xff3030, 2.2); rim.position.set(-5, 3, -4); scene.add(rim);
+  // glossy floor that fades out softly instead of ending in a hard edge
+  const fc = document.createElement('canvas'); fc.width = fc.height = 256;
+  const fg = fc.getContext('2d');
+  const grd = fg.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grd.addColorStop(0, '#fff'); grd.addColorStop(0.45, '#bbb'); grd.addColorStop(1, '#000');
+  fg.fillStyle = grd; fg.fillRect(0, 0, 256, 256);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshStandardMaterial({ color: 0x15181f, roughness: 0.45, metalness: 0.5, transparent: true, alphaMap: new THREE.CanvasTexture(fc), depthWrite: false }));
   floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const spot = new THREE.SpotLight(0xffffff, 60, 30, 0.5, 0.6); spot.position.set(0, 10, 0); spot.target.position.set(0, 0, 0); scene.add(spot, spot.target);
   let car = null, carName = '';
   const c2 = $('#menu-bg');
   const r2 = new THREE.WebGLRenderer({ canvas: c2, antialias: true, alpha: false });
@@ -1386,9 +1393,16 @@ showScreen('menu');
       car = buildCar(d.team, false, d.number); scene.add(car); carName = settings.driver;
     }
     const w = c2.clientWidth, h = c2.clientHeight;
-    if (c2.width !== Math.floor(w * Math.min(devicePixelRatio, 2))) { r2.setPixelRatio(Math.min(devicePixelRatio, 2)); r2.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    if (c2.width !== Math.floor(w * Math.min(devicePixelRatio, 2)) || c2.height !== Math.floor(h * Math.min(devicePixelRatio, 2))) {
+      r2.setPixelRatio(Math.min(devicePixelRatio, 2)); r2.setSize(w, h, false); cam.aspect = w / h;
+      // the menu sits on the left: shift the car into the free space on the right (portrait: lower half)
+      const wide = w / h > 1.2;
+      cam.setViewOffset(w, h, wide ? -w * (w / h > 1.8 ? 0.24 : 0.25) : 0, wide ? 0 : -h * 0.22, w, h);
+      cam.updateProjectionMatrix();
+    }
     const a = t * 0.00015;
-    cam.position.set(Math.sin(a) * 9, 2.4, Math.cos(a) * 9);
+    const dist = w / h > 1.8 ? 10.5 : w / h > 1.2 ? 11.5 : 13;
+    cam.position.set(Math.sin(a) * dist, 2.4, Math.cos(a) * dist);
     cam.lookAt(0, 0.4, 0);
     r2.render(scene, cam);
   }
