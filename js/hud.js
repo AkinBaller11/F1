@@ -43,6 +43,7 @@ export class HUD {
       <div class="startlights" id="h-lights">${'<div class="pod"><i></i><i></i></div>'.repeat(5)}</div>
       <div class="camhint" id="h-cam"></div>
       <canvas class="minimap" id="h-map" width="220" height="220"></canvas>
+      <div class="pill" id="h-pill"><b id="pl-gear">N</b><span id="pl-speed">0</span><small id="pl-unit">km/h</small></div>
       <div class="onboard" id="h-onb">
         <div class="ob-id"><span class="ob-bar" id="ob-bar"></span><span class="ob-num" id="ob-num">44</span><span class="ob-drv"><b id="ob-drv">HAMILTON</b><small id="ob-team">FERRARI</small></span><span class="ob-pos" id="ob-pos">P8</span></div>
         <div class="ob-data">
@@ -59,7 +60,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -113,6 +114,12 @@ export class HUD {
     const flash = car.rpm > 12100 && (performance.now() / 70 | 0) % 2;
     this.revs.forEach((r, i) => { r.className = i < lit ? (flash ? 'f' : i < 5 ? 'g' : i < 10 ? 'r' : 'p') : ''; });
 
+    // clean pill (minimal HUD)
+    if (document.body.classList.contains('hud-minimal')) {
+      e['pl-gear'].textContent = g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g;
+      e['pl-speed'].textContent = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);
+      e['pl-unit'].textContent = race.mph ? 'mph' : 'km/h';
+    }
     // broadcast-style onboard graphic (T-cam)
     if (document.body.classList.contains('cam-tcam')) {
       const sp = Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh);

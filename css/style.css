@@ -455,3 +455,13 @@ body.hide-dash .onboard { display: none !important; }
 body.touch.cam-tcam .onboard { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
 body.touch.steer-wheel.cam-tcam .onboard { left: auto; right: calc(230px + env(safe-area-inset-right, 0px)); transform: none; }
 @media (max-height: 520px) { .onboard { scale: calc(var(--hud-scale, 1) * .78); } }
+
+/* ---------------- clean HUD pill ---------------- */
+.pill { display: none; position: absolute; left: 50%; bottom: calc(4vh + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); scale: var(--hud-scale, 1); transform-origin: bottom center;
+  align-items: baseline; gap: 14px; padding: 8px 26px 9px; border-radius: 999px; background: rgba(14,16,24,.72); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); font-variant-numeric: tabular-nums; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+body.hud-minimal.ingame .pill { display: flex; }
+body.hud-minimal.cam-tcam .pill { display: none; }
+.pill b { font: 900 26px/1 var(--display); color: var(--fg); min-width: .7em; text-align: center; }
+.pill span { font: 700 26px/1 var(--display); min-width: 2.2em; text-align: right; }
+.pill small { font-size: 13px; color: var(--muted); font-weight: 600; }
+body.touch.steer-wheel.hud-minimal .pill { left: auto; right: calc(230px + env(safe-area-inset-right, 0px)); transform: none; }

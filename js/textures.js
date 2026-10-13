@@ -30,7 +30,7 @@ export function asphalt(wet) {
   // aggregate: dense speckle in several sizes and tones
   for (let i = 0; i < 120000; i++) {
     const v = (wet ? 40 : 66) + r() * 58;
-    g.fillStyle = `rgba(${v},${v},${v + 3},${0.3 + r() * 0.45})`;
+    g.fillStyle = `rgba(${v},${v},${v + 3},${0.14 + r() * 0.26})`;
     const s = r() < 0.92 ? 1 + r() * 1.5 : 2 + r() * 2.5;
     g.fillRect(r() * S, r() * S, s, s);
   }
@@ -92,16 +92,19 @@ export function kerb() {
 export function grass() {
   const [c, g] = canvas(512, 512);
   const r = rand(3);
-  g.fillStyle = '#3f6b2a';
+  g.fillStyle = '#467531';
   g.fillRect(0, 0, 512, 512);
-  // mowing stripes
-  for (let i = 0; i < 8; i++) {
-    g.fillStyle = i % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
-    g.fillRect(0, i * 64, 512, 64);
+  // soft mottling + fine blades, low contrast for a clean lawn
+  for (let i = 0; i < 160; i++) {
+    const x = r() * 512, y = r() * 512, rad = 20 + r() * 60;
+    const gg = g.createRadialGradient(x, y, 0, x, y, rad);
+    const k = r() < 0.5 ? 'rgba(255,255,220,0.035)' : 'rgba(0,30,0,0.045)';
+    gg.addColorStop(0, k); gg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gg; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
-  for (let i = 0; i < 30000; i++) {
-    const gr = 80 + r() * 70;
-    g.fillStyle = `rgba(${gr * 0.45},${gr},${gr * 0.3},0.35)`;
+  for (let i = 0; i < 16000; i++) {
+    const gr = 90 + r() * 60;
+    g.fillStyle = `rgba(${gr * 0.5},${gr},${gr * 0.32},0.16)`;
     g.fillRect(r() * 512, r() * 512, 1, 2 + r() * 2);
   }
   return tex(c, 1, 1);
@@ -164,19 +167,21 @@ export function banner(i) {
 export const SPONSOR_COUNT = SPONSORS.length;
 
 export function crowd() {
-  const [c, g] = canvas(512, 256);
+  // tidy rows of coloured seats with spectators, muted so stands read clean from the track
+  const [c, g] = canvas(1024, 256);
   const r = rand(21);
-  g.fillStyle = '#2b2f36'; g.fillRect(0, 0, 512, 256);
-  const cols = ['#d4121a', '#f6c600', '#ffffff', '#ff8000', '#1e5bc6', '#222', '#0a7d3b', '#c9c9c9'];
+  g.fillStyle = '#2a2f38'; g.fillRect(0, 0, 1024, 256);
+  const seat = ['#2f5fa8', '#c23a3a', '#3a8a55', '#2f5fa8'];
+  const shirts = ['#d8d8d8', '#c43a3a', '#e0b13a', '#3a6bc4', '#2b2b2b', '#e07a2e', '#8a8f96'];
   for (let row = 0; row < 16; row++) {
-    g.fillStyle = 'rgba(255,255,255,0.06)';
-    g.fillRect(0, row * 16 + 14, 512, 2);
-    for (let x = 0; x < 512; x += 6) {
-      if (r() < 0.12) continue;
-      g.fillStyle = cols[(r() * cols.length) | 0];
-      g.fillRect(x + r() * 2, row * 16 + 4 + r() * 3, 4, 9);
-      g.fillStyle = '#e0b48f';
-      g.fillRect(x + 1 + r() * 2, row * 16 + 1 + r() * 2, 3, 3);
+    const y = row * 16;
+    g.fillStyle = seat[Math.floor(row / 4) % seat.length]; g.fillRect(0, y + 5, 1024, 9);
+    g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(0, y + 14, 1024, 2);
+    for (let x = 0; x < 1024; x += 8) {
+      if (r() < 0.25) continue; // empty seat
+      g.fillStyle = shirts[(r() * shirts.length) | 0];
+      g.fillRect(x + 1, y + 6, 6, 8);
+      g.fillStyle = '#d9b08c'; g.fillRect(x + 2, y + 2, 4, 4);
     }
   }
   return tex(c, 4, 1);

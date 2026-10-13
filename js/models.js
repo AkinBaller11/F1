@@ -206,6 +206,98 @@ const POD = [
 export const WHEELS = { front: { x: 0.8, z: -1.75, w: 0.305 }, rear: { x: 0.78, z: 1.85, w: 0.405 }, r: 0.36 };
 export const MIRROR = { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 };
 
+// 90s-style car: raised slender nose on pylons, no halo, tall airbox, compact sidepods, exposed rims
+const MONO_C = [
+  { z: -2.78, cy: 0.4, w: 0.055, ht: 0.04, hb: 0.04, n: 2.4 },
+  { z: -2.45, cy: 0.42, w: 0.1, ht: 0.065, hb: 0.06, n: 2.6 },
+  { z: -1.9, cy: 0.45, w: 0.15, ht: 0.095, hb: 0.11, n: 3 },
+  { z: -1.3, cy: 0.47, w: 0.21, ht: 0.125, hb: 0.18, n: 3.4 },
+  { z: -0.7, cy: 0.48, w: 0.27, ht: 0.165, hb: 0.27, n: 4 },
+  { z: -0.1, cy: 0.48, w: 0.31, ht: 0.21, hb: 0.3, n: 4.4 },
+  { z: 0.4, cy: 0.48, w: 0.32, ht: 0.21, hb: 0.3, n: 4.4 },
+];
+const COVER_C = [
+  { z: 0.26, cy: 0.74, w: 0.15, ht: 0.29, hb: 0.3, n: 2.8 },
+  { z: 0.6, cy: 0.67, w: 0.26, ht: 0.3, hb: 0.36, n: 3 },
+  { z: 1.2, cy: 0.55, w: 0.25, ht: 0.22, hb: 0.3, n: 3 },
+  { z: 1.8, cy: 0.45, w: 0.17, ht: 0.15, hb: 0.24, n: 2.8 },
+  { z: 2.35, cy: 0.37, w: 0.08, ht: 0.09, hb: 0.15, n: 2.5 },
+];
+const POD_C = [
+  { z: -0.45, cx: 0.56, cy: 0.36, w: 0.17, ht: 0.13, hb: 0.16, n: 6 },
+  { z: -0.2, cx: 0.58, cy: 0.36, w: 0.2, ht: 0.14, hb: 0.18, n: 5 },
+  { z: 0.6, cx: 0.55, cy: 0.33, w: 0.2, ht: 0.12, hb: 0.17, n: 4.5 },
+  { z: 1.3, cx: 0.42, cy: 0.27, w: 0.12, ht: 0.07, hb: 0.11, n: 3.5 },
+  { z: 1.7, cx: 0.3, cy: 0.24, w: 0.05, ht: 0.03, hb: 0.05, n: 3 },
+];
+export const SPECS = {
+  modern: { wheels: { front: { x: 0.8, z: -1.75, w: 0.305 }, rear: { x: 0.78, z: 1.85, w: 0.405 }, r: 0.36, rim: 0.235 }, mirror: { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 } },
+  classic: { wheels: { front: { x: 0.82, z: -1.7, w: 0.31 }, rear: { x: 0.79, z: 1.72, w: 0.43 }, r: 0.33, rim: 0.2 }, mirror: { x: 0.52, y: 0.66, z: -0.42, w: 0.15, h: 0.06 } },
+};
+
+let SHARED_C = null;
+function classicGeometry() {
+  if (SHARED_C) return SHARED_C;
+  const livery = [], carbon = [], accent = [], black = [];
+  const W = SPECS.classic.wheels, MI = SPECS.classic.mirror;
+  livery.push(loft(MONO_C, { capEnd: false }));
+  livery.push(loft(COVER_C, { capStart: true }));
+  livery.push(loft(POD_C, { capStart: true }), loft(POD_C, { capStart: true, mirrorX: true }));
+  for (const s of [1, -1]) {
+    const inlet = new THREE.CircleGeometry(1, 24); inlet.scale(0.15, 0.11, 1); inlet.rotateY(Math.PI);
+    black.push(at(inlet, s * 0.56, 0.36, -0.452));
+  }
+  // cockpit opening + padded rim + small windscreen
+  black.push(loft([
+    { z: -0.5, cy: 0.685, w: 0.08, ht: 0.012, hb: 0.012, n: 2 },
+    { z: -0.35, cy: 0.69, w: 0.23, ht: 0.012, hb: 0.012, n: 3 },
+    { z: 0.22, cy: 0.69, w: 0.25, ht: 0.012, hb: 0.012, n: 4 },
+    { z: 0.3, cy: 0.69, w: 0.18, ht: 0.012, hb: 0.012, n: 4 },
+  ], { seg: 24, sub: 4 }));
+  const screen = new THREE.SphereGeometry(1, 16, 6, Math.PI * 1.15, Math.PI * 0.7, Math.PI * 0.32, Math.PI * 0.18);
+  screen.scale(0.3, 0.32, 0.3); black.push(at(screen, 0, 0.62, -0.32));
+  // airbox intake
+  const ab = new THREE.CircleGeometry(1, 24); ab.scale(0.11, 0.11, 1); ab.rotateY(Math.PI);
+  black.push(at(ab, 0, 0.93, 0.255));
+  // floor, small diffuser
+  carbon.push(slab([[-0.28, -1.15], [-0.62, -0.8], [-0.7, -0.4], [-0.7, 1.3], [-0.5, 1.5], [-0.48, 2.2], [0.48, 2.2], [0.5, 1.5], [0.7, 1.3], [0.7, -0.4], [0.62, -0.8], [0.28, -1.15]], 0.025, 0.06));
+  const diff = new THREE.PlaneGeometry(0.9, 0.4, 1, 1); diff.rotateX(Math.PI / 2 - 0.25); carbon.push(at(diff, 0, 0.13, 2.05));
+  // front wing: flat mainplane + flap, square endplates, nose pylons
+  const fw = wing(0.32, 0.08, 0.05, 0.92, 0.05); fw.translate(0, 0.085, -2.92); carbon.push(fw, mirror(fw));
+  const ff = wing(0.16, 0.08, 0.08, 0.72, 0.45); ff.translate(0.2, 0.15, -2.68); accent.push(ff, mirror(ff));
+  for (const sd of [1, -1]) {
+    livery.push(solid(plate([[-2.95, 0.05], [-2.95, 0.3], [-2.55, 0.3], [-2.55, 0.05]], 0.016).translate(sd * 0.93, 0, 0), 0.5, 0.3));
+    carbon.push(plate([[-2.75, 0.1], [-2.6, 0.38], [-2.45, 0.38], [-2.55, 0.1]], 0.014).translate(sd * 0.07, 0, 0));
+  }
+  // rear wing: tall endplates, two elements, small lower wing
+  carbon.push(wing(0.28, 0.1, 0.07, 0.9, 0.18).translate(-0.45, 0.84, 2.35));
+  accent.push(wing(0.18, 0.1, 0.07, 0.88, 0.7).translate(-0.44, 0.97, 2.58));
+  carbon.push(wing(0.2, 0.1, 0.05, 0.8, 0.15).translate(-0.4, 0.42, 2.3));
+  for (const sd of [1, -1]) livery.push(solid(plate([[2.25, 0.3], [2.25, 1.12], [2.85, 1.12], [2.85, 0.3]], 0.018).translate(sd * 0.47, 0, 0), 0.5, 0.97));
+  carbon.push(at(new THREE.BoxGeometry(0.12, 0.12, 0.3), 0, 0.32, 2.48));
+  const exh = new THREE.CylinderGeometry(0.04, 0.045, 0.16, 14, 1, true); exh.rotateX(Math.PI / 2); const exh2 = exh.clone(); black.push(at(exh, 0.12, 0.42, 2.25), at(exh2, -0.12, 0.42, 2.25));
+  // suspension
+  for (const sd of [1, -1]) {
+    const fz = W.front.z, fx = W.front.x - 0.12, rz = W.rear.z, rx = W.rear.x - 0.18;
+    carbon.push(strut([sd * 0.18, 0.47, fz - 0.25], [sd * fx, 0.45, fz]), strut([sd * 0.18, 0.47, fz + 0.28], [sd * fx, 0.45, fz]));
+    carbon.push(strut([sd * 0.15, 0.3, fz - 0.3], [sd * fx, 0.22, fz]), strut([sd * 0.15, 0.3, fz + 0.3], [sd * fx, 0.22, fz]));
+    carbon.push(strut([sd * 0.16, 0.58, fz + 0.1], [sd * fx, 0.22, fz + 0.02], 0.03, 0.02));
+    carbon.push(strut([sd * 0.15, 0.36, rz - 0.3], [sd * rx, 0.44, rz]), strut([sd * 0.2, 0.38, rz + 0.22], [sd * rx, 0.44, rz]));
+    carbon.push(strut([sd * 0.18, 0.2, rz - 0.3], [sd * rx, 0.22, rz]), strut([sd * 0.22, 0.22, rz + 0.22], [sd * rx, 0.22, rz]));
+    carbon.push(at(new THREE.BoxGeometry(0.08, 0.26, 0.2), sd * (fx + 0.03), 0.33, fz));
+    carbon.push(at(new THREE.BoxGeometry(0.1, 0.3, 0.26), sd * (rx + 0.05), 0.33, rz));
+  }
+  // mirrors on the sidepod shoulders
+  for (const sd of [1, -1]) {
+    carbon.push(strut([sd * 0.42, 0.52, MI.z + 0.05], [sd * MI.x, MI.y - 0.03, MI.z + 0.04], 0.03, 0.012));
+    const h = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+    h.rotateX(-Math.PI / 2); h.scale(MI.w / 2 + 0.012, MI.h / 2 + 0.012, 0.08);
+    livery.push(solid(at(h, sd * MI.x, MI.y, MI.z + 0.002), 0.2, 0.3));
+  }
+  SHARED_C = { livery: merge(livery), carbon: merge(carbon), accent: merge(accent), black: merge(black) };
+  return SHARED_C;
+}
+
 let SHARED = null;
 function sharedGeometry() {
   if (SHARED) return SHARED;
@@ -339,8 +431,24 @@ function carbonTex() {
 
 // Livery painted in loft UV space: canvas x = u around the section (0 bottom, .25/.75 sides, .5 top),
 // canvas y = v along the car (0 nose -> 1 rear)
+// classic colour schemes (fictional, inspired by 80s/90s grids)
+export const RETRO = {
+  mcl: { body: 0xd50c1f, top: 0xf4f4f4, low: 0x1a1a1a, accent: 0xf4f4f4 },
+  fer: { body: 0xc8000b, top: 0xc8000b, low: 0x1a1a1a, accent: 0xffd200 },
+  rbr: { body: 0x1f4fbf, top: 0x1f4fbf, low: 0x0e1f52, accent: 0x2fbf4f },
+  mer: { body: 0xc7cbcf, top: 0xc7cbcf, low: 0x2a2d31, accent: 0x14b8a6 },
+  ast: { body: 0x0d4d2e, top: 0x0d4d2e, low: 0x072818, accent: 0xf2f2f2 },
+  alp: { body: 0xffd100, top: 0xffd100, low: 0x111111, accent: 0x111111 },
+  wil: { body: 0xf4f4f4, top: 0xf4f4f4, low: 0x0a2a6b, accent: 0xf5d000 },
+  rb: { body: 0x111111, top: 0x111111, low: 0x050505, accent: 0xd4a73a },
+  sau: { body: 0x1c4fa8, top: 0xf2f2f2, low: 0x12346f, accent: 0xf2f2f2 },
+  has: { body: 0xff7a00, top: 0xff7a00, low: 0x151515, accent: 0x151515 },
+};
+export function teamLook(team, retro) { return retro && RETRO[team.id] ? { ...team, ...RETRO[team.id], retro: true } : team; }
+
 function liveryTex(team) {
-  if (texCache['l' + team.id]) return texCache['l' + team.id];
+  const key = 'l' + team.id + (team.retro ? 'r' : '');
+  if (texCache[key]) return texCache[key];
   const W = 1024, H = 1024;
   const [c, g] = canvas(W, H);
   const R = (u0, u1, v0, v1, col) => { g.fillStyle = col; g.fillRect(u0 * W, v0 * H, (u1 - u0) * W, (v1 - v0) * H); };
@@ -349,7 +457,21 @@ function liveryTex(team) {
   const lower = (col) => { R(0, 0.17, 0, 1, col); R(0.83, 1, 0, 1, col); };
   const stripe = (u, w, v0, v1, col) => { R(u - w, u + w, v0, v1, col); R(1 - u - w, 1 - u + w, v0, v1, col); };
   const grad = (v0, v1, c0, c1, u0 = 0, u1 = 1) => { const gr = g.createLinearGradient(0, v0 * H, 0, v1 * H); gr.addColorStop(0, c0); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(u0 * W, v0 * H, (u1 - u0) * W, (v1 - v0) * H); };
-  switch (team.id) {
+  if (team.retro) {
+    const T = hex(team.top), L = hex(team.low);
+    switch (team.id) {
+      case 'mcl': R(0.28, 0.72, 0, 0.42, T); g.fillStyle = T; g.beginPath(); g.moveTo(0.28 * W, 0.42 * H); g.lineTo(0.5 * W, 0.6 * H); g.lineTo(0.72 * W, 0.42 * H); g.fill(); lower(L); break;
+      case 'fer': stripe(0.27, 0.012, 0.05, 0.95, A); R(0.4, 0.6, 0, 0.1, A); lower(L); break;
+      case 'rbr': stripe(0.26, 0.06, 0.2, 0.5, A); stripe(0.3, 0.025, 0.5, 0.9, '#ffd400'); R(0.42, 0.58, 0, 0.14, '#ffd400'); lower(L); break;
+      case 'mer': stripe(0.24, 0.006, 0.1, 0.95, A); lower(L); break;
+      case 'ast': R(0.47, 0.53, 0, 1, A); lower(L); break;
+      case 'alp': stripe(0.24, 0.03, 0.15, 0.95, '#111111'); stripe(0.3, 0.008, 0.15, 0.95, '#ffffff'); lower(L); break;
+      case 'wil': lower(L); stripe(0.2, 0.05, 0.05, 1, L); stripe(0.27, 0.02, 0.05, 1, A); R(0.4, 0.6, 0.0, 0.08, A); break;
+      case 'rb': stripe(0.26, 0.006, 0.05, 0.95, A); stripe(0.29, 0.003, 0.05, 0.95, A); R(0.47, 0.53, 0.05, 0.95, A); break;
+      case 'sau': R(0.3, 0.7, 0, 0.55, T); stripe(0.3, 0.01, 0, 0.55, '#d21f2b'); lower(L); break;
+      case 'has': lower(L); stripe(0.25, 0.015, 0.1, 0.95, '#ffffff'); break;
+    }
+  } else switch (team.id) {
     case 'mcl': lower('#1b1c1f'); stripe(0.21, 0.012, 0.25, 0.75, A); grad(0.55, 1, 'rgba(27,28,31,0)', '#1b1c1f', 0.17, 0.33); grad(0.55, 1, 'rgba(27,28,31,0)', '#1b1c1f', 0.67, 0.83); break;
     case 'fer': R(0.3, 0.7, 0, 0.5, '#f2f2f2'); stripe(0.3, 0.008, 0, 0.5, A); R(0.47, 0.53, 0.5, 1, '#f2f2f2'); lower('#1b1b1b'); break;
     case 'rbr': stripe(0.26, 0.05, 0.36, 0.48, '#d0021b'); stripe(0.26, 0.03, 0.3, 0.36, A); R(0.4, 0.6, 0.03, 0.12, '#d0021b'); lower('#0b1330'); break;
@@ -361,13 +483,17 @@ function liveryTex(team) {
     case 'sau': for (let i = 0; i < 6; i++) stripe(0.2 + i * 0.03, 0.006, 0.2 + i * 0.05, 0.75, A); R(0.44, 0.56, 0.0, 0.12, A); lower('#050505'); break;
     case 'has': lower('#1b1b1b'); stripe(0.22, 0.03, 0.1, 0.95, '#1b1b1b'); stripe(0.26, 0.01, 0.1, 0.95, A); R(0.44, 0.56, 0.0, 0.15, A); break;
   }
-  g.strokeStyle = 'rgba(0,0,0,0.22)'; g.lineWidth = 2;
-  for (const v of [0.24, 0.4, 0.58]) { g.beginPath(); g.moveTo(0, v * H); g.lineTo(W, v * H); g.stroke(); }
+  // baked shading: darker underside, soft highlight along the top = cleaner, more solid look
+  const ao = g.createLinearGradient(0, 0, W, 0);
+  ao.addColorStop(0, 'rgba(0,0,0,0.38)'); ao.addColorStop(0.2, 'rgba(0,0,0,0)'); ao.addColorStop(0.42, 'rgba(255,255,255,0)'); ao.addColorStop(0.5, 'rgba(255,255,255,0.07)'); ao.addColorStop(0.58, 'rgba(255,255,255,0)'); ao.addColorStop(0.8, 'rgba(0,0,0,0)'); ao.addColorStop(1, 'rgba(0,0,0,0.38)');
+  g.fillStyle = ao; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1.5;
+  for (const v of [0.24, 0.58]) { g.beginPath(); g.moveTo(0, v * H); g.lineTo(W, v * H); g.stroke(); }
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 16;
   t.wrapS = THREE.RepeatWrapping;
   t.flipY = false;
-  return (texCache['l' + team.id] = t);
+  return (texCache[key] = t);
 }
 
 function decalTex(text, color, opts = {}) {
@@ -416,10 +542,10 @@ function coverTex(accent) {
 
 // ------------------------------------------------------------------ wheels
 const tyreGeoCache = {};
-function tyreGeo(r, w) {
-  const k = r + '_' + w;
+function tyreGeo(r, w, rimR = 0.235) {
+  const k = r + '_' + w + '_' + rimR;
   if (tyreGeoCache[k]) return tyreGeoCache[k];
-  const rimR = 0.235, hw = w / 2;
+  const hw = w / 2;
   const prof = [[rimR, -hw * 0.92], [rimR + 0.02, -hw * 0.99], [r - 0.06, -hw * 1.02], [r - 0.025, -hw * 0.94], [r - 0.006, -hw * 0.78], [r, -hw * 0.5], [r, hw * 0.5], [r - 0.006, hw * 0.78], [r - 0.025, hw * 0.94], [r - 0.06, hw * 1.02], [rimR + 0.02, hw * 0.99], [rimR, hw * 0.92]];
   const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48);
   g.rotateZ(Math.PI / 2);
@@ -439,27 +565,51 @@ function compoundColor(wet, seed) {
   return ['#e8242b', '#f2c80f', '#f0f0f0'][seed % 3];
 }
 
-function buildWheel(r, w, wet, accent, seed) {
+function rimTex(accent) {
+  const key = 'rim' + accent;
+  if (texCache[key]) return texCache[key];
+  const [c, g] = canvas(256, 256);
+  g.fillStyle = '#0d0e10'; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
+  const gr = g.createRadialGradient(128, 128, 20, 128, 128, 124);
+  gr.addColorStop(0, '#d9dce0'); gr.addColorStop(0.75, '#8d9298'); gr.addColorStop(1, '#3c4045');
+  g.fillStyle = gr; g.beginPath(); g.arc(128, 128, 116, 0, 7); g.fill();
+  g.fillStyle = '#16181b';
+  for (let i = 0; i < 6; i++) { // windows between the spokes
+    g.save(); g.translate(128, 128); g.rotate((i / 6) * Math.PI * 2);
+    g.beginPath(); g.moveTo(14, -28); g.quadraticCurveTo(70, -58, 98, -28); g.lineTo(98, 28); g.quadraticCurveTo(70, 58, 14, 28); g.closePath(); g.fill(); g.restore();
+  }
+  g.strokeStyle = hex(accent); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 110, 0, 7); g.stroke();
+  g.fillStyle = '#c9c9c9'; g.beginPath(); g.arc(128, 128, 18, 0, 7); g.fill();
+  g.fillStyle = '#e10600'; g.beginPath(); g.arc(128, 128, 8, 0, 7); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return (texCache[key] = t);
+}
+
+function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false) {
   const m = sharedMats();
   const wheel = new THREE.Group();
-  const tyre = new THREE.Mesh(tyreGeo(r, w), m.rubber); tyre.castShadow = true;
+  const tyre = new THREE.Mesh(tyreGeo(r, w, rimR), m.rubber); tyre.castShadow = true;
   wheel.add(tyre);
   const sideMat = new THREE.MeshStandardMaterial({ map: tyreTex(compoundColor(wet, seed)), transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
-  const coverMat = new THREE.MeshStandardMaterial({ map: coverTex(accent), roughness: 0.4, metalness: 0.5 });
+  const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.4, metalness: classic ? 0.8 : 0.5 });
   for (const s of [1, -1]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.24, r - 0.004, 48), sideMat);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(rimR + 0.005, r - 0.004, 48), sideMat);
     ring.rotation.y = s * Math.PI / 2; ring.position.x = s * (w / 2 * 1.025);
     wheel.add(ring);
-    const cover = new THREE.Mesh(new THREE.CircleGeometry(0.236, 32), coverMat);
-    cover.rotation.y = s * Math.PI / 2; cover.position.x = s * (w / 2 * 0.9);
+    const cover = new THREE.Mesh(new THREE.CircleGeometry(rimR + 0.001, 32), coverMat);
+    cover.rotation.y = s * Math.PI / 2; cover.position.x = s * (w / 2 * (classic ? 0.75 : 0.9));
     wheel.add(cover);
   }
   return wheel;
 }
 
 // ------------------------------------------------------------------ car assembly
-export function buildCar(team, wet, number = 0, opts = {}) {
-  const geo = sharedGeometry();
+export function buildCar(team0, wet, number = 0, opts = {}) {
+  const classic = opts.style === 'classic';
+  const team = teamLook(team0, opts.retro);
+  const spec = classic ? SPECS.classic : SPECS.modern;
+  const WHEELS = spec.wheels, MIRROR = spec.mirror;
+  const geo = classic ? classicGeometry() : sharedGeometry();
   const m = sharedMats();
   const car = new THREE.Group();
   const liv = new THREE.MeshPhysicalMaterial({
@@ -495,10 +645,10 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   };
   const numFont = { w: 256, h: 128, font: 'italic 900 100px "Titillium Web", Arial' };
   if (number) {
-    const s = sectionAt(MONO, -2.0);
+    const s = sectionAt(classic ? MONO_C : MONO, -2.0);
     decal(decalTex(String(number), light ? '#111' : '#fff', numFont), 0.2, 0.1, 0, s.cy + s.ht + 0.004, -2.0, 0, -Math.PI / 2 + 0.17);
     for (const sd of [1, -1]) {
-      const c = sectionAt(COVER, 1.25);
+      const c = sectionAt(classic ? COVER_C : COVER, 1.25);
       decal(decalTex(String(number), '#fff', numFont), 0.22, 0.11, sd * (c.w + 0.006), c.cy + 0.06, 1.25, sd * Math.PI / 2);
     }
   }
@@ -506,11 +656,12 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   const spName = sponsors[team.id] || 'KRONOS';
   const sp = decalTex(spName, light ? '#111' : '#fff');
   for (const sd of [1, -1]) {
-    const p = sectionAt(POD, 0.15);
+    const p = sectionAt(classic ? POD_C : POD, 0.15);
     decal(sp, 0.62, 0.14, sd * (p.cx + p.w + 0.006), p.cy + 0.02, 0.15, sd * Math.PI / 2);
-    decal(decalTex(team.name.toUpperCase(), '#fff', { w: 512, h: 96, font: 'bold 60px Arial' }), 0.44, 0.08, sd * 0.527, 0.86, 2.62, sd * Math.PI / 2);
+    decal(decalTex(team.name.toUpperCase(), '#fff', { w: 512, h: 96, font: 'bold 60px Arial' }), 0.44, 0.08, sd * (classic ? 0.482 : 0.527), classic ? 0.9 : 0.86, classic ? 2.55 : 2.62, sd * Math.PI / 2);
   }
-  decal(sp, 0.32, 0.08, 0, 0.705, -0.85, 0, -Math.PI / 2 + 0.1);
+  if (!classic) decal(sp, 0.32, 0.08, 0, 0.705, -0.85, 0, -Math.PI / 2 + 0.1);
+  else { const nz = sectionAt(MONO_C, -1.2); decal(sp, 0.3, 0.075, 0, nz.cy + nz.ht + 0.004, -1.2, 0, -Math.PI / 2 + 0.06); }
   decal(decalTex(spName, '#fff'), 0.7, 0.16, 0, 0.88, 2.43, Math.PI, 0.12);
 
   // helmet: painted shell (team colours, stripes, number), dark visor, chin guard; pivots at the neck
@@ -540,7 +691,7 @@ export function buildCar(team, wet, number = 0, opts = {}) {
   for (const [ax, front] of [[WHEELS.front, true], [WHEELS.rear, false]]) {
     for (const s of [-1, 1]) {
       const pivot = new THREE.Group(); pivot.position.set(s * ax.x, WHEELS.r, ax.z);
-      const wh = buildWheel(WHEELS.r, ax.w, wet, team.accent, seed);
+      const wh = buildWheel(WHEELS.r, ax.w, wet, team.accent, seed, WHEELS.rim, classic);
       pivot.add(wh); car.add(pivot);
       wheels.push({ pivot, wheel: wh, front });
     }

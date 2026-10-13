@@ -27,7 +27,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
   profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
-  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
+  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, carStyle: 'modern', retro: false,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
   // camera
@@ -51,6 +51,10 @@ const SETTINGS = [
     { key: 'trees', label: 'Bäume & Details', vals: ['auto', 'ultra', 'high', 'medium', 'low'], labels: ['Automatisch', 'Sehr viele', 'Viele', 'Mittel', 'Wenige'], next: true },
     { key: 'fpsLimit', label: 'Bildrate begrenzen', vals: [0, 60, 30], labels: ['Unbegrenzt', '60 FPS', '30 FPS'], hint: '30 FPS schont den Akku.' },
   ] },
+  { tab: 'Fahrzeug', items: [
+    { key: 'carStyle', label: 'Fahrzeug', vals: ['modern', 'classic'], labels: ['Modern (2025)', 'Klassik (90er)'], next: true, hint: 'Klassik: hohe Nase, kein Halo, offene Felgen.' },
+    { key: 'retro', label: 'Lackierungen', vals: [false, true], labels: ['Aktuell', 'Retro'], next: true, hint: 'Retro: Farben im Stil der 80er und 90er.' },
+  ] },
   { tab: 'Kamera', items: [
     { key: 'camera', label: 'Start-Kamera', vals: ['helmet', 'cockpit', 'tcam', 'sidepod', 'nose', 'wing', 'rear', 'chase', 'far', 'heli', 'tv'], labels: ['Helm', 'Cockpit', 'T-Kamera', 'Seitenkasten', 'Nase', 'Frontflügel', 'Heck', 'Verfolger', 'Verfolger weit', 'Helikopter', 'TV-Kamera'] },
     { key: 'fov', label: 'Sichtfeld (Cockpit & Helm)', range: [55, 95, 1], unit: '°' },
@@ -62,7 +66,7 @@ const SETTINGS = [
     { key: 'hands', label: 'Hände am Lenkrad', ...ONOFF },
   ] },
   { tab: 'Anzeige', items: [
-    { key: 'hudMode', label: 'HUD', vals: ['full', 'minimal', 'off'], labels: ['Voll', 'Minimal', 'Aus'], hint: 'Schnell umschalten mit H oder dem Augen-Knopf.' },
+    { key: 'hudMode', label: 'HUD', vals: ['full', 'minimal', 'off'], labels: ['Voll', 'Clean', 'Aus'], hint: 'Clean: nur Position und eine schlichte Gang/Tempo-Anzeige. Umschalten mit H oder dem Augen-Knopf.' },
     { key: 'hudTower', label: 'Positionsliste', ...ONOFF },
     { key: 'hudTiming', label: 'Position & Rundenzeit', ...ONOFF },
     { key: 'hudWeather', label: 'Wettervorhersage', ...ONOFF },
@@ -154,7 +158,8 @@ function applyLive() {
   B.toggle('hide-timing', !S.hudTiming || mode === 'off');
   B.toggle('hide-weather', !S.hudWeather || mode !== 'full');
   B.toggle('hide-map', !S.hudMap || mode !== 'full');
-  B.toggle('hide-dash', !S.hudDash || mode === 'off');
+  B.toggle('hide-dash', !S.hudDash || mode !== 'full');
+  B.toggle('hud-minimal', mode === 'minimal');
   B.toggle('hide-msg', !S.hudMsg || mode === 'off');
   document.documentElement.style.setProperty('--hud-scale', S.hudScale / 100);
   document.documentElement.style.setProperty('--touch-opacity', S.touchOpacity / 100);
@@ -168,7 +173,7 @@ function applyLive() {
 function cycleHud() {
   const order = ['full', 'minimal', 'off'];
   settings.hudMode = order[(order.indexOf(settings.hudMode) + 1) % 3]; save(); renderOpts(); applyLive();
-  showToast({ full: 'HUD: Voll', minimal: 'HUD: Minimal', off: 'HUD: Aus' }[settings.hudMode], 1200);
+  showToast({ full: 'HUD: Voll', minimal: 'HUD: Clean', off: 'HUD: Aus' }[settings.hudMode], 1200);
 }
 
 let toastT = 0;
@@ -473,7 +478,7 @@ class Game {
       const c = new EffectComposer(renderer, rt);
       this.renderPass = new RenderPass(scene, null);
       c.addPass(this.renderPass);
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.32, 0.5, tod.lamps > 0.5 ? 0.62 : 0.86);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.22, 0.45, tod.lamps > 0.5 ? 0.62 : 0.96);
       c.addPass(this.bloom);
       c.addPass(new OutputPass());
       this.composer = c;
@@ -495,7 +500,7 @@ class Game {
     this.playerBody = new THREE.Group(); this.playerRoot.add(this.playerBody);
         this.mirrorRT = new THREE.WebGLRenderTarget(512, 160);
     this.mirrorRT.texture.colorSpace = THREE.SRGBColorSpace;
-    this.playerModel = buildCar(pd.team, wet, pd.number, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1 });
+    this.playerModel = buildCar(pd.team, wet, pd.number, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1, style: opts.carStyle, retro: opts.retro });
     this.playerBody.add(this.playerModel);
     this.cockpit = buildCockpit(pd.team); this.playerBody.add(this.cockpit);
     this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 3500);
@@ -538,7 +543,7 @@ class Game {
       } else if (it.kind === 'remote') {
         const rc = new RemoteCar(this.track);
         rc.set(...this.track.posAt(gs, lat), dist0, lat);
-        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1 });
+        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1, style: opts.carStyle, retro: opts.retro });
         scene.add(mesh);
         entry = { isPlayer: false, remote: true, peer: it.peer, team: d.team, name, number: d.number, obj: rc, mesh };
       } else {
@@ -547,7 +552,7 @@ class Game {
         ai.dist = dist0; ai.lat = lat; ai.latOff = lat - this.track.racingLat(gs);
         ai.net = it.kind === 'netai'; ai.slot = aiSlot++;
         ai.computePose();
-        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1 });
+        const mesh = buildCar(d.team, wet, d.number, { second: d.team.drivers.indexOf(d.name) === 1, style: opts.carStyle, retro: opts.retro });
         scene.add(mesh);
         entry = { isPlayer: false, team: d.team, name, number: d.number, obj: ai, mesh };
       }
@@ -1540,7 +1545,7 @@ showScreen('menu');
   const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.4));
   const key = new THREE.DirectionalLight(0xffffff, 3); key.position.set(4, 6, 3); scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff3030, 2.2); rim.position.set(-5, 3, -4); scene.add(rim);
+  const rim = new THREE.DirectionalLight(0xff4040, 1.3); rim.position.set(-5, 4, -4); scene.add(rim);
   // glossy floor that fades out softly instead of ending in a hard edge
   const fc = document.createElement('canvas'); fc.width = fc.height = 256;
   const fg = fc.getContext('2d');
@@ -1560,10 +1565,11 @@ showScreen('menu');
   function loop(t) {
     requestAnimationFrame(loop);
     if (game) return;
-    if (carName !== settings.driver) {
+    const want = settings.driver + settings.carStyle + settings.retro;
+    if (carName !== want) {
       if (car) scene.remove(car);
       const d = DRIVERS.find((x) => x.name === settings.driver) || DRIVERS[0];
-      car = buildCar(d.team, false, d.number); scene.add(car); carName = settings.driver;
+      car = buildCar(d.team, false, d.number, { style: settings.carStyle, retro: settings.retro }); scene.add(car); carName = want;
     }
     const w = c2.clientWidth, h = c2.clientHeight;
     if (c2.width !== Math.floor(w * Math.min(devicePixelRatio, 2)) || c2.height !== Math.floor(h * Math.min(devicePixelRatio, 2))) {

@@ -4,12 +4,12 @@ import * as THREE from 'three';
 export const TOD = {
   morning: {
     sunAz: 75, sunEl: 13, sun: 0xffd2a0, sunInt: 2.2, hemiSky: 0xcfdcf2, hemiGround: 0x55603f, hemiInt: 0.95,
-    fog: 0xdcd6cc, fogD: 0.0007, exposure: 1.0, env: 0.8, lamps: 0, shadow: 1,
+    fog: 0xdcd6cc, fogD: 0.00048, exposure: 1.03, env: 0.85, lamps: 0, shadow: 1,
     sky: ['#4f7fc4', '#9cb9dc', '#f2d4b4'], cloud: [255, 236, 220], clouds: 70, stars: 0, glow: '#ffd9a8',
   },
   noon: {
-    sunAz: 160, sunEl: 58, sun: 0xfff3e0, sunInt: 2.7, hemiSky: 0xdbe8ff, hemiGround: 0x5a6b3c, hemiInt: 1.1,
-    fog: 0xc9dcec, fogD: 0.00055, exposure: 1.05, env: 0.9, lamps: 0, shadow: 1,
+    sunAz: 160, sunEl: 58, sun: 0xfff5e6, sunInt: 3.0, hemiSky: 0xdbe8ff, hemiGround: 0x5a6b3c, hemiInt: 1.1,
+    fog: 0xcfe0ee, fogD: 0.00035, exposure: 1.08, env: 0.95, lamps: 0, shadow: 1,
     sky: ['#2f6cc4', '#7eaee6', '#d5e6f4'], cloud: [250, 250, 252], clouds: 60, stars: 0, glow: '#fffaf0',
   },
   evening: {

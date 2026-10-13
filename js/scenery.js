@@ -106,6 +106,40 @@ function skidTex() {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
+// painted tree impostors: crown built from many shaded leaf clusters, light from the top left
+function treeTexture(kind, R) {
+  const [c, g] = canvas(256, 320);
+  const W = 256, H = 320;
+  const trunkCol = '#5a4030';
+  if (kind !== 'bush') {
+    g.fillStyle = trunkCol;
+    g.beginPath(); g.moveTo(W / 2 - 7, H); g.lineTo(W / 2 - 4, H * 0.45); g.lineTo(W / 2 + 4, H * 0.45); g.lineTo(W / 2 + 7, H); g.fill();
+  }
+  const greens = kind === 'pine' ? [[34, 66, 34], [44, 82, 40], [58, 98, 48]] : [[52, 92, 38], [70, 112, 46], [92, 136, 58], [118, 160, 70]];
+  const blob = (x, y, rad, shade) => {
+    const [r0, g0, b0] = greens[Math.min(greens.length - 1, Math.max(0, shade))];
+    const gr = g.createRadialGradient(x - rad * 0.35, y - rad * 0.35, rad * 0.1, x, y, rad);
+    gr.addColorStop(0, `rgb(${r0 + 30},${g0 + 30},${b0 + 18})`); gr.addColorStop(0.7, `rgb(${r0},${g0},${b0})`); gr.addColorStop(1, `rgb(${r0 * 0.7 | 0},${g0 * 0.7 | 0},${b0 * 0.7 | 0})`);
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
+  };
+  if (kind === 'pine') {
+    for (let layer = 0; layer < 9; layer++) {
+      const y = H * 0.12 + layer * H * 0.085, half = 14 + layer * 11;
+      for (let k = 0; k < 10; k++) blob(W / 2 + (R() - 0.5) * half * 2, y + R() * 16, 9 + R() * 6, layer < 3 ? 2 : layer < 6 ? 1 : 0);
+    }
+  } else {
+    const cx = W / 2, cy = kind === 'bush' ? H * 0.68 : H * 0.36, rx = kind === 'bush' ? 110 : 100, ry = kind === 'bush' ? 90 : 105;
+    for (let k = 0; k < 170; k++) {
+      const a = R() * Math.PI * 2, d = Math.sqrt(R());
+      const x = cx + Math.cos(a) * rx * d, y = cy + Math.sin(a) * ry * d;
+      const shade = Math.round(3 - ((y - (cy - ry)) / (2 * ry)) * 2.5 - (x > cx ? 0.6 : 0) + (R() - 0.5));
+      blob(x, y, 14 + R() * 14, shade);
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
 // ------------------------------------------------------------------ main
 export function buildScenery(tr) {
   const G = tr.group, tod = tr.tod || {}, city = tr.style === 'city';
@@ -204,9 +238,9 @@ export function buildScenery(tr) {
   // catch fence
   {
     const [fc, fg] = canvas(64, 64);
-    fg.strokeStyle = 'rgba(40,40,40,0.55)'; fg.lineWidth = 2;
+    fg.strokeStyle = 'rgba(40,40,40,0.3)'; fg.lineWidth = 1.5;
     for (let i = 0; i < 64; i += 16) { fg.beginPath(); fg.moveTo(i, 0); fg.lineTo(i + 64, 64); fg.stroke(); fg.beginPath(); fg.moveTo(i + 64, 0); fg.lineTo(i, 64); fg.stroke(); }
-    fg.fillStyle = 'rgba(30,30,30,0.9)'; fg.fillRect(0, 0, 3, 64);
+    fg.fillStyle = 'rgba(30,30,30,0.7)'; fg.fillRect(0, 0, 2, 64);
     const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping;
     const fenceMat = new THREE.MeshBasicMaterial({ map: ft, transparent: true, side: THREE.DoubleSide, depthWrite: false, color: lampsOn > 0.5 ? 0x8890a0 : 0xffffff });
     const fh = city ? 4.2 : 3.2;
@@ -400,14 +434,19 @@ export function buildScenery(tr) {
 function buildNature(tr, df, height, lakeAt, R) {
   const G = tr.group, q = tr.trees || tr.quality, forest = tr.style === 'forest';
   const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 1.5 : 1));
-  const trunkGeo = new THREE.CylinderGeometry(0.25, 0.38, 3.4, 6);
-  const leafGeo = new THREE.IcosahedronGeometry(3.2, 1);
-  const pineGeo = new THREE.ConeGeometry(2.6, 9, 7);
-  const bushGeo = new THREE.IcosahedronGeometry(1.4, 0);
-  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x4a3423, roughness: 1 }), count);
-  const leaves = new THREE.InstancedMesh(leafGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), count);
-  const pines = new THREE.InstancedMesh(pineGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), count);
-  const bushes = new THREE.InstancedMesh(bushGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), Math.round(count / 2));
+  // trees as painted impostors: three crossed planes with a hand-drawn crown (much cleaner than low-poly blobs)
+  const treeGeo = (w, h) => {
+    const planes = [0, Math.PI / 3, (2 * Math.PI) / 3].map((a) => { const p = new THREE.PlaneGeometry(w, h); p.translate(0, h / 2, 0); p.rotateY(a); return p; });
+    const g = mergeGeometries(planes);
+    // normals pointing up-ish so the crowns are lit evenly from every side
+    const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, n.getX(i) * 0.3, 0.9, n.getZ(i) * 0.3);
+    return g;
+  };
+  const treeMat = (tex) => new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.95 });
+  const trunks = new THREE.InstancedMesh(treeGeo(9, 11), treeMat(treeTexture('leaf', R)), count);
+  const leaves = { setMatrixAt() {}, setColorAt() {} }; // (kept for the placement loop below)
+  const pines = new THREE.InstancedMesh(treeGeo(6.5, 13), treeMat(treeTexture('pine', R)), count);
+  const bushes = new THREE.InstancedMesh(treeGeo(3.2, 2.2), treeMat(treeTexture('bush', R)), Math.round(count / 2));
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Color(), Y = new THREE.Vector3(0, 1, 0);
   const greens = [0x3c5f2e, 0x4a6b30, 0x2f5228, 0x5b7a34, 0x6e7f3a];
   const pinesC = [0x2c4a24, 0x26401f, 0x34522a];
@@ -428,21 +467,21 @@ function buildNature(tr, df, height, lakeAt, R) {
     if (h > 160) continue;
     const s = 0.75 + R() * 0.9;
     Q.setFromAxisAngle(Y, R() * 6.28);
-    if (R() < (forest ? 0.55 : 0.6)) {
-      P.set(x, h + 1.7 * s, z); S.set(s, s, s); M.compose(P, Q, S); trunks.setMatrixAt(lc, M);
-      P.set(x, h + 5 * s, z); S.set(s * (0.9 + R() * 0.3), s * (0.8 + R() * 0.3), s * (0.9 + R() * 0.3)); M.compose(P, Q, S); leaves.setMatrixAt(lc, M);
-      leaves.setColorAt(lc, C.setHex(greens[(R() * greens.length) | 0])); lc++;
+    const tint = 0.82 + R() * 0.3;
+    if (R() < (forest ? 0.55 : 0.62)) {
+      P.set(x, h - 0.2, z); S.set(s, s * (0.85 + R() * 0.35), s); M.compose(P, Q, S); trunks.setMatrixAt(lc, M);
+      trunks.setColorAt(lc, C.setRGB(tint, tint * (0.95 + R() * 0.1), tint * 0.9)); lc++;
     } else {
-      P.set(x, h + 4.4 * s, z); S.set(s, s * (0.9 + R() * 0.4), s); M.compose(P, Q, S); pines.setMatrixAt(pc, M);
-      pines.setColorAt(pc, C.setHex(pinesC[(R() * pinesC.length) | 0])); pc++;
+      P.set(x, h - 0.2, z); S.set(s, s * (0.9 + R() * 0.4), s); M.compose(P, Q, S); pines.setMatrixAt(pc, M);
+      pines.setColorAt(pc, C.setRGB(tint, tint, tint)); pc++;
     }
     if (bc < bushes.instanceMatrix.count && R() < 0.5) {
-      const bx = x + (R() - 0.5) * 8, bz = z + (R() - 0.5) * 8;
-      P.set(bx, height(bx, bz) + 0.5, bz); S.setScalar(0.6 + R() * 0.8); M.compose(P, Q, S); bushes.setMatrixAt(bc, M);
-      bushes.setColorAt(bc, C.setHex(greens[(R() * greens.length) | 0]).multiplyScalar(0.8)); bc++;
+      const bx = x + (R() - 0.5) * 9, bz = z + (R() - 0.5) * 9;
+      P.set(bx, height(bx, bz) - 0.1, bz); S.setScalar(0.7 + R() * 0.8); M.compose(P, Q, S); bushes.setMatrixAt(bc, M);
+      bushes.setColorAt(bc, C.setRGB(tint * 0.9, tint * 0.95, tint * 0.85)); bc++;
     }
   }
-  trunks.count = lc; leaves.count = lc; pines.count = pc; bushes.count = bc;
+  trunks.count = lc; pines.count = pc; bushes.count = bc;
   // grass tufts near the barriers (ultra/high): two crossed alpha planes per tuft
   if (q === 'ultra' || q === 'high') {
     const c = document.createElement('canvas'); c.width = 64; c.height = 64;
@@ -472,8 +511,9 @@ function buildNature(tr, df, height, lakeAt, R) {
     tufts.count = tcnt;
     G.add(tufts);
   }
-  for (const m of [trunks, leaves, pines]) m.castShadow = true;
-  G.add(trunks, leaves, pines, bushes);
+  // alpha-tested shadows so the impostors cast tree-shaped shadows, not rectangles
+  for (const m of [trunks, pines]) { m.castShadow = true; m.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: m.material.map, alphaTest: 0.45 }); }
+  G.add(trunks, pines, bushes);
 }
 
 // ------------------------------------------------------------------ city
