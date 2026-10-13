@@ -177,8 +177,8 @@
   <div class="panel">
     <div class="panel-head"><button data-action="mp-back" class="back">‹ ZURÜCK</button><h2>MULTIPLAYER</h2><span></span></div>
     <div id="mp-offline" class="mp-note" hidden>
-      <b>Online-Rennen sind hier nicht verfügbar.</b>
-      <p>Mehrspieler läuft über die Claude-Version dieses Spiels: Teile den Link mit deinen Freunden, öffnet ihn gleichzeitig, und einer erstellt ein Rennen. Wer den Link nur öffentlich oder ohne Anmeldung öffnet, kann nicht mitfahren.</p>
+      <b>Keine Verbindung zum Mehrspieler-Dienst.</b>
+      <p>Prüf deine Internetverbindung und lade die Seite neu. Manche Firmen- oder Schulnetze blockieren Direktverbindungen zwischen Geräten.</p>
     </div>
     <div id="mp-connecting" class="mp-note">Verbinde …</div>
     <div id="mp-home" hidden>
@@ -191,7 +191,7 @@
         <label class="field code"><span>Code</span><input id="mp-code" maxlength="4" inputmode="numeric" placeholder="1234" autocomplete="off"></label>
         <button id="mp-join">Beitreten</button>
       </div>
-      <h3>OFFENE RENNEN</h3>
+      <h3 id="mp-open">OFFENE RENNEN</h3>
       <div id="mp-list" class="mp-list"><p class="empty">Gerade ist kein Rennen offen. Erstelle eins und gib deinen Freunden den Code.</p></div>
     </div>
     <div id="mp-lobby" hidden>

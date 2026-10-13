@@ -962,11 +962,12 @@ async function mpEnter() {
 function renderLobby() {
   const list = $('#mp-list');
   if (!$('#mp-home').hidden) {
+    $('#mp-open').hidden = !net.canList;
     const races = net.openRaces();
     const keep = [...list.querySelectorAll('.err')];
     list.innerHTML = '';
     keep.forEach((k) => list.appendChild(k));
-    if (!races.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'Gerade ist kein Rennen offen. Erstelle eins und gib deinen Freunden den Code.'; list.appendChild(p); }
+    if (!races.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = net.canList ? 'Gerade ist kein Rennen offen. Erstelle eins und gib deinen Freunden den Code.' : 'Erstelle ein Rennen und gib deinen Freunden den Code, oder gib den Code deines Freundes oben ein.'; list.appendChild(p); }
     for (const r of races) {
       const b = document.createElement('button'); b.className = 'race-item'; b.disabled = r.racing;
       const code = document.createElement('b'); code.textContent = r.code;
@@ -1013,7 +1014,10 @@ function mpSendCfg() {
 async function mpCreate() {
   const code = String(1000 + Math.floor(Math.random() * 9000));
   net.myName = myName();
-  try { await net.open(code, true, meInfo()); } catch (_) { mpToast('Rennen konnte nicht erstellt werden. Versuch es gleich nochmal.'); return; }
+  try { await net.open(code, true, meInfo()); } catch (e) {
+    if (e && e.code === 'unavailable-id') return mpCreate(); // code already taken: pick another
+    mpToast(e && e.code === 'browser-incompatible' ? 'Dein Browser unterstützt keine Direktverbindungen (WebRTC).' : 'Rennen konnte nicht erstellt werden. Prüf deine Internetverbindung und versuch es nochmal.'); return;
+  }
   mpSendCfg();
   mpShow('mp-lobby'); renderLobby();
 }
@@ -1021,7 +1025,10 @@ async function mpCreate() {
 async function mpJoin(code) {
   code = String(code || '').replace(/\D/g, '').slice(0, 4);
   if (code.length !== 4) { mpToast('Gib den 4-stelligen Code ein.'); return; }
-  try { await net.open(code, false, meInfo()); } catch (_) { mpToast('Beitreten hat nicht geklappt. Versuch es gleich nochmal.'); return; }
+  try { await net.open(code, false, meInfo()); } catch (e) {
+    await net.leave();
+    mpToast(e && e.code === 'peer-unavailable' ? `Kein offenes Rennen mit Code ${code}.` : 'Beitreten hat nicht geklappt. Prüf den Code und deine Internetverbindung.'); return;
+  }
   net.joinedAt = performance.now(); net.hostSeenAt = 0;
   mpShow('mp-lobby'); renderLobby();
   setTimeout(() => { if (!game && net.race && net.code === code && !net.hostSeenAt) { mpLeave(); mpToast(`Kein offenes Rennen mit Code ${code}.`); } }, 5000);

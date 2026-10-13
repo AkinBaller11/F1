@@ -4,6 +4,8 @@
 // lives in its own named room ("gp-1234"). The host's presence carries the
 // start signal, the grid and the AI cars it simulates; every driver's
 // presence carries their own car state.
+import { createPeerRoom } from './peer.js';
+
 export const clean = (s, n = 14) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, n);
 
 export class Net {
@@ -20,6 +22,10 @@ export class Net {
     try {
       this.room = window.claude && window.claude.use ? await window.claude.use('room') : null;
     } catch (_) { this.room = null; }
+    // outside Claude (Vercel, any web host): direct WebRTC connections via PeerJS
+    this.transport = this.room ? 'room' : 'peer';
+    if (!this.room) { try { this.room = await createPeerRoom(); } catch (_) { this.room = null; } }
+    this.canList = this.transport === 'room';
     if (this.room) {
       this.room.onPeers((ch) => { this.lobbyPeers = ch.peers; this.emit(); }, () => { this.room = null; this.emit(); });
     }
@@ -41,7 +47,7 @@ export class Net {
   async open(code, host, me) {
     await this.leave();
     this.code = code; this.isHost = host;
-    this.race = await this.room.join('gp-' + code);
+    this.race = await this.room.join('gp-' + code, { host });
     this.race.onPeers((ch) => {
       this.racePeers = ch.peers;
       const h = this.hostPeer();
