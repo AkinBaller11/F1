@@ -4,7 +4,7 @@ Browser-Rennspiel im Stil von F1 25 mit drei Strecken (Barcelona, Monza, Neon Ci
 
 Läuft ohne Build-Schritt mit Three.js vom CDN:
 
-**Vercel:** Repo importieren, Framework „Other“, kein Build-Befehl – fertig.
+**Vercel:** Repo importieren, Framework „Other“ – Build-Befehl und Cache-Regeln kommen aus `vercel.json`. Bei jedem Deploy wird die Commit-ID als Version eingetragen; installierte Homebildschirm-Apps erkennen so neue Versionen und laden sie automatisch.
 
 ```bash
 python3 -m http.server 8000

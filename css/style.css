@@ -417,3 +417,7 @@ body:not(.ingame) #speedfx { display: none; }
   .fs-btn { top: auto; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); right: 16px; }
   .brand h1 { font-size: 34px; }
 }
+
+#update-bar { position: fixed; z-index: 70; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(16,18,30,.96); border-left: 4px solid var(--green); padding: 8px 10px 8px 14px; font-weight: 700; box-shadow: 0 6px 20px rgba(0,0,0,.4); max-width: calc(100vw - 32px); }
+#update-bar button { border: 0; padding: 8px 12px; font-weight: 900; background: rgba(255,255,255,.1); }
+#update-bar #update-now { background: var(--green); color: #031; }

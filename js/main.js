@@ -7,6 +7,7 @@ import { Audio } from './audio.js';
 import { Weather } from './weather.js';
 import { Input, IS_TOUCH, ACTIONS, DEFAULT_BINDS, keyLabel } from './input.js';
 import { Net, rng, clean } from './net.js';
+import { APP_VERSION } from './version.js';
 import * as TX from './textures.js';
 import { TRACKS, TIMES, trackById } from './tracks.js';
 import { TOD, skyTexture, sunDir, sunSprite } from './tod.js';
@@ -1206,7 +1207,39 @@ document.addEventListener('click', (e) => {
   if (act === 'mp-back') { net.leave(); showScreen('menu'); }
   if (act === 'quit') quitToMenu();
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && game && !game.paused && !game.mp) game.togglePause(true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game && !game.paused && !game.mp) game.togglePause(true);
+  if (!document.hidden) checkForUpdate();
+});
+
+// ------------------------------------------------------------------ updates for installed (home-screen) apps
+// version.json is never cached; if it names a newer build than the code that is running, reload.
+let updateReady = null;
+async function checkForUpdate() {
+  if (APP_VERSION === '__BUILD__') return; // local copy or Claude artifact: always current
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    if (!version || version === APP_VERSION || version === '__BUILD__') return;
+    updateReady = version;
+    // already reloaded for this version but still old code (stubborn cache): don't loop, just offer the button
+    const tried = new URL(location.href).searchParams.get('v') === version;
+    const onMenu = !game && !net.race && document.querySelector('.screen.active')?.id === 'menu';
+    if (onMenu && !tried) applyUpdate();
+    else $('#update-bar').hidden = false;
+  } catch (_) { /* offline: try again later */ }
+}
+function applyUpdate() {
+  // a changed query string makes iOS home-screen apps fetch fresh files
+  const url = new URL(location.href);
+  url.searchParams.set('v', updateReady || Date.now());
+  location.replace(url.toString());
+}
+$('#update-now').addEventListener('click', applyUpdate);
+$('#update-later').addEventListener('click', () => { $('#update-bar').hidden = true; });
+setInterval(checkForUpdate, 10 * 60 * 1000);
+setTimeout(checkForUpdate, 1500);
 
 // ------------------------------------------------------------------ multiplayer lobby
 const net = new Net();
