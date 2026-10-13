@@ -25,7 +25,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
-  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, line: 'corners', steerSens: 100, binds: {},
+  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: false, autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
@@ -51,7 +51,7 @@ const SETTINGS = [
     { key: 'fpsLimit', label: 'Bildrate begrenzen', vals: [0, 60, 30], labels: ['Unbegrenzt', '60 FPS', '30 FPS'], hint: '30 FPS schont den Akku.' },
   ] },
   { tab: 'Kamera', items: [
-    { key: 'camera', label: 'Start-Kamera', vals: ['helmet', 'cockpit', 'tcam', 'nose', 'wing', 'chase', 'far'], labels: ['Helm', 'Cockpit', 'T-Kamera', 'Nase', 'Flügel', 'Verfolger', 'Verfolger weit'] },
+    { key: 'camera', label: 'Start-Kamera', vals: ['helmet', 'cockpit', 'tcam', 'sidepod', 'nose', 'wing', 'rear', 'chase', 'far', 'heli', 'tv'], labels: ['Helm', 'Cockpit', 'T-Kamera', 'Seitenkasten', 'Nase', 'Frontflügel', 'Heck', 'Verfolger', 'Verfolger weit', 'Helikopter', 'TV-Kamera'] },
     { key: 'fov', label: 'Sichtfeld (Cockpit & Helm)', range: [55, 95, 1], unit: '°' },
     { key: 'dynFov', label: 'Sichtfeld wächst mit Tempo', ...ONOFF },
     { key: 'headMove', label: 'Kopfbewegung (G-Kräfte)', range: [0, 100, 5], unit: '%' },
@@ -89,9 +89,9 @@ const SETTINGS = [
 ];
 // assist profiles: one tap sets everything
 const PROFILES = {
-  easy: { autoGas: true, brakeAssist: true, steerAssist: true, line: 'full', gearbox: 'auto' },
-  normal: { autoGas: false, brakeAssist: true, steerAssist: false, line: 'corners', gearbox: 'auto' },
-  pro: { autoGas: false, brakeAssist: false, steerAssist: false, line: 'off', gearbox: 'manual' },
+  easy: { autoGas: true, brakeAssist: true, steerAssist: true, autoDrs: true, autoErs: true, line: 'full', gearbox: 'auto' },
+  normal: { autoGas: false, brakeAssist: true, steerAssist: false, autoDrs: true, autoErs: true, line: 'corners', gearbox: 'auto' },
+  pro: { autoGas: false, brakeAssist: false, steerAssist: false, autoDrs: false, autoErs: false, line: 'off', gearbox: 'manual' },
 };
 const PROFILE_KEYS = Object.keys(PROFILES.easy);
 // friendlier defaults on phones / tablets
@@ -351,11 +351,15 @@ addEventListener('resize', resize);
 const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
-  tcam: { label: 'T-KAMERA', pos: [0, 1.3, 0.42], pitch: -0.06, fov: 70, shake: 0.8 },
-  nose: { label: 'NASEN-KAMERA', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
-  wing: { label: 'FLÜGEL-KAMERA', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
-  chase: { label: 'VERFOLGER', pos: [0, 2.1, 6.6], pitch: -0.12, fov: 64, shake: 0.3, chase: true },
-  far: { label: 'VERFOLGER WEIT', pos: [0, 3.3, 10.5], pitch: -0.15, fov: 60, shake: 0.2, chase: true },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.16, 0.52], pitch: -0.055, fov: 63, shake: 0.9, lean: 0.6 },
+  sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
+  nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
+  wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
+  rear: { label: 'HECK', pos: [0, 1.12, 2.95], pitch: -0.07, yaw: Math.PI, fov: 66, shake: 0.6 },
+  chase: { label: 'VERFOLGER', world: true, dist: 6.3, height: 1.85, look: 0.9, fov: 62, shake: 0.25 },
+  far: { label: 'VERFOLGER WEIT', world: true, dist: 10.5, height: 3.3, look: 0.6, fov: 56, shake: 0.15 },
+  heli: { label: 'HELIKOPTER', world: true, heli: true, fov: 45 },
+  tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
 
 // ------------------------------------------------------------------ other players' cars
@@ -457,7 +461,7 @@ class Game {
 
     // player
     const pd = DRIVERS.find((d) => d.name === opts.driver) || DRIVERS[0];
-    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist, steerAssist: opts.steerAssist });
+    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist, steerAssist: opts.steerAssist, autoDrs: opts.autoDrs, autoErs: opts.autoErs });
     this.player.onShift = (down) => !down && audio.shift();
     this.playerRoot = new THREE.Group(); scene.add(this.playerRoot);
     this.playerBody = new THREE.Group(); this.playerRoot.add(this.playerBody);
@@ -632,11 +636,70 @@ class Game {
     this.playerModel.userData.helmet.visible = !v.ego;
     this.cockpit.userData.hands.visible = settings.hands;
     document.body.classList.toggle('cam-helmet', m === 'helmet');
-    cam.position.set(...v.pos); cam.rotation.set(v.pitch, 0, 0);
+    if (v.world) { if (cam.parent !== this.scene) this.scene.add(cam); this.chaseCam = null; }
+    else { if (cam.parent !== this.playerBody) this.playerBody.add(cam); cam.position.set(...v.pos); cam.rotation.set(v.pitch, v.yaw || 0, 0); }
     this.baseFov = v.ego ? settings.fov - (m === 'helmet' ? 4 : 0) : v.fov;
     cam.fov = this.baseFov;
     cam.updateProjectionMatrix();
     if (!quiet) this.hud.camHint(v.label);
+  }
+
+  // chase / heli / TV cameras live in world space so they can lag, swing and cut like a broadcast
+  updateWorldCam(dt, v) {
+    const p = this.player, cam = this.camera, tr = this.track;
+    const fwd = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
+    if (!this.chaseCam) {
+      const [fx, fz] = fwd(p.yaw);
+      this.chaseCam = { yaw: p.yaw, pos: new THREE.Vector3(p.x - fx * (v.dist || 8), (v.height || 3), p.z - fz * (v.dist || 8)), look: new THREE.Vector3(p.x, 0.8, p.z), tvIdx: -1 };
+    }
+    const C = this.chaseCam;
+    if (v.tv) {
+      // trackside cameras every 150 m on the outside of the circuit; cut to the next one as the car passes
+      const spacing = 150, sAhead = tr.wrapS(p.s + 70);
+      const idx = Math.floor(sAhead / spacing);
+      if (idx !== C.tvIdx) {
+        C.tvIdx = idx;
+        const s = idx * spacing, i = tr.idx(s);
+        const side = tr.k[i] > 0 ? -1 : 1;
+        const lat = side * ((side > 0 ? tr.limR[i] : tr.limL[i]) + 9);
+        const [x, z] = tr.posAt(s, lat);
+        C.pos.set(x, 6 + (idx % 3) * 2.5, z);
+        C.look.set(p.x, 0.8, p.z);
+      }
+      C.look.lerp(new THREE.Vector3(p.x - Math.sin(p.yaw) * p.v * 0.12, 0.7, p.z - Math.cos(p.yaw) * p.v * 0.12), Math.min(1, dt * 6));
+      cam.position.copy(C.pos);
+      cam.lookAt(C.look);
+      const d = C.pos.distanceTo(C.look);
+      const fov = Math.max(6, Math.min(55, (2 * Math.atan(9 / d) * 180) / Math.PI));
+      if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix(); }
+      return;
+    }
+    // smoothed heading: the camera trails the car's rotation, so it swings out in corners
+    let dy = p.yaw - C.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    C.yaw += dy * Math.min(1, dt * (v.heli ? 1.2 : 3.2));
+    const [fx, fz] = fwd(C.yaw);
+    if (v.heli) {
+      const want = new THREE.Vector3(p.x - fx * 26 + fz * 14, 34, p.z - fz * 26 - fx * 14);
+      C.pos.lerp(want, Math.min(1, dt * 1.5));
+      C.look.lerp(new THREE.Vector3(p.x, 0.5, p.z), Math.min(1, dt * 5));
+      cam.position.copy(C.pos); cam.lookAt(C.look);
+      if (Math.abs(cam.fov - v.fov) > 0.05) { cam.fov = v.fov; cam.updateProjectionMatrix(); }
+      return;
+    }
+    const speedPull = Math.min(1.6, p.v * 0.018); // drift back a little at speed
+    const dist = v.dist + speedPull;
+    const want = new THREE.Vector3(p.x - fx * dist, v.height + Math.min(0.35, p.v * 0.003), p.z - fz * dist);
+    // stiff along the ground, softer in height: smooth but never floaty
+    C.pos.x += (want.x - C.pos.x) * Math.min(1, dt * 9);
+    C.pos.z += (want.z - C.pos.z) * Math.min(1, dt * 9);
+    C.pos.y += (want.y - C.pos.y) * Math.min(1, dt * 4);
+    const [cx, cz] = fwd(p.yaw);
+    const lookWant = new THREE.Vector3(p.x + cx * (3 + p.v * 0.05), v.look, p.z + cz * (3 + p.v * 0.05));
+    C.look.lerp(lookWant, Math.min(1, dt * 10));
+    const shk = (p.bump * 0.02 + p.impact * 0.15) * (settings.shake / 60) * v.shake;
+    cam.position.set(C.pos.x + (Math.random() - 0.5) * shk, C.pos.y + (Math.random() - 0.5) * shk, C.pos.z);
+    cam.lookAt(C.look);
+    cam.rotation.z += -dy * 0.15; // slight bank while the camera catches up
   }
 
   updateMirrors() {
@@ -780,6 +843,14 @@ class Game {
 
     this.order = this.computeOrder();
     this.playerPos = this.order.indexOf(this.playerEntry) + 1;
+    // automatic ERS: deploy on straights when attacking, defending or on the last lap
+    if (this.opts.autoErs) {
+      const i = this.playerPos - 1;
+      const ga = i > 0 ? this.gapTo(this.order[i - 1]) : null, gb = this.order[i + 1] ? this.gapTo(this.order[i + 1]) : null;
+      const straight = this.track.targetSpeed(p.s + 90) > 74 && this.track.targetSpeed(p.s + 30) > 70 && p.v > 45;
+      const fight = (ga !== null && Math.abs(ga) < 1.2) || (gb !== null && Math.abs(gb) < 0.8) || this.lap.lapNo >= this.laps - 1;
+      p.ersAuto = straight && fight && p.ers > 0.18;
+    } else p.ersAuto = false;
 
     if (this.state === 'finished') {
       this.stateT += dt;
@@ -830,7 +901,7 @@ class Game {
           a.latOff = a.lat - this.track.racingLat(a.s);
         }
         a.wheelRot += (a.v * dt) / 0.36;
-        a.computePose();
+        a.computePose(dt);
       }
     }
   }
@@ -929,9 +1000,17 @@ class Game {
     const longG = (p.v - (this.prevV ?? p.v)) / Math.max(dt, 1e-3);
     this.prevV = p.v;
     const clamp = (x, a) => Math.max(-a, Math.min(a, x));
-    this.pitch = (this.pitch || 0) + (clamp(-longG * 0.0012, 0.025) - (this.pitch || 0)) * Math.min(1, dt * 6);
-    this.roll = (this.roll || 0) + (clamp(p.yawRate * p.v * 0.0009, 0.03) - (this.roll || 0)) * Math.min(1, dt * 6);
-    this.playerBody.rotation.set(this.pitch, 0, this.roll);
+    // chassis: spring-damped pitch/roll, ride height drops with downforce, kerbs shake it
+    this.sus = this.sus || { p: 0, vp: 0, r: 0, vr: 0 };
+    const S2 = this.sus, kS = 90, dS = 15, h = Math.min(dt, 0.033);
+    const pT = clamp(-longG * 0.0011, 0.022), rT = clamp(p.yawRate * p.v * 0.0008, 0.028);
+    S2.vp += ((pT - S2.p) * kS - S2.vp * dS) * h; S2.p += S2.vp * h;
+    S2.vr += ((rT - S2.r) * kS - S2.vr * dS) * h; S2.r += S2.vr * h;
+    this.pitch = S2.p; this.roll = S2.r;
+    const tNow = performance.now() / 1000;
+    const ride = -Math.min(0.025, p.v * p.v * 0.0000035) + p.bump * Math.sin(tNow * 42) * 0.006;
+    this.playerBody.rotation.set(this.pitch, 0, this.roll + p.bump * Math.sin(tNow * 31) * 0.004);
+    this.playerBody.position.y = ride;
     const v = CAMS[this.camMode] || CAMS.cockpit;
     const shakeK = settings.shake / 60;
     const shake = (p.bump * 0.006 + Math.min(1, p.v / 90) * 0.0012 + p.impact * 0.03) * v.shake * shakeK;
@@ -947,24 +1026,28 @@ class Game {
     H.roll += (clampv(-latG * 0.0016 * hm, 0.09) - H.roll) * k;
     H.z += (clampv(-lonG * 0.0016 * hm, 0.05) - H.z) * k;
     H.pitch += (clampv(lonG * 0.0011 * hm, 0.05) - H.pitch) * k;
+    const wantWorld = !!v.world && !this.lookBack;
+    if (wantWorld && cam.parent !== this.scene) { this.scene.add(cam); this.chaseCam = null; }
+    if (!wantWorld && cam.parent !== this.playerBody) this.playerBody.add(cam);
     if (this.lookBack) {
       cam.position.set(0, 1.25, 0.6); cam.rotation.set(-0.08, Math.PI, 0);
-    } else if (v.chase) {
-      // chase cams swing out a little in corners
-      cam.position.set(p.yawRate * -0.25, v.pos[1], v.pos[2]);
-      cam.rotation.set(v.pitch, p.yawRate * 0.12, 0);
+    } else if (wantWorld) {
+      this.updateWorldCam(dt, v);
     } else if (v.ego) {
       const t = performance.now() / 1000;
       const buzz = Math.min(1, p.v / 85) * 0.0009 * shakeK; // high-speed vibration
       cam.position.set(v.pos[0] + H.x + rx() + Math.sin(t * 61) * buzz, v.pos[1] + rx() + Math.sin(t * 47) * buzz + p.bump * Math.sin(t * 38) * 0.004 * shakeK, v.pos[2] + H.z);
       cam.rotation.set(v.pitch + H.pitch, -p.steer * 0.05 * hm, H.roll);
     } else {
+      // body-mounted onboard cams: rigid mount, a touch of lean into corners
       cam.position.set(v.pos[0] + rx(), v.pos[1] + rx(), v.pos[2]);
-      cam.rotation.set(v.pitch, 0, 0);
+      cam.rotation.set(v.pitch + H.pitch * 0.3, (v.yaw || 0) - p.steer * 0.015, H.roll * (v.lean || 0) * 0.4);
     }
     // field of view widens with speed
-    const fovT = (this.baseFov || cam.fov) + (settings.dynFov && v.ego && !this.lookBack ? Math.min(1, Math.max(0, (p.v - 20) / 70)) * 8 : 0);
-    if (Math.abs(cam.fov - fovT) > 0.05) { cam.fov += (fovT - cam.fov) * Math.min(1, dt * 3); cam.updateProjectionMatrix(); }
+    if (!wantWorld || !(v.tv || v.heli)) {
+      const fovT = (this.baseFov || cam.fov) + (settings.dynFov && (v.ego || v.world) && !this.lookBack ? Math.min(1, Math.max(0, (p.v - 20) / 70)) * (v.ego ? 8 : 6) : 0);
+      if (Math.abs(cam.fov - fovT) > 0.05) { cam.fov += (fovT - cam.fov) * Math.min(1, dt * 3); cam.updateProjectionMatrix(); }
+    }
     // speed vignette
     const sfx = settings.speedFx && v.ego && !this.lookBack ? Math.max(0, Math.min(1, (p.v - 45) / 45)) : 0;
     if (Math.abs(sfx - (this.sfx || 0)) > 0.01) { this.sfx = sfx; $('#speedfx').style.opacity = (sfx * 0.6).toFixed(2); }
@@ -995,8 +1078,9 @@ class Game {
       const far = c.gone || Math.hypot(o.x - p.x, o.z - p.z) > 650;
       m.visible = !far;
       if (far) continue;
-      m.position.set(o.x, 0, o.z);
-      m.rotation.y = o.yaw;
+      m.position.set(o.x, -Math.min(0.025, o.v * o.v * 0.0000035), o.z);
+      o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
+      m.rotation.set(0, o.yaw, o.rollVis);
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
       m.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     }
@@ -1159,6 +1243,8 @@ function startRace(mpStart) {
   document.body.classList.toggle('steer-buttons', settings.touchSteer === 'buttons');
   document.body.classList.toggle('steer-tilt', settings.touchSteer === 'tilt');
   document.body.classList.toggle('steer-wheel', settings.touchSteer === 'wheel' || settings.touchSteer === 'tilt');
+  document.body.classList.toggle('auto-drs', !!settings.autoDrs);
+  document.body.classList.toggle('auto-ers', !!settings.autoErs);
   showScreen('loading');
   $('#hud').classList.remove('active');
   setTimeout(() => {

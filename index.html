@@ -64,23 +64,24 @@
         <g transform="translate(108 148)"><circle r="15" fill="#2e7dff"/><circle r="15" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="4 4"/><circle r="8" fill="#111"/></g>
         <g transform="translate(292 148)"><circle r="15" fill="#a24bff"/><circle r="15" fill="none" stroke="#f5c400" stroke-width="3" stroke-dasharray="4 4"/><circle r="8" fill="#111"/></g>
         <circle cx="200" cy="210" r="4" fill="#888"/>
-        <!-- functional buttons -->
-        <g class="wbtn" data-btn="drs" transform="translate(80 70)"><circle r="17" fill="#19d65b" stroke="#0a0a0a" stroke-width="3"/><circle r="17" fill="url(#btn)"/><text y="4.5" class="wb">DRS</text></g>
-        <g class="wbtn" data-btn="ot" transform="translate(320 70)"><circle r="17" fill="#f5c400" stroke="#0a0a0a" stroke-width="3"/><circle r="17" fill="url(#btn)"/><text y="4.5" class="wb dark">OT</text></g>
-        <g class="wbtn" data-btn="cam" transform="translate(102 108)"><circle r="14" fill="#e8e8e8" stroke="#0a0a0a" stroke-width="3"/><circle r="14" fill="url(#btn)"/><text y="4" class="wb dark sm">CAM</text></g>
-        <g class="wbtn" data-btn="look" transform="translate(298 108)"><circle r="14" fill="#e10600" stroke="#0a0a0a" stroke-width="3"/><circle r="14" fill="url(#btn)"/><text y="4.5" class="wb">⟲</text></g>
-        <g class="wbtn deco" transform="translate(62 108)"><circle r="8" fill="#ff8000" stroke="#0a0a0a" stroke-width="2"/></g>
-        <g class="wbtn deco" transform="translate(338 108)"><circle r="8" fill="#2e7dff" stroke="#0a0a0a" stroke-width="2"/></g>
+        <!-- decorative buttons (DRS/ERS run automatically, camera & look-back live in the top bar) -->
+        <g transform="translate(80 70)"><circle r="15" fill="#19d65b" stroke="#0a0a0a" stroke-width="3"/><circle r="15" fill="url(#btn)"/></g>
+        <g transform="translate(320 70)"><circle r="15" fill="#e10600" stroke="#0a0a0a" stroke-width="3"/><circle r="15" fill="url(#btn)"/></g>
+        <g transform="translate(102 108)"><circle r="11" fill="#e8e8e8" stroke="#0a0a0a" stroke-width="3"/><circle r="11" fill="url(#btn)"/></g>
+        <g transform="translate(298 108)"><circle r="11" fill="#f5c400" stroke="#0a0a0a" stroke-width="3"/><circle r="11" fill="url(#btn)"/></g>
+        <g transform="translate(62 108)"><circle r="8" fill="#ff8000" stroke="#0a0a0a" stroke-width="2"/></g>
+        <g transform="translate(338 108)"><circle r="8" fill="#2e7dff" stroke="#0a0a0a" stroke-width="2"/></g>
       </g>
     </svg>
   </div>
   <div id="tc-arrows"><button id="tc-left" aria-label="Links">◀</button><button id="tc-right" aria-label="Rechts">▶</button></div>
   <div class="tside">
-    <div class="tsmall"><button id="tc-drs">DRS</button><button id="tc-ers">ERS</button><button id="tc-look" aria-label="Nach hinten schauen">⟲</button><button id="tc-cam" aria-label="Kamera wechseln">CAM</button></div>
+    <div class="tsmall"><button id="tc-drs">DRS</button><button id="tc-ers">ERS</button></div>
     <div class="tpedals"><button id="tc-brake">BREMSE</button><button id="tc-gas">GAS</button></div>
   </div>
   <div class="tc-top">
     <button id="tc-camtop" aria-label="Kamera wechseln"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-2h6l2 2h3v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+    <button id="tc-looktop" aria-label="Nach hinten schauen (halten)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="tc-hud" aria-label="Anzeige ein- oder ausblenden"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
     <button id="tc-fs" aria-label="Vollbild"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
     <button id="tc-pause" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg></button>
@@ -162,6 +163,8 @@
         <div class="opt" data-key="autoGas" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="steerAssist" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Lenkhilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="autoDrs" data-vals='[true,false]' data-labels='["Automatisch","Manuell (F)"]'><span>DRS</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="autoErs" data-vals='[true,false]' data-labels='["Automatisch","Manuell (Leertaste)"]'><span>ERS Overtake</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="slider"><span>Lenkempfindlichkeit</span><input type="range" id="steer-sens" min="50" max="150" step="5"><b id="sens-val">100%</b></div>

@@ -50,7 +50,7 @@ export class Input {
   act(a) { return this.pressed.has(a); }
 
   bindTouch() {
-    const hold = { 'tc-left': 'left', 'tc-right': 'right', 'tc-gas': 'gas', 'tc-brake': 'brake', 'tc-ers': 'ers', 'tc-look': 'look' };
+    const hold = { 'tc-left': 'left', 'tc-right': 'right', 'tc-gas': 'gas', 'tc-brake': 'brake', 'tc-ers': 'ers', 'tc-looktop': 'look' };
     for (const [id, k] of Object.entries(hold)) {
       const el = document.getElementById(id);
       if (!el) continue;

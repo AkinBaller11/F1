@@ -141,7 +141,8 @@ body.touch.ingame, body.touch.ingame #game { touch-action: none; overscroll-beha
 #wheelpad .wbtn:not(.deco) { cursor: pointer; }
 #wheelpad .wbtn.on circle:first-child { filter: brightness(1.6); stroke: #fff; }
 body.steer-wheel #wheelpad { display: block; }
-body.steer-wheel #tz-steer, body.steer-wheel .tsmall { display: none; }
+body.steer-wheel #tz-steer { display: none; }
+body.auto-drs #tc-drs, body.auto-ers #tc-ers { display: none; }
 body.touch.steer-wheel .dash { display: none; }
 body.steer-tilt #wheelpad { pointer-events: none; }
 body.steer-tilt #wheelpad .wbtn { pointer-events: auto; }

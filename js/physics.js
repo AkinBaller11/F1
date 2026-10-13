@@ -70,8 +70,10 @@ export class PlayerCar {
     }
     const analog = input.analog || this.assistAnalog;
     this.assistAnalog = false;
-    const rate = analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 3.2);
-    const ret = analog ? 12 : 4.5;
+    // keyboard: quick at low speed, calmer at high speed so lines stay clean
+    const vk = Math.abs(this.v);
+    const rate = analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 2.2 + 2.2 / (1 + vk / 25));
+    const ret = analog ? 12 : 3.6 + 1.6 / (1 + vk / 30);
     if (st === 0) this.steer -= Math.sign(this.steer) * Math.min(Math.abs(this.steer), ret * dt);
     else this.steer += Math.max(-rate * dt, Math.min(rate * dt, st - this.steer));
 
@@ -88,13 +90,13 @@ export class PlayerCar {
 
     // --- ERS / DRS
     let power = CAR.power;
-    this.overtake = !!input.overtake && this.ers > 0.01 && thr > 0.5;
+    this.overtake = (!!input.overtake || (this.opts.autoErs && this.ersAuto)) && this.ers > 0.01 && thr > 0.5;
     if (this.overtake) { power += CAR.ersPower; this.ers -= dt / 22; }
     else if (thr > 0.95 && this.v > 30 && this.ers > 0.02) { power += CAR.ersPower * 0.45; this.ers -= dt / 90; }
     this.ers += (brk * 0.03 + (thr < 0.05 ? 0.004 : 0)) * dt;
     this.ers = Math.max(0, Math.min(1, this.ers));
     if (brk > 0.1) this.drsOpen = false;
-    if (input.drs && this.drsAvailable && !this.drsOpen) this.drsOpen = true;
+    if ((input.drs || (this.opts.autoDrs && thr > 0.9 && brk < 0.05 && Math.abs(this.steer) < 0.35)) && this.drsAvailable && !this.drsOpen) this.drsOpen = true;
     if (!this.drsAvailable && this.drsOpen && brk > 0) this.drsOpen = false;
     const cdA = this.drsOpen ? CAR.drsCdA : CAR.cdA;
 
@@ -201,7 +203,7 @@ export class AICar {
 
   update(dt, raceTime, cars, wetMu) {
     const tr = this.track;
-    if (raceTime < this.reaction) { this.computePose(); return; }
+    if (raceTime < this.reaction) { this.computePose(dt); return; }
     const s = this.s;
     const look = Math.max(this.v, 10) * 0.12;
     let target = tr.targetSpeed(s + look) * this.skill;
@@ -254,18 +256,22 @@ export class AICar {
     const maxMove = (1.2 + this.v * 0.04) * dt;
     this.lat += Math.max(-maxMove, Math.min(maxMove, wantLat - this.lat));
     this.wheelRot += (this.v * dt) / 0.36;
-    this.computePose();
+    this.computePose(dt);
   }
 
-  computePose() {
+  computePose(dt = 1 / 60) {
     const tr = this.track;
     const s = this.s;
     const f = tr.frame(s);
-    const fa = tr.frame(s + 3);
-    const la = tr.racingLat(s + 3) + this.latOff;
+    const look = 4 + this.v * 0.08;
+    const fa = tr.frame(s + look);
+    const la = tr.racingLat(s + look) + this.latOff;
     const x2 = fa.x + fa.rx * la, z2 = fa.z + fa.rz * la;
     this.x = f.x + f.rx * this.lat; this.z = f.z + f.rz * this.lat;
-    this.yaw = Math.atan2(-(x2 - this.x), -(z2 - this.z));
-    this.steerVis = Math.max(-0.4, Math.min(0.4, tr.k[tr.idx(s + 4)] * 12));
+    const yawT = Math.atan2(-(x2 - this.x), -(z2 - this.z));
+    if (this.yawInit) { let d = yawT - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yaw += d * Math.min(1, dt * 12); }
+    else { this.yaw = yawT; this.yawInit = true; }
+    const steerT = Math.max(-0.4, Math.min(0.4, tr.k[tr.idx(s + 5)] * 12));
+    this.steerVis = (this.steerVis || 0) + (steerT - (this.steerVis || 0)) * Math.min(1, dt * 8);
   }
 }
