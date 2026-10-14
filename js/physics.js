@@ -235,26 +235,44 @@ export class AICar {
   update(dt, raceTime, cars, wetMu) {
     const tr = this.track;
     if (raceTime < this.reaction) { this.computePose(dt); return; }
-    // spun / punted: slide, scrub speed, then turn back and rejoin
-    if (this.spunT > 0 || this.spinRate) {
+    // spun: slide and scrub to a stop, then the driver turns the car round and rejoins
+    if (this.spunT > 0) {
       this.spunT -= dt;
       this.spinYaw += this.spinRate * dt;
-      this.spinRate *= Math.exp(-dt * 1.4);
-      if (Math.abs(this.spinRate) < 0.3) this.spinRate = 0;
-      if (this.spunT > 0) {
-        this.v = Math.max(0, this.v - (4 + this.v * 0.55) * dt);
-        this.dist += this.v * dt;
-        this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 2.5);
-        this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
-        this.latOff = this.lat - this.track.racingLat(this.s);
-        this.wheelRot += (this.v * dt) / 0.36;
-        this.computePose(dt);
-        return;
-      }
+      this.spinRate *= Math.exp(-dt * 1.7);
+      this.v = Math.max(0, this.v - (6 + this.v * 0.35) * dt);
+      this.dist += this.v * dt;
+      this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 2.2);
+      this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
+      this.latOff = this.lat - this.track.racingLat(this.s);
+      this.wheelRot += (this.v * dt) / 0.36;
+      if (this.v < 1 && Math.abs(this.spinRate) < 0.5) { this.spunT = 0; this.spinRate = 0; this.recover = true; }
+      this.computePose(dt);
+      return;
+    }
+    if (this.recover) {
+      // pointing the wrong way: creep and turn back to the racing direction
+      let d = Math.atan2(Math.sin(this.spinYaw), Math.cos(this.spinYaw));
+      d -= Math.sign(d) * Math.min(Math.abs(d), dt * 1.3);
+      this.spinYaw = d;
+      this.v = Math.min(this.v + dt * 2, 2.5);
+      this.dist += this.v * dt;
+      this.latOff *= Math.exp(-dt * 0.4);
+      this.lat += (Math.max(-HALF_W + 1, Math.min(HALF_W - 1, this.track.racingLat(this.s) + this.latOff)) - this.lat) * Math.min(1, dt * 0.8);
+      this.wheelRot += (this.v * dt) / 0.36;
+      if (Math.abs(d) < 0.08) { this.spinYaw = 0; this.recover = false; }
+      this.computePose(dt);
+      return;
+    }
+    // small wobbles from light contact settle quickly
+    if (this.spinRate) {
+      this.spinYaw += this.spinRate * dt;
+      this.spinRate *= Math.exp(-dt * 6);
+      if (Math.abs(this.spinRate) < 0.05) this.spinRate = 0;
     }
     if (this.spinYaw && !this.spinRate) {
       let d = Math.atan2(Math.sin(this.spinYaw), Math.cos(this.spinYaw));
-      d -= Math.sign(d) * Math.min(Math.abs(d), dt * 1.6);
+      d -= Math.sign(d) * Math.min(Math.abs(d), dt * 2.5);
       this.spinYaw = Math.abs(d) < 0.01 ? 0 : d;
     }
     const s = this.s;
@@ -266,8 +284,9 @@ export class AICar {
       if (c === this) continue;
       let ds = c.dist - this.dist;
       if (ds < -tr.length / 2) ds += tr.length; // lapping
-      if (ds <= 0 || ds > 28) continue;
-      if (Math.abs(c.lat - this.lat) < 2.3 && ds < blockGap) { blocked = c; blockGap = ds; }
+      if (ds <= 0 || ds > 60) continue;
+      // a car half a lane over still counts: in braking zones the lines converge
+      if (Math.abs(c.lat - this.lat) < 3.4 && ds < blockGap) { blocked = c; blockGap = ds; }
     }
     if (blocked) {
       const closing = this.v - blocked.v;
@@ -290,8 +309,12 @@ export class AICar {
           this.laneTimer = 2.5;
         }
       }
-      // otherwise follow
-      if (blockGap < 14 && Math.abs(blocked.lat - this.lat) < 2.0) target = Math.min(target, blocked.v - (14 - blockGap) * 0.4);
+      // otherwise follow: never faster than what still lets us stop 7 m behind it (predictive gap)
+      if (Math.abs(blocked.lat - this.lat) < 3.4) {
+        const safe = Math.sqrt(Math.max(0, blocked.v * blocked.v + 2 * 22 * (blockGap - 7)));
+        target = Math.min(target, safe);
+        if (blockGap < 9) target = Math.min(target, blocked.v - (9 - blockGap) * 0.6);
+      }
       // slipstream
       if (blockGap < 25) target *= 1.012;
     }
@@ -306,7 +329,20 @@ export class AICar {
     this.v = Math.max(0, this.v);
     this.dist += this.v * dt;
 
-    const wantLat = Math.max(-HALF_W + 1, Math.min(HALF_W - 1, tr.racingLat(this.s) + this.latOff));
+    let wantLat = Math.max(-HALF_W + 1, Math.min(HALF_W - 1, tr.racingLat(this.s) + this.latOff));
+    // side awareness: never steer into a car alongside, ease away if it is close
+    for (const c of cars) {
+      if (c === this || c.gone) continue;
+      let ds = c.dist - this.dist;
+      if (ds > tr.length / 2) ds -= tr.length; if (ds < -tr.length / 2) ds += tr.length;
+      // alongside, or just behind and faster: don't move across its path
+      if (ds > 6.5 || ds < -16 || (ds < -6.5 && c.v < this.v + 1)) continue;
+      const dl = c.lat - this.lat;
+      if (Math.abs(dl) > 3.2) continue;
+      if (Math.sign(wantLat - this.lat) === Math.sign(dl)) wantLat = this.lat; // hold the line
+      if (Math.abs(dl) < 2.3) wantLat = this.lat - Math.sign(dl || 1) * (2.4 - Math.abs(dl));
+    }
+    wantLat = Math.max(-HALF_W + 0.8, Math.min(HALF_W - 0.8, wantLat));
     const maxMove = (1.2 + this.v * 0.04) * dt;
     this.lat += Math.max(-maxMove, Math.min(maxMove, wantLat - this.lat));
     if (this.knock) {

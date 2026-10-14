@@ -21,6 +21,8 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 **Wetter:** Wechselhaft, Regen oder Trocken. Bei „Wechselhaft“ setzt Regen während des Rennens ein und hört wieder auf; die Strecke wird nass und trocknet ab, mit Vorhersage im HUD.
 
+**Spielweise:** *Einfach* (Standard) ohne Verschleiß, Schäden, Strafen und Einführungsrunde, mit automatischem Start – oder *Realistisch* mit allem. Einzelne Regeln lassen sich unter „Rennen einrichten“ → „Regeln, Fahrhilfen & Anzeige“ anpassen. Kollisionen rechnen mit der echten Autoform: leichte Berührungen bleiben harmlos, harte Treffer drehen das Auto, das danach wendet und weiterfährt.
+
 **Rennen:** Reifen Soft/Medium/Hard/Intermediate/Regen mit Verschleiß, Boxenstopps mit Boxengasse und Reifenwechsel, KI mit eigener Strategie, Schäden (Frontflügel bricht ab, Trümmerteile), 5-Sekunden-Strafen, gelbe Flaggen, Safety Car und virtuelles Safety Car, Boxenfunk mit Sprachausgabe, Siegerehrung und Replay mit TV-, Verfolger-, Heli- und Onboard-Kamera.
 
 **Spielmodi:** Rennwochenende (Qualifying + Rennen), Meisterschaft über alle Strecken, Zeitfahren mit Geist-Auto und Bestenliste. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.

@@ -126,10 +126,12 @@
         <div class="opt" data-key="carStyle" data-vals='["modern","classic"]' data-labels='["Modern (2025)","Klassik (90er)"]'><span>Fahrzeug</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="retro" data-vals='[false,true]' data-labels='["Aktuell","Retro"]'><span>Lackierungen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <button class="liv-open" data-action="livery">🎨 Lackierung &amp; Helm gestalten ›</button>
-        <h3>FAHRZEUG-SETUP</h3>
-        <div id="car-setup" class="car-setup"></div>
         <h3>FAHRER WÄHLEN</h3>
         <div id="driver-grid"></div>
+        <details class="more">
+          <summary>Fahrzeug-Setup <small>Flügel, Bremsbalance, Differenzial</small></summary>
+          <div id="car-setup" class="car-setup"></div>
+        </details>
       </div>
       <div class="col opts">
         <h3>STRECKE</h3>
@@ -141,12 +143,20 @@
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry","storm","fog","local"]' data-labels='["Wechselhaft","Regen","Trocken","Gewitter","Nebel","Teilweise Regen"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="grid" data-vals='[1,3,5,8,10,15,20,"random"]' data-labels='["P1 (Pole)","P3","P5","P8","P10","P15","P20","Zufällig"]'><span>Startplatz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="slider"><span>KI-Schwierigkeit</span><input type="range" id="difficulty" min="0" max="110" step="1"><b id="diff-val">75</b></div>
+        <h3>SPIELWEISE</h3>
+        <div class="opt" data-key="playStyle" data-vals='["simple","real","custom"]' data-labels='["Einfach","Realistisch","Eigene"]'><span>Spielweise</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <p class="set-hint">Einfach: kein Verschleiß, keine Schäden, keine Strafen, automatischer Start. Realistisch: alles an.</p>
+        <details class="more">
+          <summary>Regeln, Fahrhilfen &amp; Anzeige</summary>
         <h3>RENNREGELN</h3>
         <div class="opt" data-key="startTyre" data-vals='["auto","S","M","H"]' data-labels='["Automatisch","Soft","Medium","Hard"]'><span>Startreifen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="tyreWear" data-vals='[1,1.6,0]' data-labels='["Normal","Hoch","Aus"]'><span>Verschleiß</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="damage" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Schäden</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="penalties" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Strafen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="safetyCar" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Safety Car</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="formation" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Einführungsrunde</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tyreTemp" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Temperaturen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="launchAssist" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Startautomatik</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell (Q/E)"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -158,6 +168,7 @@
         <h3>ANZEIGE</h3>
         <div class="opt" data-key="camera" data-vals='["cockpit","tcam","nose","wing","chase","far"]' data-labels='["Cockpit","T-Kamera","Nase","Flügel","Verfolger","Verfolger weit"]'><span>Kamera</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="quality" data-vals='["ultra","high","medium","low"]' data-labels='["Ultra","Hoch","Mittel","Niedrig"]'><span>Grafik</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        </details>
       </div>
     </div>
   </div>

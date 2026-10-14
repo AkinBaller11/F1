@@ -47,7 +47,7 @@ const defaults = {
   // touch
   touchOpacity: 85, vibrate: true,
   // race rules
-  tyreWear: 1, damage: true, penalties: true, safetyCar: true, startTyre: 'auto', radio: 'voice', seasonQuali: true, seasonSprint: false, tyreTemp: true, formation: true, mpLeague: false,
+  tyreWear: 0, damage: false, penalties: false, safetyCar: true, startTyre: 'auto', radio: 'voice', seasonQuali: true, seasonSprint: false, tyreTemp: false, formation: false, mpLeague: false, launchAssist: true, playStyle: 'simple',
   // car setup
   setFw: 6, setRw: 6, setBias: 56, setDiff: 50,
   // own livery
@@ -93,6 +93,7 @@ const SETTINGS = [
     { key: 'hudScale', label: 'HUD-Größe', range: [70, 130, 5], unit: '%' },
   ] },
   { tab: 'Rennen', items: [
+    { key: 'playStyle', label: 'Spielweise', vals: ['simple', 'real', 'custom'], labels: ['Einfach', 'Realistisch', 'Eigene'], next: true, hint: 'Einfach: kein Verschleiß, keine Schäden, keine Strafen, keine Einführungsrunde, automatischer Start – einfach losfahren. Realistisch: alles an. Wer einzelne Regeln ändert, landet bei „Eigene“.' },
     { key: 'startTyre', label: 'Startreifen', vals: ['auto', 'S', 'M', 'H'], labels: ['Automatisch', 'Soft', 'Medium', 'Hard'], next: true, hint: 'Bei Regen startest du automatisch auf Intermediates oder Regenreifen.' },
     { key: 'tyreWear', label: 'Reifenverschleiß', vals: [1, 1.6, 0], labels: ['Normal', 'Hoch', 'Aus'], next: true, hint: 'Soft ist schnell, hält aber kurz. Hard hält lange. Boxenstopp: Enter / I, auf Touch der BOX-Knopf.' },
     { key: 'damage', label: 'Schäden', ...ONOFF, next: true, hint: 'Nach Unfällen bricht der Frontflügel ab. Das Auto schiebt dann über die Vorderräder, ein neuer Flügel kostet beim Stopp ein paar Sekunden.' },
@@ -100,6 +101,7 @@ const SETTINGS = [
     { key: 'safetyCar', label: 'Safety Car & Flaggen', ...ONOFF, next: true },
     { key: 'formation', label: 'Einführungsrunde', ...ONOFF, next: true, hint: 'Vor dem Start eine langsame Runde hinter dem Feld: Reifen und Bremsen aufwärmen, dann in die eigene Startbox. Nicht im Multiplayer.' },
     { key: 'tyreTemp', label: 'Reifen- & Bremstemperatur', ...ONOFF, next: true, hint: 'Kalte Reifen rutschen, überhitzte bauen schneller ab. Kalte Bremsen greifen schlechter, zu heiße lassen nach.' },
+    { key: 'launchAssist', label: 'Startautomatik', ...ONOFF, next: true, hint: 'Hält beim Start die Drehzahl automatisch im grünen Bereich. Aus: selbst mit dem Gas dosieren.' },
     { key: 'radio', label: 'Boxenfunk', vals: ['voice', 'text', 'off'], labels: ['Stimme + Text', 'Nur Text', 'Aus'] },
   ] },
   { tab: 'Audio', items: [
@@ -123,12 +125,20 @@ const PROFILES = {
   pro: { autoGas: false, brakeAssist: false, steerAssist: false, autoDrs: false, autoErs: false, line: 'off', gearbox: 'manual' },
 };
 const PROFILE_KEYS = Object.keys(PROFILES.easy);
+// play styles: one tap sets the race rules
+const STYLES = {
+  simple: { formation: false, tyreTemp: false, tyreWear: 0, damage: false, penalties: false, safetyCar: true, launchAssist: true },
+  real: { formation: true, tyreTemp: true, tyreWear: 1, damage: true, penalties: true, safetyCar: true, launchAssist: false },
+};
+const STYLE_KEYS = Object.keys(STYLES.simple);
 // friendlier defaults on phones / tablets
 if (IS_TOUCH) Object.assign(defaults, { quality: 'medium', difficulty: 60, profile: 'easy', ...PROFILES.easy });
 let settings = { ...defaults };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}')); } catch (e) { /* storage unavailable */ }
 // the on-screen wheel replaced the joystick as default touch steering
 if (!settings.lightIntro) { if (settings.profile === 'normal' && settings.steerAssist === false) settings.steerAssist = 'light'; settings.lightIntro = true; }
+// the simple play style became the default: easier to pick up, everything realistic is one tap away
+if (!settings.styleIntro) { Object.assign(settings, STYLES.simple, { playStyle: 'simple', styleIntro: true }); }
 if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
 document.body.classList.toggle('touch', IS_TOUCH);
 
@@ -312,6 +322,8 @@ function bindOpts() {
     const step = (d) => {
       let i = vals.indexOf(settings[key]); i = (i + d + vals.length) % vals.length; settings[key] = vals[i];
       if (PROFILE_KEYS.includes(key)) settings.profile = 'custom';
+      if (key === 'playStyle' && STYLES[settings.playStyle]) Object.assign(settings, STYLES[settings.playStyle]);
+      else if (STYLE_KEYS.includes(key)) settings.playStyle = 'custom';
       save(); renderOpts(); onSettingChanged(key);
     };
     o.querySelector('.l').addEventListener('click', () => step(-1));
@@ -378,6 +390,17 @@ function showScreen(id) {
 
 // spinning wheels: sharp when slow, smeared, then fully spun (m/s thresholds with a little hysteresis-free spacing)
 const wheelBlur = (v) => { v = Math.abs(v || 0); return v < 5 ? 0 : v < 17 ? 1 : 2; };
+
+// closest points between segments P1-P2 and Q1-Q2 in the ground plane
+function closestSeg(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z) {
+  const d1x = p2x - p1x, d1z = p2z - p1z, d2x = q2x - q1x, d2z = q2z - q1z, rx = p1x - q1x, rz = p1z - q1z;
+  const a = d1x * d1x + d1z * d1z, e = d2x * d2x + d2z * d2z, f = d2x * rx + d2z * rz;
+  const cc = d1x * rx + d1z * rz, b = d1x * d2x + d1z * d2z, den = a * e - b * b;
+  let s = den > 1e-9 ? Math.max(0, Math.min(1, (b * f - cc * e) / den)) : 0;
+  let t = (b * s + f) / e;
+  if (t < 0) { t = 0; s = Math.max(0, Math.min(1, -cc / a)); } else if (t > 1) { t = 1; s = Math.max(0, Math.min(1, (b - cc) / a)); }
+  return { px: p1x + d1x * s, pz: p1z + d1z * s, qx: q1x + d2x * t, qz: q1z + d2z * t };
+}
 
 // ------------------------------------------------------------------ car setup
 // wings 1-11 trade cornering grip for straight-line speed, brake bias and diff lock change the balance
@@ -1326,13 +1349,15 @@ class Game {
     }
     if (this.parkCtl) this.hud.setFlag('green', 'EINFÜHRUNGSRUNDE');
     else this.hud.setFlag('green', `EINFÜHRUNGSRUNDE · NOCH ${Math.max(0, Math.round(this.playerEntry.gridDist + L - p.dist))} M`);
-    const allParked = this.cars.every((c) => c.obj.park && c.obj.park.done);
-    if (allParked || this.formT > 240) this.endFormation();
+    // done when everyone is in the box (a car stuck behind another one gets 12 s, then it is placed)
+    const ready = this.cars.every((c) => c.spectator || (c.obj.park && (c.obj.park.done || c.obj.park.t > 12)));
+    if (ready || this.formT > 240) this.endFormation();
   }
 
   // drive a car into its grid box and stop there
   stepPark(o, dt) {
     const tr = this.track, P = o.park;
+    P.t = (P.t || 0) + dt;
     const togo = P.slot - o.dist;
     const vT = P.done ? 0 : Math.max(0, Math.min(tr.targetSpeed(o.s + 10) * 0.5, Math.sqrt(2 * 3 * Math.max(0, togo))));
     o.v = o.v > vT ? Math.max(vT, o.v - 8 * dt) : Math.min(vT, o.v + 4 * dt);
@@ -1374,7 +1399,7 @@ class Game {
   // clutch launch: keep the revs in the green window until the lights go out
   updateLaunchRevs(dt, inp) {
     const p = this.player;
-    const auto = this.opts.autoGas || this.opts.steerAssist === true;
+    const auto = this.opts.autoGas || this.opts.steerAssist === true || this.opts.launchAssist === true;
     if (this.stateT < 0.8) { this.launchRpm = 4000; this.hud.setLaunch(null); return; }
     if (auto) { this.launchRpm = 10200; }
     else {
@@ -1390,7 +1415,7 @@ class Game {
   judgeLaunch() {
     const r = this.launchRpm || 4000, p = this.player;
     let mul = 1, t = 0, msg = 'GUTER START', k = 'ok';
-    if (r >= 9500 && r <= 11000) { mul = 1.07; t = 2.6; msg = 'PERFEKTER START!'; k = 'perfect'; if (!(this.opts.autoGas || this.opts.steerAssist === true)) unlock('perfect_start'); }
+    if (r >= 9500 && r <= 11000) { mul = 1.07; t = 2.6; msg = 'PERFEKTER START!'; k = 'perfect'; if (!(this.opts.autoGas || this.opts.steerAssist === true || this.opts.launchAssist === true)) unlock('perfect_start'); }
     else if (r > 11800) { mul = 0.7; t = 1.8; msg = 'DURCHDREHENDE RÄDER!'; k = 'spin'; if (p.tyreT) p.tyreT = p.tyreT.map((x) => x + 12); }
     else if (r < 8000) { mul = 0.78; t = 1.5; msg = 'ZU WENIG DREHZAHL'; k = 'bog'; }
     p.launchMul = mul; this.launchT = t;
@@ -2225,93 +2250,130 @@ class Game {
     this.radio && this.radio.say(`Wir haben ${sec} Sekunden Strafe bekommen: ${why.toLowerCase()}.`, 3, true);
   }
 
+  // Car-to-car contact. Every car is a capsule that turns with it (3.4 m spine + 0.95 m radius),
+  // so a car sitting sideways is hit sideways. Contacts exchange an impulse at the contact point:
+  // straight hits trade speed, off-centre hits add a yaw kick, hard ones spin the car.
   resolveCollisions(dt) {
-    const tr = this.track, L = tr.length;
-    const objs = this.allObjs();
-    const p = this.player;
-    // lateral speed of every car (from how fast its track offset changes)
-    for (const o of objs) o.latV = o.prevLat === undefined || dt <= 0 ? 0 : (o.lat - o.prevLat) / dt;
-    const LEN = 5.3, WID = 1.95, E = 0.3; // contact box (m) and restitution
+    if (dt <= 0) return;
+    const objs = this.allObjs(), p = this.player;
+    const R = 0.95, HALF = 1.7, E = 0.2, IM = 2.6; // radius, half spine, restitution, inertia per mass (m²)
+    // world velocity of each car (heading speed + sideways shove)
+    for (const o of objs) {
+      o._fx = -Math.sin(o.yaw || 0); o._fz = -Math.cos(o.yaw || 0);
+      // a spinning AI car keeps sliding along its path, it doesn't drive where its nose points
+      const my = o.yawB !== undefined ? o.yawB : o.yaw || 0;
+      let vx = -Math.sin(my) * (o.v || 0), vz = -Math.cos(my) * (o.v || 0);
+      if (o === p) { vx += p.kx; vz += p.kz; }
+      else if (o.knock && !o.remote) { const f = this.track.frame(o.s); vx += f.rx * o.knock; vz += f.rz * o.knock; }
+      o._vx = vx; o._vz = vz;
+    }
+    const seg = (o, out) => { out[0] = o.x - o._fx * HALF; out[1] = o.z - o._fz * HALF; out[2] = o.x + o._fx * HALF; out[3] = o.z + o._fz * HALF; return out; };
+    const sa = [0, 0, 0, 0], sb = [0, 0, 0, 0];
     for (let a = 0; a < objs.length; a++) {
       for (let b = a + 1; b < objs.length; b++) {
         const A = objs[a], B = objs[b];
-        if (A.gone || B.gone || A.park || B.park) continue; // cars rolling into their grid box pass freely
-        let ds = B.dist - A.dist;
-        if (ds > L / 2) ds -= L; if (ds < -L / 2) ds += L;
-        const dl = B.lat - A.lat;
-        if (Math.abs(ds) > LEN || Math.abs(dl) > WID) continue;
-        const ol = WID - Math.abs(dl), os = LEN - Math.abs(ds);
-        const front = ds > 0 ? B : A, rear = ds > 0 ? A : B;
+        if (A.gone || B.gone || (A.remote && B.remote)) continue;
+        const cx = B.x - A.x, cz = B.z - A.z;
+        if (cx * cx + cz * cz > 36) continue;
+        // closest points between the two spines
+        const [ax, az, ax2, az2] = seg(A, sa), [bx, bz, bx2, bz2] = seg(B, sb);
+        const c = closestSeg(ax, az, ax2, az2, bx, bz, bx2, bz2);
+        let nx = c.qx - c.px, nz = c.qz - c.pz;
+        const d = Math.hypot(nx, nz);
+        if (d >= 2 * R) continue;
+        if (d < 1e-4) { nx = cx || 1; nz = cz; } // spines touching: push apart centre to centre
+        const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+        const pen = 2 * R - d;
         const withP = A === p || B === p;
-        const soft = withP || A.remote || B.remote ? 1 : 0.45; // AI give each other room: gentler, rarely a spin
-        let hit = 0, at = null;
-        if (os / LEN < ol / WID) {
-          // nose-to-tail: momentum exchange, an off-centre hit spins the car in front
-          this.shiftCar(rear, -os * 0.55, 0); this.shiftCar(front, os * 0.45, 0);
-          const dv = rear.v - front.v;
-          if (dv > 0) {
-            const J = dv * (1 + E) / 2;
-            this.pushV(rear, -J); this.pushV(front, J);
-            const off = Math.min(1, Math.abs(front.lat - rear.lat) / WID), side = Math.sign(front.lat - rear.lat) || 1;
-            this.kick(front, side * dv * (0.12 + off * 0.5) * soft, dv > (withP ? 7 : 14) && off > 0.25 ? 2.2 : 0, (front.lat - rear.lat) * dv * 0.08 * soft);
-            this.kick(rear, side * dv * off * 0.12 * soft, 0, 0);
-            if (dv > 3) { this.addDamage(rear, side > 0 ? 'R' : 'L', (dv - 3) * 0.05 * (0.5 + off) * soft); this.addDamage(front, 'rear', (dv - 3) * 0.02 * soft); }
-            if (rear === p && dv > 6 && front.spunT > 0) this.blame('KOLLISION VERURSACHT');
-            hit = dv;
-          }
-          at = rear;
-        } else {
-          // side by side: lateral impulse pushes them apart, rubbing at different speeds yaws them
-          const dir = Math.sign(dl) || 1;
-          this.shiftCar(A, 0, -dir * ol * 0.55); this.shiftCar(B, 0, dir * ol * 0.55);
-          const closing = Math.max(0, (A.latV - B.latV) * dir);
-          const J = (closing * (1 + E) / 2 + 0.6) * soft;
-          const sgn = Math.sign(ds) || 1, lever = Math.min(1, Math.abs(ds) / LEN);
-          const out = withP && closing > 6 && lever > 0.45 ? 1.6 : 0;
-          this.kick(A, -dir * sgn * J * lever * 0.55, out, -dir * J);
-          this.kick(B, -dir * sgn * J * lever * 0.55, out, dir * J);
-          if (closing > 2.5) {
-            // the car whose nose is alongside the other one loses that side of its front wing
-            if (ds > 0) this.addDamage(A, dir > 0 ? 'R' : 'L', closing * 0.035 * lever * soft);
-            else this.addDamage(B, dir > 0 ? 'L' : 'R', closing * 0.035 * lever * soft);
-          }
-          // the car that moved across is to blame
-          if (withP && closing > 5) { const pMove = (A === p ? A.latV * dir : -B.latV * dir), oMove = (A === p ? -B.latV * dir : A.latV * dir); const o = A === p ? B : A; if (pMove > oMove + 2 && o.spunT > 0) this.blame('KOLLISION VERURSACHT'); }
-          // friction: speeds pull together while rubbing
-          const dv = (A.v - B.v) * Math.min(1, dt * 2);
-          this.pushV(A, -dv * 0.5); this.pushV(B, dv * 0.5);
-          hit = closing * 1.5;
-          at = A;
+        // separate (a remote car is moved by its own device, so the local one takes it all)
+        const fixA = A.remote || A.net, fixB = B.remote || B.net;
+        const wa = fixA ? 0 : fixB ? 1 : 0.5, wb = fixB ? 0 : fixA ? 1 : 0.5;
+        this.moveCar(A, -nx * pen * wa, -nz * pen * wa);
+        this.moveCar(B, nx * pen * wb, nz * pen * wb);
+        // impulse along the normal at the contact point
+        const px = c.px + nx * R, pz = c.pz + nz * R;
+        const vn = (B._vx - A._vx) * nx + (B._vz - A._vz) * nz; // < 0: closing
+        if (vn >= 0) continue;
+        const closing = -vn;
+        const soft = withP || A.remote || B.remote ? 1 : 0.5; // AI leave each other a little room
+        const J = ((1 + E) * closing) / 2;
+        // rubbing: some friction along the contact
+        const tx = -nz, tz = nx, vt = (B._vx - A._vx) * tx + (B._vz - A._vz) * tz;
+        const Jt = Math.max(-0.3 * J, Math.min(0.3 * J, -vt / 4));
+        const ix = nx * J + tx * Jt, iz = nz * J + tz * Jt; // impulse on B (A gets the opposite)
+        const hard = withP || closing > 12; // AI rarely take each other out
+        if (!fixA) this.applyImpulse(A, -ix, -iz, px - A.x, pz - A.z, IM, soft, hard);
+        if (!fixB) this.applyImpulse(B, ix, iz, px - B.x, pz - B.z, IM, soft, hard);
+        // damage: front wing if the contact is at the nose, rear if at the gearbox
+        for (const o of [A, B]) {
+          if (o.remote || o.net || closing < 5) continue;
+          const rx = px - o.x, rz = pz - o.z, along = rx * o._fx + rz * o._fz, side = rx * -o._fz + rz * o._fx;
+          if (along > 1.3) this.addDamage(o, side < 0 ? 'R' : 'L', (closing - 5) * 0.06 * soft);
+          else if (along < -1.6) this.addDamage(o, 'rear', (closing - 5) * 0.025 * soft);
         }
-        if (withP && hit > 0.5) {
-          const o = A === p ? B : A;
-          p.impact = Math.max(p.impact, Math.min(1, hit / 14));
-          if (hit > 2.5) this.sparks((p.x + o.x) / 2, (p.z + o.z) / 2, Math.min(40, 6 + hit * 2), p.v);
-        } else if (!withP && hit > 3 && at && Math.hypot(at.x - p.x, at.z - p.z) < 120) {
-          this.sparks((A.x + B.x) / 2, (A.z + B.z) / 2, Math.min(30, 4 + hit * 2), (A.v + B.v) / 2);
-          audio.crash(Math.min(0.6, hit / 20) * Math.max(0.2, 1 - Math.hypot(at.x - p.x, at.z - p.z) / 120));
+        // blame: the player drove into a car that then spun
+        if (withP && closing > 7) {
+          const o = A === p ? B : A, ux = (o.x - p.x), uz = (o.z - p.z), ul = Math.hypot(ux, uz) || 1;
+          const pIn = (p._vx * ux + p._vz * uz) / ul, oIn = (o._vx * ux + o._vz * uz) / ul;
+          if (pIn > oIn + 5 && o.spunT > 0) this.blame('KOLLISION VERURSACHT');
+        }
+        if (withP) {
+          p.impact = Math.max(p.impact, Math.min(1, closing / 14));
+          if (closing > 3) this.sparks(px, pz, Math.min(36, 4 + closing * 2), p.v);
+        } else if (closing > 4 && Math.hypot(px - p.x, pz - p.z) < 120) {
+          this.sparks(px, pz, Math.min(26, 3 + closing * 2), (A.v + B.v) / 2);
+          audio.crash(Math.min(0.6, closing / 20) * Math.max(0.2, 1 - Math.hypot(px - p.x, pz - p.z) / 120));
         }
       }
     }
-    for (const o of objs) o.prevLat = o.lat; // after the shoves, so they don't read as lateral speed
+  }
+
+  // move a car by a world offset (keeps the track bookkeeping right)
+  moveCar(o, dx, dz) {
+    if (!dx && !dz) return;
+    if (o.remote || o.net) return;
+    const tr = this.track;
+    if (o === this.player) {
+      o.x += dx; o.z += dz;
+      const prevS = o.s;
+      tr.locate(o.x, o.z, o.hint, o.loc); o.hint = o.loc.i; o.s = o.loc.s; o.lat = o.loc.lat;
+      let d = o.s - prevS; if (d > tr.length / 2) d -= tr.length; if (d < -tr.length / 2) d += tr.length;
+      o.dist += d;
+    } else {
+      const f = tr.frame(o.s);
+      o.dist += dx * f.tx + dz * f.tz;
+      const dl = dx * f.rx + dz * f.rz;
+      o.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, o.lat + dl));
+      o.latOff += dl;
+      o.x += dx; o.z += dz;
+    }
+  }
+
+  // impulse (per unit mass) at offset r from the centre: speed along the heading, sideways shove, yaw
+  applyImpulse(o, ix, iz, rx, rz, IM, soft, hard = true) {
+    const fx = o._fx, fz = o._fz;
+    const along = ix * fx + iz * fz;
+    const latx = ix - fx * along, latz = iz - fz * along;
+    const cross = rx * iz - rz * ix; // >0: turns the car right (yaw down)
+    const dYawRate = (cross / IM) * soft; // rad/s, positive = to the right
+    if (o === this.player) {
+      o.v = Math.max(0, o.v + along);
+      o.kx += latx * 0.8; o.kz += latz * 0.8;
+      o.spin = Math.max(-4, Math.min(4, o.spin + dYawRate * 0.75));
+    } else {
+      o.v = Math.max(0, o.v + along * soft);
+      const f = this.track.frame(o.s);
+      o.knock = Math.max(-8, Math.min(8, (o.knock || 0) + (latx * f.rx + latz * f.rz) * soft));
+      o.latOff = o.lat - this.track.racingLat(o.s);
+      // AI yaw grows to the left; a hard off-centre hit breaks the rear loose (spin-out)
+      o.spinRate = (o.spinRate || 0) - dYawRate * 1.6;
+      if (!hard) o.spinRate = Math.max(-1.2, Math.min(1.2, o.spinRate));
+      else if (Math.abs(o.spinRate) > 2 && !(o.spunT > 0)) { o.spinRate = Math.sign(o.spinRate) * Math.max(3.5, Math.abs(o.spinRate)); o.spunT = 6; o.recover = false; this.incident(o, 1); }
+    }
   }
 
   // change a car's forward speed (other players are moved by their own devices)
   pushV(o, dv) { if (o.remote || o.net) return; o.v = Math.max(0, o.v + dv); }
-
-  // contact response: yaw kick (rad/s, +right), spin-out time for AI, sideways shove (m/s, +right)
-  kick(o, spin, spunT, lat) {
-    if (o.remote || o.net) return;
-    if (o === this.player) {
-      o.spin = Math.max(-6, Math.min(6, o.spin + spin * 0.7));
-      if (lat) { const f = this.track.frame(o.s); o.kx += f.rx * lat; o.kz += f.rz * lat; }
-    } else {
-      // AI yaw grows the other way (yaw += left), so flip the sign
-      if (spunT && !(o.spunT > 0)) { o.spinRate = -Math.sign(spin) * (4 + Math.random() * 3); o.spunT = spunT + Math.random(); o.knock += lat; this.incident(o, 1); }
-      else { o.spinRate += -spin * 0.5; o.knock += lat; o.spunT = Math.max(o.spunT, Math.abs(o.spinRate) > 2.5 ? 1.2 : 0); }
-      o.knock = Math.max(-9, Math.min(9, o.knock));
-    }
-  }
 
   // contact sparks: small additive particle burst at the contact point
   sparks(x, z, n, v) {
@@ -2343,18 +2405,7 @@ class Game {
     S.wasAny = any;
   }
 
-  shiftCar(o, ds, dl) {
-    if (o.remote || o.net) return; // other players' cars are moved by their own devices
-    if (o === this.player) {
-      const f = this.track.frame(o.s);
-      o.x += f.tx * ds + f.rx * dl; o.z += f.tz * ds + f.rz * dl;
-      o.lat += dl; o.dist += ds;
-    } else {
-      o.dist += ds;
-      o.lat = Math.max(-HALF_W - 1, Math.min(HALF_W + 1, o.lat + dl));
-      o.latOff += dl;
-    }
-  }
+
 
   // ---------------------------------------------------------- rendering
   render(dt) {
