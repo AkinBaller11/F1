@@ -519,64 +519,213 @@ function decalTex(text, color, opts = {}) {
   return (texCache[key] = t);
 }
 
-function tyreTex(compound) {
-  const key = 'tyre' + compound;
+// ------------------------------------------------------------------ wheels
+// Tyre sidewall, wheel cover and rim textures come in three blur levels: 0 sharp, 1 smeared,
+// 2 fully spun (rotationally averaged), swapped by speed like a broadcast camera shutter.
+export const COMPOUND_COL = { S: '#e8242b', M: '#f2c80f', H: '#f0f0f0', I: '#33c23e', W: '#2e7dff' };
+const COMPOUND_NAME = { S: 'SOFT', M: 'MEDIUM', H: 'HARD', I: 'INTER', W: 'WET' };
+
+// draw a word along a circle (letters upright toward the centre)
+function arcText(g, text, r, a0, size, spacing = 0.92) {
+  const step = (size * spacing) / r;
+  g.save();
+  g.rotate(a0 - ((text.length - 1) * step) / 2);
+  for (const ch of text) { g.save(); g.translate(0, -r); g.fillText(ch, 0, 0); g.restore(); g.rotate(step); }
+  g.restore();
+}
+// smear: draw fn several times rotated around the centre (motion blur of a spinning disc)
+function smear(g, n, spread, alpha, fn) {
+  g.save(); g.globalAlpha = alpha;
+  for (let i = 0; i < n; i++) { g.save(); g.rotate((i / (n - 1) - 0.5) * spread); fn(); g.restore(); }
+  g.restore();
+}
+
+// sidewall overlay for a RingGeometry(inner, outer): canvas radius 512 = outer edge, f = inner / outer
+function tyreTex(code, lvl = 0, f = 0.674) {
+  const key = `tyre${code}_${lvl}_${f.toFixed(3)}`;
+  if (texCache[key]) return texCache[key];
+  const [c, g] = canvas(1024, 1024);
+  const col = COMPOUND_COL[code] || '#f2c80f', R0 = 512 * f;
+  g.translate(512, 512);
+  const ring = (r, w, style, a = 1) => { g.save(); g.globalAlpha = a; g.strokeStyle = style; g.lineWidth = w; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.stroke(); g.restore(); };
+  // machined rim lip, rubber bead, subtle sidewall sheen, darker shoulder
+  const lip = g.createRadialGradient(0, 0, R0 - 2, 0, 0, R0 + 16);
+  lip.addColorStop(0, '#5d6168'); lip.addColorStop(0.35, '#d7dbe0'); lip.addColorStop(0.7, '#7c8188'); lip.addColorStop(1, 'rgba(40,42,46,0)');
+  g.fillStyle = lip; g.beginPath(); g.arc(0, 0, R0 + 16, 0, Math.PI * 2); g.arc(0, 0, R0 - 2, 0, Math.PI * 2, true); g.fill();
+  ring(R0 + 24, 12, '#0b0b0c', 0.9);
+  const sheen = g.createRadialGradient(0, 0, R0 + 30, 0, 0, 512);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.05)'); sheen.addColorStop(0.55, 'rgba(255,255,255,0.09)'); sheen.addColorStop(0.9, 'rgba(0,0,0,0.18)'); sheen.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = sheen; g.beginPath(); g.arc(0, 0, 512, 0, Math.PI * 2); g.arc(0, 0, R0 + 30, 0, Math.PI * 2, true); g.fill();
+  // compound band (two lines like the real thing)
+  const span = 512 - R0;
+  ring(R0 + span * 0.36, span * 0.13, col);
+  ring(R0 + span * 0.47, span * 0.03, col, 0.85);
+  // lettering
+  const tr = R0 + span * 0.72, size = span * 0.25;
+  g.font = `italic 900 ${size}px Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const words = () => {
+    g.fillStyle = col; arcText(g, 'APEX', tr, 0, size); arcText(g, 'APEX', tr, Math.PI, size);
+    g.fillStyle = '#e8e8e8'; g.font = `700 ${size * 0.62}px Arial`;
+    arcText(g, COMPOUND_NAME[code] || '', tr, Math.PI / 2, size * 0.62, 1.05); arcText(g, COMPOUND_NAME[code] || '', tr, -Math.PI / 2, size * 0.62, 1.05);
+    g.font = `italic 900 ${size}px Arial`;
+  };
+  if (lvl === 0) words();
+  else if (lvl === 1) smear(g, 9, 0.5, 0.22, words);
+  else { ring(tr, size * 0.75, col, 0.28); ring(tr, size * 0.45, '#e8e8e8', 0.1); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return (texCache[key] = t);
+}
+
+// modern aero wheel cover: satin carbon disc, team accents, centre-lock nut
+function coverTex(accent, lvl = 0) {
+  const key = `cover${accent}_${lvl}`;
   if (texCache[key]) return texCache[key];
   const [c, g] = canvas(512, 512);
-  const cx = 256;
-  g.strokeStyle = compound; g.lineWidth = 16;
-  g.beginPath(); g.arc(cx, cx, 214, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = '#e9e9e9'; g.font = 'bold 34px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  for (let i = 0; i < 2; i++) {
-    g.save(); g.translate(cx, cx); g.rotate(i * Math.PI + 0.3);
-    const word = 'P ZERO';
-    for (let k = 0; k < word.length; k++) { g.save(); g.rotate((k - word.length / 2) * 0.09); g.fillText(word[k], 0, -240); g.restore(); }
-    g.restore();
+  g.translate(256, 256);
+  const base = g.createRadialGradient(-40, -60, 10, 0, 0, 256);
+  base.addColorStop(0, '#41454c'); base.addColorStop(0.6, '#1d2024'); base.addColorStop(1, '#0d0f11');
+  g.fillStyle = base; g.beginPath(); g.arc(0, 0, 256, 0, Math.PI * 2); g.fill();
+  // fine carbon weave
+  g.save(); g.beginPath(); g.arc(0, 0, 250, 0, Math.PI * 2); g.clip(); g.globalAlpha = 0.07; g.fillStyle = '#fff';
+  for (let y = -256; y < 256; y += 8) for (let x = -256 + ((y / 8) % 2 ? 4 : 0); x < 256; x += 8) g.fillRect(x, y, 4, 4);
+  g.restore();
+  const acc = hex(accent);
+  const deco = () => {
+    g.strokeStyle = acc; g.lineWidth = 20; g.lineCap = 'butt';
+    for (const a of [0.2, 0.2 + Math.PI]) { g.beginPath(); g.arc(0, 0, 205, a, a + 1.5); g.stroke(); }
+    g.lineWidth = 4; g.strokeStyle = '#d9dde2';
+    for (const a of [1.95, 1.95 + Math.PI]) { g.beginPath(); g.arc(0, 0, 205, a, a + 0.7); g.stroke(); }
+    g.fillStyle = '#8f949b';
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * 128, Math.sin(a) * 128, 7, 0, Math.PI * 2); g.fill(); }
+  };
+  if (lvl === 0) deco();
+  else if (lvl === 1) smear(g, 9, 0.45, 0.25, deco);
+  else {
+    g.globalAlpha = 0.5; g.strokeStyle = acc; g.lineWidth = 20; g.beginPath(); g.arc(0, 0, 205, 0, Math.PI * 2); g.stroke();
+    g.globalAlpha = 0.18; g.strokeStyle = '#d9dde2'; g.lineWidth = 6; g.stroke();
+    g.globalAlpha = 0.15; g.strokeStyle = '#8f949b'; g.lineWidth = 14; g.beginPath(); g.arc(0, 0, 128, 0, Math.PI * 2); g.stroke();
+    g.globalAlpha = 1;
   }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  // centre-lock nut: steel hex, coloured retaining ring, polished cap
+  const nut = g.createLinearGradient(-50, -50, 50, 50);
+  nut.addColorStop(0, '#f0f2f4'); nut.addColorStop(0.5, '#7d838a'); nut.addColorStop(1, '#c7ccd2');
+  g.fillStyle = nut; g.beginPath();
+  if (lvl === 2) g.arc(0, 0, 48, 0, Math.PI * 2);
+  else for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + Math.PI / 6; g[i ? 'lineTo' : 'moveTo'](Math.cos(a) * 52, Math.sin(a) * 52); }
+  g.fill();
+  g.strokeStyle = '#e10600'; g.lineWidth = 9; g.beginPath(); g.arc(0, 0, 32, 0, Math.PI * 2); g.stroke();
+  const cap = g.createRadialGradient(-6, -6, 2, 0, 0, 20); cap.addColorStop(0, '#ffffff'); cap.addColorStop(1, '#8a9096');
+  g.fillStyle = cap; g.beginPath(); g.arc(0, 0, 20, 0, Math.PI * 2); g.fill();
+  // outer lip highlight
+  g.strokeStyle = 'rgba(220,225,230,0.55)'; g.lineWidth = 5; g.beginPath(); g.arc(0, 0, 252, 0, Math.PI * 2); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return (texCache[key] = t);
 }
 
-function coverTex(accent) {
-  const key = 'cover' + accent;
+// 90s open rim: polished spokes, visible brake behind (classic cars)
+function rimTex(accent, lvl = 0) {
+  const key = `rim${accent}_${lvl}`;
   if (texCache[key]) return texCache[key];
-  const [c, g] = canvas(256, 256);
-  const gr = g.createRadialGradient(128, 128, 10, 128, 128, 128);
-  gr.addColorStop(0, '#3a3d42'); gr.addColorStop(0.75, '#16181b'); gr.addColorStop(1, '#0c0d0f');
-  g.fillStyle = gr; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
-  g.strokeStyle = hex(accent); g.lineWidth = 6; g.beginPath(); g.arc(128, 128, 110, 0.2, 2.6); g.stroke();
-  g.fillStyle = '#888'; for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; g.beginPath(); g.arc(128 + Math.cos(a) * 26, 128 + Math.sin(a) * 26, 6, 0, 7); g.fill(); }
-  g.fillStyle = '#c9c9c9'; g.beginPath(); g.arc(128, 128, 14, 0, 7); g.fill();
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const [c, g] = canvas(512, 512);
+  g.translate(256, 256);
+  g.fillStyle = '#0d0e10'; g.beginPath(); g.arc(0, 0, 256, 0, Math.PI * 2); g.fill();
+  const gr = g.createRadialGradient(0, 0, 40, 0, 0, 248);
+  gr.addColorStop(0, '#e4e7ea'); gr.addColorStop(0.75, '#959aa0'); gr.addColorStop(1, '#3c4045');
+  const spokes = () => {
+    g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 232, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#16181b';
+    for (let i = 0; i < 6; i++) {
+      g.save(); g.rotate((i / 6) * Math.PI * 2);
+      g.beginPath(); g.moveTo(28, -56); g.quadraticCurveTo(140, -116, 196, -56); g.lineTo(196, 56); g.quadraticCurveTo(140, 116, 28, 56); g.closePath(); g.fill();
+      g.restore();
+    }
+  };
+  if (lvl === 0) spokes();
+  else if (lvl === 1) { spokes(); smear(g, 7, 0.4, 0.3, spokes); }
+  else {
+    // spun: spokes average to a darker grey disc
+    const av = g.createRadialGradient(0, 0, 30, 0, 0, 232);
+    av.addColorStop(0, '#c9cdd1'); av.addColorStop(0.18, '#7d8288'); av.addColorStop(0.85, '#5b6066'); av.addColorStop(1, '#3c4045');
+    g.fillStyle = av; g.beginPath(); g.arc(0, 0, 232, 0, Math.PI * 2); g.fill();
+  }
+  g.strokeStyle = hex(accent); g.lineWidth = 10; g.beginPath(); g.arc(0, 0, 220, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#c9c9c9'; g.beginPath(); g.arc(0, 0, 36, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#e10600'; g.beginPath(); g.arc(0, 0, 16, 0, Math.PI * 2); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return (texCache[key] = t);
 }
 
-// ------------------------------------------------------------------ wheels
+// rubber along the lathe profile (u = around, v = across): satin sidewalls, scuffed matte tread,
+// optional grooves for intermediates / full wets
+function treadTex(grooved) {
+  const key = 'tread' + grooved;
+  if (texCache[key]) return texCache[key];
+  const [c, g] = canvas(512, 1024), [rc, rg] = canvas(512, 1024);
+  const V = (j) => (j / 11) * 1024; // profile point j -> pixel row
+  const grd = g.createLinearGradient(0, 0, 0, 1024);
+  for (const [j, col] of [[0, '#1b1b1d'], [2, '#19191b'], [3.6, '#222224'], [5, '#303032'], [6, '#303032'], [7.4, '#222224'], [9, '#19191b'], [11, '#1b1b1d']]) grd.addColorStop(j / 11, col);
+  g.fillStyle = grd; g.fillRect(0, 0, 512, 1024);
+  // roughness: sidewalls satin, tread matte
+  const rgd = rg.createLinearGradient(0, 0, 0, 1024);
+  for (const [j, v] of [[0, 140], [3, 150], [4.4, 225], [6.6, 225], [8, 150], [11, 140]]) rgd.addColorStop(j / 11, `rgb(${v},${v},${v})`);
+  rg.fillStyle = rgd; rg.fillRect(0, 0, 512, 1024);
+  // scuffs and rubber pick-up on the contact patch
+  const t0 = V(4.6), t1 = V(6.4);
+  for (let i = 0; i < 900; i++) {
+    const y = t0 + Math.random() * (t1 - t0), x = Math.random() * 512, l = 4 + Math.random() * 30;
+    g.fillStyle = Math.random() < 0.6 ? 'rgba(80,80,84,0.12)' : 'rgba(5,5,6,0.18)';
+    g.fillRect(x, y, l, 1 + Math.random() * 2);
+  }
+  // marbles on the shoulders
+  for (let i = 0; i < 140; i++) {
+    const y = Math.random() < 0.5 ? V(4) + Math.random() * 30 - 15 : V(7) + Math.random() * 30 - 15;
+    g.fillStyle = 'rgba(8,8,9,0.6)'; g.beginPath(); g.arc(Math.random() * 512, y, 1 + Math.random() * 2.5, 0, Math.PI * 2); g.fill();
+  }
+  if (grooved) {
+    g.strokeStyle = '#08080a'; g.lineWidth = 5; rg.strokeStyle = 'rgb(255,255,255)'; rg.lineWidth = 5;
+    const mid = (t0 + t1) / 2, half = (t1 - t0) / 2;
+    for (let x = -40; x < 560; x += 22) for (const ctx of [g, rg]) {
+      ctx.beginPath(); ctx.moveTo(x, mid); ctx.lineTo(x + 26, mid - half * 0.95); ctx.moveTo(x, mid); ctx.lineTo(x + 26, mid + half * 0.95); ctx.stroke();
+    }
+    for (const ctx of [g, rg]) { ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(512, mid); ctx.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  const r = new THREE.CanvasTexture(rc);
+  return (texCache[key] = { map: t, rough: r });
+}
+
 const tyreGeoCache = {};
 function tyreGeo(r, w, rimR = 0.235) {
   const k = r + '_' + w + '_' + rimR;
   if (tyreGeoCache[k]) return tyreGeoCache[k];
   const hw = w / 2;
-  const prof = [[rimR, -hw * 0.92], [rimR + 0.02, -hw * 0.99], [r - 0.06, -hw * 1.02], [r - 0.025, -hw * 0.94], [r - 0.006, -hw * 0.78], [r, -hw * 0.5], [r, hw * 0.5], [r - 0.006, hw * 0.78], [r - 0.025, hw * 0.94], [r - 0.06, hw * 1.02], [rimR + 0.02, hw * 0.99], [rimR, hw * 0.92]];
-  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48);
+  // balloon sidewall, rounded shoulder, flat contact patch
+  const prof = [[rimR, -hw * 0.92], [rimR + 0.02, -hw * 0.99], [r - 0.06, -hw * 1.03], [r - 0.025, -hw * 0.95], [r - 0.006, -hw * 0.8], [r, -hw * 0.5], [r, hw * 0.5], [r - 0.006, hw * 0.8], [r - 0.025, hw * 0.95], [r - 0.06, hw * 1.03], [rimR + 0.02, hw * 0.99], [rimR, hw * 0.92]];
+  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 56);
   g.rotateZ(Math.PI / 2);
   return (tyreGeoCache[k] = g);
+}
+const barrelGeoCache = {};
+function barrelGeo(rimR, w) {
+  const k = rimR + '_' + w;
+  if (barrelGeoCache[k]) return barrelGeoCache[k];
+  const g = new THREE.CylinderGeometry(rimR + 0.002, rimR + 0.002, w * 1.0, 40, 1, true); g.rotateZ(Math.PI / 2);
+  return (barrelGeoCache[k] = g);
 }
 const mats = {};
 function sharedMats() {
   if (mats.carbon) return mats;
   mats.carbon = new THREE.MeshPhysicalMaterial({ map: carbonTex(), color: 0x8a8a8a, roughness: 0.42, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.3, side: THREE.DoubleSide });
   mats.black = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.8, side: THREE.DoubleSide });
-  mats.rubber = new THREE.MeshStandardMaterial({ color: 0x1a1a1b, roughness: 0.92, metalness: 0 });
+  const slick = treadTex(false), wetT = treadTex(true);
+  mats.rubber = new THREE.MeshStandardMaterial({ map: slick.map, roughnessMap: slick.rough, roughness: 1, metalness: 0 });
+  mats.rubberWet = new THREE.MeshStandardMaterial({ map: wetT.map, roughnessMap: wetT.rough, roughness: 1, metalness: 0 });
+  mats.barrel = new THREE.MeshStandardMaterial({ color: 0x4a4e55, metalness: 0.9, roughness: 0.32, side: THREE.DoubleSide });
   mats.glass = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.05, metalness: 0.9 });
   return mats;
 }
-export const COMPOUND_COL = { S: '#e8242b', M: '#f2c80f', H: '#f0f0f0', I: '#33c23e', W: '#2e7dff' };
-function compoundColor(wet, seed, tyre) {
-  if (tyre && COMPOUND_COL[tyre]) return COMPOUND_COL[tyre];
-  if (wet) return '#33c23e';
-  return ['#e8242b', '#f2c80f', '#f0f0f0'][seed % 3];
-}
+const compoundOf = (wet, seed, tyre) => (tyre && COMPOUND_COL[tyre] ? tyre : wet ? 'I' : ['S', 'M', 'H'][seed % 3]);
+
 // front wing halves broken off (dm.L / dm.R >= 0.5) -> geometry variant without them
 export function setWingLook(car, dm) {
   const U = car && car.userData;
@@ -584,47 +733,51 @@ export function setWingLook(car, dm) {
   const G = U.geo.variant((dm.L >= 0.5 ? 'L' : '') + (dm.R >= 0.5 ? 'R' : ''));
   for (const n of ['livery', 'carbon', 'accent']) U.parts[n].geometry = G[n];
 }
-// swap the sidewall marking after a pit stop
+// swap the sidewall marking (and grooved rubber) after a pit stop
 export function setTyreLook(car, tyre) {
-  for (const w of car.userData.wheels || []) if (w.wheel.userData.side) w.wheel.userData.side.map = tyreTex(compoundColor(false, 0, tyre));
-}
-
-function rimTex(accent) {
-  const key = 'rim' + accent;
-  if (texCache[key]) return texCache[key];
-  const [c, g] = canvas(256, 256);
-  g.fillStyle = '#0d0e10'; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill();
-  const gr = g.createRadialGradient(128, 128, 20, 128, 128, 124);
-  gr.addColorStop(0, '#d9dce0'); gr.addColorStop(0.75, '#8d9298'); gr.addColorStop(1, '#3c4045');
-  g.fillStyle = gr; g.beginPath(); g.arc(128, 128, 116, 0, 7); g.fill();
-  g.fillStyle = '#16181b';
-  for (let i = 0; i < 6; i++) { // windows between the spokes
-    g.save(); g.translate(128, 128); g.rotate((i / 6) * Math.PI * 2);
-    g.beginPath(); g.moveTo(14, -28); g.quadraticCurveTo(70, -58, 98, -28); g.lineTo(98, 28); g.quadraticCurveTo(70, 58, 14, 28); g.closePath(); g.fill(); g.restore();
+  for (const w of car.userData.wheels || []) {
+    const U = w.wheel.userData;
+    if (!U.side) continue;
+    U.compound = tyre;
+    U.side.map = tyreTex(tyre, U.lvl || 0, U.f);
+    U.tyre.material = tyre === 'I' || tyre === 'W' ? sharedMats().rubberWet : sharedMats().rubber;
   }
-  g.strokeStyle = hex(accent); g.lineWidth = 5; g.beginPath(); g.arc(128, 128, 110, 0, 7); g.stroke();
-  g.fillStyle = '#c9c9c9'; g.beginPath(); g.arc(128, 128, 18, 0, 7); g.fill();
-  g.fillStyle = '#e10600'; g.beginPath(); g.arc(128, 128, 8, 0, 7); g.fill();
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-  return (texCache[key] = t);
+}
+// motion blur of the spinning wheels: 0 sharp, 1 smeared, 2 spun
+export function setWheelBlur(car, lvl) {
+  const U0 = car.userData;
+  if (U0.blurLvl === lvl) return;
+  U0.blurLvl = lvl;
+  for (const w of U0.wheels || []) {
+    const U = w.wheel.userData;
+    if (!U.side) continue;
+    U.lvl = lvl;
+    U.side.map = tyreTex(U.compound, lvl, U.f);
+    U.cover.map = U.classic ? rimTex(U.accent, lvl) : coverTex(U.accent, lvl);
+  }
 }
 
 function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, compound = null) {
   const m = sharedMats();
+  const code = compoundOf(wet, seed, compound);
   const wheel = new THREE.Group();
-  const tyre = new THREE.Mesh(tyreGeo(r, w, rimR), m.rubber); tyre.castShadow = true;
+  const tyre = new THREE.Mesh(tyreGeo(r, w, rimR), code === 'I' || code === 'W' ? m.rubberWet : m.rubber); tyre.castShadow = true;
   wheel.add(tyre);
-  const sideMat = new THREE.MeshStandardMaterial({ map: tyreTex(compoundColor(wet, seed, compound)), transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
-  const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.4, metalness: classic ? 0.8 : 0.5 });
+  wheel.add(new THREE.Mesh(barrelGeo(rimR, w), m.barrel));
+  const outer = r - 0.004;
+  const sideMat = new THREE.MeshStandardMaterial({ map: null, transparent: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 });
+  const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.45, metalness: classic ? 0.8 : 0.35 });
   for (const s of [1, -1]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(rimR + 0.005, r - 0.004, 48), sideMat);
-    ring.rotation.y = s * Math.PI / 2; ring.position.x = s * (w / 2 * 1.025);
+    // the overlay starts at the rim so the machined lip is part of the sidewall texture
+    const ring = new THREE.Mesh(new THREE.RingGeometry(rimR - 0.004, outer, 64), sideMat);
+    ring.rotation.y = s * Math.PI / 2; ring.position.x = s * (w / 2 * 1.035);
     wheel.add(ring);
-    const cover = new THREE.Mesh(new THREE.CircleGeometry(rimR + 0.001, 32), coverMat);
+    const cover = new THREE.Mesh(new THREE.CircleGeometry(rimR + 0.001, 40), coverMat);
     cover.rotation.y = s * Math.PI / 2; cover.position.x = s * (w / 2 * (classic ? 0.75 : 0.9));
     wheel.add(cover);
   }
-  wheel.userData.side = sideMat;
+  wheel.userData = { side: sideMat, cover: coverMat, tyre, compound: code, accent, classic, f: (rimR - 0.004) / outer, lvl: 0 };
+  sideMat.map = tyreTex(code, 0, wheel.userData.f);
   return wheel;
 }
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
-import { TEAMS, buildCar, buildCockpit, setTyreLook, setWingLook, COMPOUND_COL, buildSafetyCar } from './models.js';
+import { TEAMS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, COMPOUND_COL, buildSafetyCar } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -368,6 +368,9 @@ function updateLivery() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
 }
+
+// spinning wheels: sharp when slow, smeared, then fully spun (m/s thresholds with a little hysteresis-free spacing)
+const wheelBlur = (v) => { v = Math.abs(v || 0); return v < 5 ? 0 : v < 17 ? 1 : 2; };
 
 // ------------------------------------------------------------------ car setup
 // wings 1-11 trade cornering grip for straight-line speed, brake bias and diff lock change the balance
@@ -1970,6 +1973,7 @@ class Game {
     const touchWheel = IS_TOUCH && document.body.classList.contains('steer-wheel');
     this.cockpit.userData.steering.visible = !touchWheel;
     if (touchWheel) this.updateTouchWheel(dt);
+    setWheelBlur(this.playerModel, wheelBlur(p.v));
     // AI meshes
     const blink = (performance.now() / 250 | 0) % 2;
     const rainLights = this.weather.rain > 0.15 || this.weather.wetness > 0.5;
@@ -1986,6 +1990,7 @@ class Game {
       o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
       m.rotation.set(0, o.yaw, o.rollVis);
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
+      setWheelBlur(m, wheelBlur(o.v));
       m.userData.helmet.children[0].rotation.set(0, -(o.steerVis || 0) * 0.6, (o.rollVis || 0) * -3);
       m.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
     }
