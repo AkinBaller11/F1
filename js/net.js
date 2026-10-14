@@ -81,7 +81,7 @@ export class Net {
 
   players() {
     return this.racePeers.filter((p) => p.kind === 'viewer' && p.presence && p.presence.name !== undefined)
-      .map((p) => ({ peer: p.peer, name: clean(p.presence.name) || 'Fahrer', drv: clean(p.presence.drv, 16), liv: cleanLivery(p.presence.liv), spec: !!p.presence.spec, host: !!p.presence.host, me: p.sameTab }));
+      .map((p) => ({ peer: p.peer, name: clean(p.presence.name) || 'Fahrer', drv: clean(p.presence.drv, 16), liv: cleanLivery(p.presence.liv), spec: !!p.presence.spec, ready: !!p.presence.ready, host: !!p.presence.host, me: p.sameTab }));
   }
 
   // host: publish the start signal (grid + settings); returns it for the local start
@@ -93,7 +93,7 @@ export class Net {
   }
   backToLobby() {
     if (!this.race) return;
-    this.race.presence({ start: null, car: null, ai: null, fin: null }).catch(() => {});
+    this.race.presence({ start: null, car: null, ai: null, fin: null, ready: null }).catch(() => {});
     if (this.isHost) this.advertise('open');
   }
 

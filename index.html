@@ -265,7 +265,7 @@
     </div>
     <div id="mp-lobby" hidden>
       <div class="lobby-head">
-        <div><span class="lbl">RENNEN</span><b class="code" id="lobby-code">0000</b><span class="hint">Code an Freunde geben</span></div>
+        <div><span class="lbl">RENNEN</span><b class="code" id="lobby-code">0000</b><span class="hint">Code an Freunde geben</span><button class="invite" id="mp-invite">📨 Einladen</button></div>
         <div class="lobby-set" id="lobby-set"></div>
       </div>
       <h3>FAHRER <span id="lobby-count"></span></h3>
@@ -278,11 +278,14 @@
       </div>
       <div class="host-only" id="host-opts">
         <h3>EINSTELLUNGEN (DU BIST GASTGEBER)</h3>
+        <div class="track-list" role="listbox" aria-label="Strecke wählen"></div>
         <div class="opt" data-key="track" data-vals='["barcelona","monza","city"]' data-labels='["Barcelona","Monza","Neon City"]'><span>Strecke</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="tod" data-vals='["morning","noon","evening","night"]' data-labels='["Morgen","Mittag","Abend","Nacht"]'><span>Tageszeit</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="laps" data-vals='[3,5,8,12]' data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry","storm","fog","local"]' data-labels='["Wechselhaft","Regen","Trocken","Gewitter","Nebel","Teilweise Regen"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="mpAI" data-vals='[0,4,8,12]' data-labels='["Keine KI","+4 KI","+8 KI","+12 KI"]'><span>KI-Gegner</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="playStyle" data-vals='["simple","real","custom"]' data-labels='["Einfach","Realistisch","Eigene"]'><span>Regeln</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="mpCollide" data-vals='[true,false]' data-labels='["An","Aus (Geisterautos)"]'><span>Kollisionen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="mpLeague" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Liga-Wertung</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <button class="cr-reset" id="mp-league-reset">Liga zurücksetzen</button>
       </div>
@@ -292,6 +295,7 @@
       </div>
       <div class="mp-actions">
         <button class="primary host-only" id="mp-start">Rennen starten</button>
+        <button class="ready" id="mp-ready">✓ Bereit</button>
         <span class="guest-only waiting">Warte auf den Start durch den Gastgeber …</span>
         <button id="mp-spec">👁 Zuschauen: Aus</button>
         <button id="mp-leave">Verlassen</button>

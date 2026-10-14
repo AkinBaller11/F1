@@ -36,7 +36,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
   profile: 'normal', gearbox: 'auto', tc: 'full', abs: true, brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
-  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, carStyle: 'modern', retro: false,
+  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, mpCollide: true, carStyle: 'modern', retro: false,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
   // camera
@@ -311,8 +311,7 @@ function drawTrackPreview() {
 function trackOpts() {
   document.querySelectorAll('.opt[data-key="track"]').forEach((o) => { o.dataset.vals = JSON.stringify(TRACKS.map((t) => t.id)); o.dataset.labels = JSON.stringify(TRACKS.map((t) => t.name)); });
   // calendar list: round number + circuit, one tap selects
-  const list = $('#track-list');
-  if (!list) return;
+  document.querySelectorAll('.track-list').forEach((list) => {
   list.innerHTML = '';
   TRACKS.forEach((t, i) => {
     const b = document.createElement('button');
@@ -321,6 +320,7 @@ function trackOpts() {
     b.append(t.name);
     b.addEventListener('click', () => { settings.track = t.id; save(); renderOpts(); onSettingChanged('track'); });
     list.append(b);
+  });
   });
 }
 trackOpts();
@@ -351,7 +351,7 @@ function renderOpts() {
     o.querySelector('.val').textContent = labels[i < 0 ? 0 : i];
   });
   document.querySelectorAll('.prof').forEach((b) => b.classList.toggle('sel', b.dataset.profile === settings.profile));
-  document.querySelectorAll('#track-list button').forEach((b) => { const on = b.dataset.track === settings.track; b.classList.toggle('sel', on); b.setAttribute('aria-selected', on); });
+  document.querySelectorAll('.track-list button').forEach((b) => { const on = b.dataset.track === settings.track; b.classList.toggle('sel', on); b.setAttribute('aria-selected', on); });
   applyTouchLayout();
 }
 
@@ -363,7 +363,7 @@ function applyTouchLayout() {
 
 function onSettingChanged(key) {
   applyLive();
-  if (['laps', 'weather', 'mpAI', 'track', 'tod', 'mpLeague'].includes(key) && net.isHost) mpSendCfg();
+  if (['laps', 'weather', 'mpAI', 'track', 'tod', 'mpLeague', 'mpCollide', 'playStyle', 'tyreWear', 'damage', 'penalties', 'safetyCar', 'tyreTemp'].includes(key) && net.isHost) mpSendCfg();
   if (key === 'track' && trackById(settings.track).tod) { settings.tod = trackById(settings.track).tod; save(); renderOpts(); } // night races start at night, like the real event
   if (key === 'track' || key === 'tod') updateLivery();
 }
@@ -518,6 +518,20 @@ const CAMS = {
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
 
+// floating name above another player's car (always readable, shrinks with distance like the official games)
+function nameTag(name, team) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(10,12,20,.78)'; g.beginPath(); g.roundRect(4, 10, 248, 44, 8); g.fill();
+  g.fillStyle = hex(team.body === 0xf0f0f0 || team.body === 0x161616 ? team.accent : team.body); g.fillRect(4, 10, 8, 44);
+  g.fillStyle = '#fff'; g.font = 'bold 30px "Titillium Web", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(String(name).toUpperCase(), 132, 33, 224);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  sp.scale.set(2.4, 0.6, 1); sp.position.set(0, 2.1, 0); sp.renderOrder = 10;
+  return sp;
+}
+
 // broadcast-style grade after tone mapping: a touch more saturation and S-curve contrast, soft vignette
 const GRADE = {
   uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 } },
@@ -558,27 +572,52 @@ class RemoteCar {
   constructor(track) {
     this.track = track; this.remote = true;
     this.x = 0; this.z = 0; this.yaw = 0; this.v = 0; this.dist = 0; this.lat = 0; this.wheelRot = 0; this.steerVis = 0;
-    this.t = null;
+    this.buf = []; // received states, oldest first
+    this.gap = 33; // average time between packets (ms)
     this.tyre = 'M';
   }
   get s() { return this.track.wrapS(this.dist + this.track.startS); }
+  get t() { return this.buf.length ? this.buf[this.buf.length - 1] : null; }
   set(x, z, yaw, dist, lat) { this.x = x; this.z = z; this.yaw = yaw; this.dist = dist; this.lat = lat; }
-  target(c, now) { this.t = { x: c[0], z: c[1], yaw: c[2], v: c[3], dist: c[4], lat: c[5], steer: c[6], at: now }; }
+  // c[8] = the sender's clock (ms); states are placed on the sender's timeline so network jitter
+  // doesn't distort the motion. off = smallest seen (arrival - send) = best-case latency + clock offset
+  target(c, now) {
+    const st = typeof c[8] === 'number' ? c[8] : now;
+    const lag = now - st;
+    this.off = this.off === undefined ? lag : Math.min(lag, this.off + 0.03); // creeps up slowly (about 1 ms/s) if the clocks drift
+    const last = this.buf[this.buf.length - 1];
+    if (last && st <= last.at) return; // late duplicate / out of order
+    if (last) this.gap += (Math.min(250, st - last.at) - this.gap) * 0.1;
+    this.jit = (this.jit || 0) + (Math.abs(lag - this.off) - (this.jit || 0)) * 0.1;
+    this.buf.push({ x: c[0], z: c[1], yaw: c[2], v: c[3], dist: c[4], lat: c[5], steer: c[6], at: st });
+    if (this.buf.length > 24) this.buf.shift();
+  }
+  // snapshot interpolation: show the car a little in the past (about two packet gaps), between two real
+  // states; only when packets are late, dead-reckon forward from the newest one
   update(dt) {
-    const t = this.t;
-    if (!t) return;
-    // dead-reckon from the last packet (max 0.25 s), then ease toward it
-    const age = Math.min(0.25, (performance.now() - t.at) / 1000);
-    const tx = t.x - Math.sin(t.yaw) * t.v * age, tz = t.z - Math.cos(t.yaw) * t.v * age;
-    const k = Math.min(1, dt * 12);
-    if (Math.hypot(tx - this.x, tz - this.z) > 15) { this.x = tx; this.z = tz; } else { this.x += (tx - this.x) * k; this.z += (tz - this.z) * k; }
-    let dy = t.yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-    this.yaw += dy * k;
-    this.v = t.v;
-    const td = t.dist + t.v * age;
-    this.dist += Math.abs(td - this.dist) > 30 ? td - this.dist : (td - this.dist) * k;
-    this.lat += (t.lat - this.lat) * k;
-    this.steerVis = t.steer * 0.3;
+    const B = this.buf;
+    if (!B.length) return;
+    const now = performance.now(), delay = Math.min(250, Math.max(50, this.gap * 1.6 + (this.jit || 0) * 2)), rt = now - (this.off || 0) - delay;
+    while (B.length > 2 && B[1].at <= rt) B.shift();
+    let x, z, yaw, dist, lat, v, steer;
+    const a = B[0], b = B[1];
+    if (b && rt >= a.at && rt <= b.at) {
+      const k = Math.min(1, (rt - a.at) / Math.max(1, b.at - a.at));
+      let dy = b.yaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      x = a.x + (b.x - a.x) * k; z = a.z + (b.z - a.z) * k; yaw = a.yaw + dy * k;
+      dist = a.dist + (b.dist - a.dist) * k; lat = a.lat + (b.lat - a.lat) * k; v = a.v + (b.v - a.v) * k; steer = b.steer;
+    } else {
+      const l = B[B.length - 1], age = Math.max(0, Math.min(0.3, (rt - l.at) / 1000));
+      x = l.x - Math.sin(l.yaw) * l.v * age; z = l.z - Math.cos(l.yaw) * l.v * age; yaw = l.yaw;
+      dist = l.dist + l.v * age; lat = l.lat; v = l.v; steer = l.steer;
+    }
+    // a big jump (teleport after a reset, first packet) snaps, everything else is followed exactly
+    if (Math.hypot(x - this.x, z - this.z) > 25) { this.x = x; this.z = z; }
+    const k = Math.min(1, dt * 20);
+    this.x += (x - this.x) * k; this.z += (z - this.z) * k;
+    let dy = yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * k;
+    this.dist = dist; this.lat = lat; this.v = v;
+    this.steerVis = steer * 0.3;
     this.wheelRot += (this.v * dt) / 0.36;
   }
 }
@@ -744,6 +783,7 @@ class Game {
         const mesh = buildCar(lv ? customTeam(lv, d.team) : d.team, wet, lv && lv.number ? lv.number : d.number, { second: d.team.drivers.indexOf(d.name) === 1, style: opts.carStyle, retro: opts.retro && !lv });
         scene.add(mesh);
         entry = { isPlayer: false, remote: true, peer: it.peer, team: d.team, name, number: d.number, obj: rc, mesh };
+        mesh.add(nameTag(name, d.team)); // other players get their name above the car
       } else {
         const R = driverRating(d.name);
         const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (1 + R[0] / 100) * (0.995 + rand() * 0.005);
@@ -1263,7 +1303,7 @@ class Game {
   // multiplayer: publish our car (and the host's AI), read everyone else's
   netSync(dt, racing) {
     const net = this.mp.net, p = this.player, r2 = (v, k) => Math.round(v * k) / k;
-    const msg = this.spectator ? { car: null, fin: null } : { car: [r2(p.x, 100), r2(p.z, 100), r2(p.yaw, 1000), r2(p.v, 10), r2(p.dist, 10), r2(p.lat, 100), r2(p.steer, 100), TYRE_ORDER.indexOf(p.tyre)], fin: this.playerEntry.finished ? r2(this.playerEntry.finishTime, 1000) : null };
+    const msg = this.spectator ? { car: null, fin: null } : { car: [r2(p.x, 100), r2(p.z, 100), r2(p.yaw, 1000), r2(p.v, 10), r2(p.dist, 10), r2(p.lat, 100), r2(p.steer, 100), TYRE_ORDER.indexOf(p.tyre), Math.round(performance.now())], fin: this.playerEntry.finished ? r2(this.playerEntry.finishTime, 1000) : null };
     if (net.isHost) msg.sc = this.sc ? [this.sc.kind === 'VSC' ? 1 : 2, this.sc.ph === 'in' ? 1 : this.sc.ph === 'end' ? 2 : 0, this.scObj ? r2(this.scObj.dist, 10) : null, this.scObj ? r2(this.scObj.lat, 100) : 0, this.scObj ? r2(this.scObj.v, 10) : 0] : null;
     if (net.isHost) msg.ai = this.aiList.map((a) => [r2(a.dist, 10), r2(a.lat, 100), r2(a.v, 10), r2(a.spinYaw, 100), TYRE_ORDER.indexOf(a.tyre)]);
     this.netT = (this.netT || 0) - dt;
@@ -2292,6 +2332,7 @@ class Game {
   // straight hits trade speed, off-centre hits add a yaw kick, hard ones spin the car.
   resolveCollisions(dt) {
     if (dt <= 0) return;
+    if (this.mp && this.opts.mpCollide === false) return; // multiplayer with collisions off: everyone drives through everyone
     const objs = this.allObjs(), p = this.player;
     const R = 0.95, HALF = 1.7, E = 0.2, IM = 2.6; // radius, half spine, restitution, inertia per mass (m²)
     // world velocity of each car (heading speed + sideways shove)
@@ -2865,7 +2906,7 @@ function startRace(mpStart, extra = null) {
   setTimeout(() => {
     if (game) { game.dispose(); game = null; }
     const opts = { ...settings, ...(extra || {}) };
-    if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } });
+    if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } }, mpRules(mpStart.rules));
     game = new Game(opts);
     game.warmup();
     $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
@@ -3402,6 +3443,7 @@ function renderLobby() {
       row.append(n, c);
       if (p.host) { const t = document.createElement('i'); t.textContent = 'GASTGEBER'; row.append(t); }
       if (p.spec) { const t = document.createElement('i'); t.className = 'spec'; t.textContent = 'ZUSCHAUER'; row.append(t); }
+      else if (p.ready || p.host) { const t = document.createElement('i'); t.className = 'rdy'; t.textContent = '✓ BEREIT'; row.append(t); }
       if (p.me) { const t = document.createElement('i'); t.className = 'you'; t.textContent = 'DU'; row.append(t); }
       box.appendChild(row);
     }
@@ -3421,8 +3463,14 @@ function renderLobby() {
       lg.t.slice(0, 20).forEach((r, i) => { const tr = document.createElement('tr'); for (const v of [i + 1, clean(r[0]), r[2] | 0, r[1] | 0]) { const td = document.createElement('td'); td.textContent = v; tr.append(td); } tb.append(tr); });
     }
     const me = ps.find((x) => x.me);
+    const drivers = ps.filter((x) => !x.spec), ready = drivers.filter((x) => x.ready || x.host).length;
+    $('#mp-start').textContent = drivers.length > 1 ? `Rennen starten (${ready}/${drivers.length} bereit)` : 'Rennen starten';
+    $('#mp-ready').textContent = me && me.ready ? '✓ Bereit' : 'Bereit?'; $('#mp-ready').classList.toggle('on', !!(me && me.ready));
+    $('#mp-ready').hidden = net.isHost || !!(me && me.spec);
     $('#mp-spec').textContent = `👁 Zuschauen: ${me && me.spec ? 'An' : 'Aus'}`; $('#mp-spec').classList.toggle('on', !!(me && me.spec));
-    $('#lobby-set').textContent = cfg ? `${tName} · ${tTime} · ${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}` : '';
+    const R = mpRules(cfg && cfg.rules);
+    const rules = cfg && cfg.rules ? ` · Schäden ${R.damage ? 'an' : 'aus'} · Strafen ${R.penalties ? 'an' : 'aus'} · Verschleiß ${R.tyreWear ? 'an' : 'aus'}${R.mpCollide ? '' : ' · Geisterautos'}` : '';
+    $('#lobby-set').textContent = cfg ? `${tName} · ${tTime} · ${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}${rules}` : '';
     // only in the lobby screen: a host missing for 6 s straight has left
     const inLobby = !game && document.querySelector('.screen.active')?.id === 'mp';
     if (h) net.hostSeenAt = performance.now();
@@ -3431,8 +3479,18 @@ function renderLobby() {
 }
 net.on(renderLobby);
 
+// race rules set by the host; guests race under exactly these (only known keys, sane values)
+function mpRules(r) {
+  if (!r || typeof r !== 'object') return {};
+  return {
+    tyreWear: [0, 1, 1.6].includes(r.tyreWear) ? r.tyreWear : 0, damage: !!r.damage, penalties: !!r.penalties, safetyCar: r.safetyCar !== false,
+    tyreTemp: !!r.tyreTemp, mpCollide: r.mpCollide !== false, formation: false,
+  };
+}
+const hostRules = () => ({ tyreWear: settings.tyreWear, damage: settings.damage, penalties: settings.penalties, safetyCar: settings.safetyCar, tyreTemp: settings.tyreTemp, mpCollide: settings.mpCollide });
+
 function mpSendCfg() {
-  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI, track: settings.track, tod: settings.tod }, league: leaguePresence() }).catch(() => {});
+  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI, track: settings.track, tod: settings.tod, rules: hostRules() }, league: leaguePresence() }).catch(() => {});
 }
 // friends league: kept by the host, everyone sees the table in the lobby
 const KEY_LEAGUE = 'apexgp25-league';
@@ -3483,7 +3541,7 @@ function mpStart() {
   const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 20 - humans.length));
   const start = {
     id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36),
-    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty, track: settings.track, tod: settings.tod,
+    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty, track: settings.track, tod: settings.tod, rules: hostRules(),
     slots: [...humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv, l: h.liv || null })), ...ai.map((d) => ({ a: d.name }))],
   };
   net.startRace(start);
@@ -3557,6 +3615,26 @@ $('#mp-create').addEventListener('click', mpCreate);
 $('#mp-join').addEventListener('click', () => mpJoin($('#mp-code').value));
 $('#mp-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') mpJoin($('#mp-code').value); });
 $('#mp-leave').addEventListener('click', mpLeave);
+$('#mp-ready').addEventListener('click', () => { const me = net.players().find((x) => x.me); if (net.race) net.race.presence({ ready: !(me && me.ready) }).catch(() => {}); });
+// invite: a link that opens the game straight into this race (on the web), or the code as text
+$('#mp-invite').addEventListener('click', async () => {
+  if (!net.code) return;
+  const link = net.transport === 'peer' ? `${location.origin}${location.pathname}?join=${net.code}` : '';
+  const text = `Fahr mit mir bei Apex GP 25! Code: ${net.code}${link ? ' ' + link : ''}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Apex GP 25', text, url: link || undefined }); return; }
+    await navigator.clipboard.writeText(link || text); mpToastLobby(link ? 'Einladungslink kopiert' : 'Code kopiert');
+  } catch (_) { mpToastLobby(`Code: ${net.code}`); }
+});
+function mpToastLobby(t) { const b = $('#mp-invite'); const o = b.textContent; b.textContent = t; setTimeout(() => { b.textContent = o; }, 1800); }
+// opened from an invite link: straight into that race
+{
+  const j = new URLSearchParams(location.search).get('join');
+  if (j && /^\d{4}$/.test(j)) {
+    history.replaceState(null, '', location.pathname);
+    setTimeout(async () => { await mpEnter(); if (net.room && !net.race) mpJoin(j); }, 300);
+  }
+}
 $('#mp-spec').addEventListener('click', () => { const me = net.players().find((x) => x.me); if (net.race) net.race.presence({ spec: !(me && me.spec) }).catch(() => {}); });
 $('#mp-league-reset').addEventListener('click', (e) => { const b = e.currentTarget; if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Wirklich? Nochmal tippen'; return; } delete b.dataset.armed; b.textContent = 'Liga zurücksetzen'; saveLeague({ n: 0, pts: {}, wins: {} }); mpSendCfg(); });
 $('#sp-prev').addEventListener('click', () => { const g = game; if (!g || !g.spec) return; const n = g.cars.length; do { g.spec.focus = (g.spec.focus - 1 + n) % n; } while (g.cars[g.spec.focus].gone); g.spec.auto = false; g.chaseCam = null; });

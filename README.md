@@ -39,6 +39,10 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.
 
+## Multiplayer
+
+Rennen erstellen, Code oder Einladungslink teilen (auf dem Handy über das Teilen-Menü), Mitspieler melden sich „Bereit“. Der Gastgeber wählt Strecke (Liste aller 24), Regeln (Einfach / Realistisch), Kollisionen (an oder Geisterautos), KI-Gegner und Liga; alle fahren mit den Regeln des Gastgebers. Die Autos der anderen werden mit ihrem eigenen Zeitstempel zwischen echten Positionen interpoliert (flüssig auch bei schwankender Verbindung) und tragen ein Namensschild.
+
 ## Streckendaten
 
 Die echten Streckenverläufe stammen aus [f1-circuits](https://github.com/bacinger/f1-circuits) von Tomislav Bacinger (MIT-Lizenz). Die GPS-Linien werden alle 20 m neu abgetastet, leicht geglättet und auf die offizielle Rundenlänge skaliert. Start-Ziel liegt wie im Original, Nachtrennen (Bahrain, Dschidda, Singapur, Las Vegas, Katar) starten bei Nacht. Höhenunterschiede und die Umgebung sind nachempfunden; an Suzukas Kreuzung gibt es statt der Brücke eine ebene Kreuzung ohne Kollisionen zwischen den beiden Ästen.
