@@ -345,7 +345,12 @@ export class Track {
           if (arc < d * 3 + 40) continue;
           const along = dx * tx + dz * tz, lat = dx * -tz + dz * tx;
           if (Math.abs(along) > 20) continue;
-          if (Math.abs(lat) < 2 * HALF_W + 2) { cross[i] = 1; continue; }
+          if (Math.abs(lat) < 2 * HALF_W + 2) {
+            // a real crossover only if the other branch actually passes through our centre line
+            const j0 = (j - 3 + N) % N, j1 = (j + 3) % N;
+            const l0 = (this.px[j0] - x) * -tz + (this.pz[j0] - z) * tx, l1 = (this.px[j1] - x) * -tz + (this.pz[j1] - z) * tx;
+            if (Math.sign(l0) !== Math.sign(l1) && Math.abs(lat) < HALF_W) { cross[i] = 1; continue; }
+          }
           if (lat > 0) Rr[i] = Math.min(Rr[i], lat); else L[i] = Math.min(L[i], -lat);
         }
       }
