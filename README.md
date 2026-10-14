@@ -53,4 +53,16 @@ Die echten Streckenverläufe stammen aus [f1-circuits](https://github.com/bacing
 
 An der Küste liegen die Strecken am Wasser (Monaco und Baku mit Yachten, Dschidda, Singapur, Abu Dhabi, Zandvoort, Montreal), Melbourne um den Albert-Park-See; Stadtkurse haben je nach Ort Hochhäuser (Singapur, Las Vegas) oder mittelhohe Bebauung (Monaco, Baku).
 
+Höhenprofile: echte Höhen aus den offenen AWS Terrain Tiles (SRTM und nationale Höhenmodelle) entlang jeder Strecke, gegen Bäume und Dächer geglättet (Spa 105 m, Spielberg 63 m, Monaco 45 m, Interlagos und Suzuka 43 m, Silverstone 12 m). Die ganze Welt wird im Shader um diese Höhe angehoben, Kamera und Fahrphysik lesen dieselbe Höhenkarte: bergauf bremst die Schwerkraft, bergab schiebt sie.
+
 Formula 1, F1 und verwandte Marken gehören der Formula One Licensing B.V.; dies ist ein inoffizielles Fan-Projekt.
+
+## Öffentliche Bestenliste (Vercel)
+
+Ohne Datenspeicher bleiben die Zeiten nur auf dem jeweiligen Gerät. So wird die Bestenliste für alle sichtbar:
+
+1. Im Vercel-Dashboard das Projekt öffnen → **Storage** → **Create Database** → **Upstash for Redis** (kostenloser Plan).
+2. Die Datenbank mit dem Projekt verbinden (**Connect Project**). Vercel setzt dabei die Umgebungsvariablen `KV_REST_API_URL` und `KV_REST_API_TOKEN` automatisch.
+3. Einmal neu deployen (**Deployments** → **Redeploy**).
+
+Danach zeigt das Spiel im Zeitfahren den Rekord und nach jeder gültigen Runde deinen Platz weltweit. Im Claude-Artifact ist die Bestenliste für alle sichtbar, mit denen die Seite geteilt ist.

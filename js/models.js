@@ -826,10 +826,10 @@ function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, comp
   const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.45, metalness: classic ? 0.8 : 0.35, alphaTest: classic ? 0.5 : 0, side: classic ? THREE.DoubleSide : THREE.FrontSide });
   for (const s of [1, -1]) {
     // the overlay starts at the rim so the machined lip is part of the sidewall texture
-    const ring = new THREE.Mesh(new THREE.RingGeometry(rimR - 0.004, outer, 64), sideMat);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(rimR - 0.004, outer, 64), sideMat); ring.userData.lod = true;
     ring.rotation.y = s * Math.PI / 2; ring.position.x = s * (w / 2 * 1.035);
     wheel.add(ring);
-    const cover = new THREE.Mesh(new THREE.CircleGeometry(rimR + 0.001, 40), coverMat);
+    const cover = new THREE.Mesh(new THREE.CircleGeometry(rimR + 0.001, 40), coverMat); cover.userData.lod = true;
     cover.rotation.y = s * Math.PI / 2; cover.position.x = s * (w / 2 * (classic ? 0.75 : 0.9));
     wheel.add(cover);
   }
@@ -860,7 +860,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   // T-cam: black for the first driver, yellow for the second
   const tcam = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: opts.second ? 0xf5d000 : 0x111111, roughness: 0.4 }));
   tcam.position.set(0, 1.06, 0.38); car.add(tcam);
-  car.userData.tcam = tcam;
+  car.userData.tcam = tcam; tcam.userData.lod = true;
 
   // mirror glass (the player car shows the live rear view)
   car.userData.mirrors = [];
@@ -878,7 +878,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   const light = team.top === 0xf2f2f2 || team.top === 0xf0f0f0;
   const decal = (tex, w, h, x, y, z, ry = 0, rx = 0) => {
     const me = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false }));
-    me.position.set(x, y, z); me.rotation.set(rx, ry, 0, 'YXZ'); car.add(me); return me;
+    me.position.set(x, y, z); me.rotation.set(rx, ry, 0, 'YXZ'); me.userData.lod = true; car.add(me); return me;
   };
   const numFont = { w: 256, h: 128, font: 'italic 900 100px "Titillium Web", Arial' };
   if (number) {
@@ -918,6 +918,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
   car.add(helmet);
   car.userData.helmet = helmet;
+  helmet.traverse((o) => { if (o.isMesh) o.userData.lod = true; });
 
   // rain light
   const rl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.02), new THREE.MeshBasicMaterial({ color: 0x330000 }));
@@ -942,6 +943,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   for (const w of wheels) { w.wheel.userData.barrel.material = brakeMat; if (w.wheel.userData.disc) w.wheel.userData.disc.material = discMat; }
   car.userData.brakeMat = brakeMat; car.userData.discMat = discMat;
   car.add(contactShadow());
+  collectLod(car);
   return car;
 }
 
@@ -966,6 +968,20 @@ function helmetTex(team, number) {
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return (texCache[key] = t);
+}
+
+// far away a car only needs its body and tyres: decals, rim covers, helmet, T-cam are hidden and it stops
+// casting into the shadow map (the contact shadow stays) -> about a third of the draw calls per car
+function collectLod(car) {
+  const parts = [], casters = [];
+  car.traverse((o) => { if (o.userData.lod) parts.push(o); else if (o.isMesh && o.castShadow) casters.push(o); });
+  car.userData.lod = { parts, casters, near: true, shadow: true };
+}
+export function setCarLod(car, near, shadow) {
+  const L = car.userData.lod;
+  if (!L) return;
+  if (L.near !== near) { L.near = near; for (const o of L.parts) o.visible = near; }
+  if (L.shadow !== shadow) { L.shadow = shadow; for (const o of L.casters) o.castShadow = shadow; }
 }
 
 let shadowTex = null;
@@ -1096,5 +1112,6 @@ export function buildSafetyCar() {
     pivot.add(wheel); car.add(pivot); car.userData.wheels.push({ pivot, wheel, front });
   }
   car.add(contactShadow());
+  collectLod(car);
   return car;
 }

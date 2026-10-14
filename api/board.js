@@ -19,13 +19,13 @@ export default async function handler(req, res) {
   if (!URL_ || !TOKEN) return res.status(503).json({ error: 'no_store' });
   try {
     if (req.method === 'GET') {
-      const key = keyOf(req.query.track, req.query.style);
+      const key = keyOf(req.query.track, req.query.style), me = clean(req.query.id, 40).replace(/[^a-z0-9-]/gi, '');
       const flat = await redis(['ZRANGE', key, '0', '49', 'WITHSCORES']);
       const meta = flat.length ? await redis(['HMGET', key + ':meta', ...flat.filter((_, i) => i % 2 === 0)]) : [];
       const rows = [];
       for (let i = 0; i < flat.length; i += 2) {
         let m = {}; try { m = JSON.parse(meta[i / 2] || '{}'); } catch (_) { /* ignore */ }
-        rows.push({ name: flat[i].split('#')[0], time: +flat[i + 1], drv: m.drv || '', at: m.at || 0 });
+        rows.push({ name: flat[i].split('#')[0], time: +flat[i + 1], drv: m.drv || '', at: m.at || 0, me: !!me && flat[i].endsWith('#' + me) });
       }
       return res.status(200).json({ rows });
     }

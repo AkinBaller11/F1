@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as TX from './textures.js';
+import { terrainAt } from './terrain.js';
 import { HALF_W } from './track.js';
 
 // ------------------------------------------------------------------ helpers
@@ -199,7 +200,14 @@ export function buildScenery(tr) {
   tr.seaAt = seaAt;
 
   // ---------------- terrain: flat near the track, rolling hills further out, mountains on the horizon
+  // with real elevation the coarse ground (40 m quads) would bulge through the road in dips: next to the
+  // track it sinks a little and a finely sampled verge strip (below) carries the grass up to the road
+  const hilly = !!tr.hilly;
   const height = (x, z) => {
+    if (hilly) { const d = df.at(x, z); if (d < 105) return height1(x, z) - 3 * (1 - smooth(82, 105, d)); }
+    return height1(x, z);
+  };
+  const height1 = (x, z) => {
     const sea = seaAt(x, z);
     if (sea > -30) { const k = smooth(-30, 0, sea); return (city ? 0 : height0(x, z)) * (1 - k) - 3.2 * k; } // beach slopes into the water
     if (city) return 0;
@@ -248,13 +256,22 @@ export function buildScenery(tr) {
     ground.receiveShadow = true;
     G.add(ground);
     tr.grassMat = mat;
+    if (hilly) {
+      // verge strips: road edge out to 75 m, sampled every 2 m like the road, so they follow every dip and crest
+      const vt = city ? pavementTex() : TX.grass(desert); vt.repeat.set(1, 1);
+      const vm = new THREE.MeshStandardMaterial({ map: vt, roughness: 0.95, color: city ? 0xffffff : desert ? 0xf2ead8 : 0xd2dcc2 });
+      tr.ribbon(-92, -7, -0.04, vm, 7, 12);
+      tr.ribbon(7, 92, -0.04, vm, 7, 12);
+      tr.vergeMat = vm;
+    }
   }
   // water: dark blue-green, mirror-like with a fine ripple normal map
   const waterMat = new THREE.MeshStandardMaterial({ color: 0x1d4656, roughness: 0.07, metalness: 0.65 });
+  waterMat.userData.noTerrain = true; // water stays level: the lake at its shore height, the sea at sea level
   if (q !== 'low') { waterMat.normalMap = TX.noiseNormal(256, 23, 1, 1.4); waterMat.normalMap.repeat.set(120, 120); waterMat.normalScale.set(0.25, 0.25); }
   if (lake) {
     const water = new THREE.Mesh(new THREE.CircleGeometry(lake.r * 1.05, 96), waterMat);
-    water.rotation.x = -Math.PI / 2; water.position.set(lake.x, -0.6, lake.z);
+    water.rotation.x = -Math.PI / 2; water.position.set(lake.x, terrainAt(lake.x, lake.z) - 0.6, lake.z);
     G.add(water);
   }
   if (tr.sea) {

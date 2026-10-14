@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
-import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating } from './models.js';
+import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -17,6 +17,7 @@ import { loadCareer, newCareer, saveCareer, clearCareer, careerPerf, careerRace,
 import { loadSeason, newSeason, saveSeason, addRoundResult, addSprintResult, standings, loadGhost, saveGhost, ghostPose, ghostTimeAt, GHOST_DT, POINTS } from './modes.js';
 import * as TX from './textures.js';
 import { TRACKS, TIMES, trackById } from './tracks.js';
+import { terrainAt, terrainEnable, dispose as disposeTerrain } from './terrain.js';
 import { TOD, skyTexture, sunDir, sunSprite } from './tod.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -38,7 +39,7 @@ const defaults = {
   profile: 'normal', gearbox: 'auto', tc: 'full', abs: true, brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, mpCollide: true, mpGrid: 'random', mpAIDiff: 75, mpEqual: false, mpAssists: 'all', mpPrivate: false, carStyle: 'modern', retro: false,
   // graphics
-  renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
+  renderScale: 100, dynRes: true, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
   // camera
   fov: 72, dynFov: true, headMove: 70, shake: 60, mirrors: true, hands: true, speedFx: true,
   // display
@@ -61,6 +62,7 @@ const SETTINGS = [
   { tab: 'Grafik', items: [
     { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Ultra: 4K-Schatten, 8× Kantenglättung, Grasbüschel, Linsenreflexe. Für starke PCs und neue iPads.' },
     { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
+    { key: 'dynRes', label: 'Auflösung automatisch', ...ONOFF, hint: 'Wird es ruckelig, rendert das Spiel kurz etwas kleiner und danach wieder scharf. Hält die Bildrate stabil.' },
     { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
     { key: 'bloom', label: 'Glüheffekt', vals: ['auto', 'on', 'off'], labels: ['Automatisch', 'An', 'Aus'], next: true, hint: 'Leuchtende Lampen, Neon und Sonne.' },
     { key: 'trees', label: 'Bäume & Details', vals: ['auto', 'ultra', 'high', 'medium', 'low'], labels: ['Automatisch', 'Sehr viele', 'Viele', 'Mittel', 'Wenige'], next: true },
@@ -491,10 +493,12 @@ const audio = new Audio();
 let game = null;
 const TMP_V1 = new THREE.Vector3(), TMP_V2 = new THREE.Vector3(), TMP_V3 = new THREE.Vector3(), TMP_C = new THREE.Color(); // per-frame scratch
 
+let dynScale = 1; // automatic resolution factor (see dynResolution)
+const CAM_P = new THREE.Vector3();
 function resize() {
   const w = innerWidth, h = innerHeight;
   const q = settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'ultra' ? 2.5 : q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'ultra' ? 2.5 : q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100 * (settings.dynRes !== false ? dynScale : 1));
   renderer.setSize(w, h, false);
   if (game) {
     game.camera.aspect = w / h; game.camera.updateProjectionMatrix();
@@ -671,6 +675,7 @@ class Game {
     const skyTex = skyTexture(tod);
     const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
     const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 48, 24), new THREE.MeshBasicMaterial({ map: skyTexture(tod, true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
+    sky.material.userData.noTerrain = true; skyWet.material.userData.noTerrain = true;
     sky.add(skyWet);
     scene.add(sky); this.sky = sky; this.skyWet = skyWet;
     this.sunSprite = sunSprite(tod);
@@ -1082,6 +1087,23 @@ class Game {
     </div>${this.mp ? '' : '<div class="in-skip">Gas geben oder tippen zum Überspringen</div>'}`;
   }
 
+  // the world is lifted by the height field in the shaders, so the camera follows: raise it by the ground
+  // height under it, and tilt the car-mounted cameras with the slope (returns the undo for after the frame)
+  liftCamera(cam) {
+    if (!cam) return () => {};
+    cam.updateMatrixWorld();
+    const wp = TMP_V1.setFromMatrixPosition(cam.matrixWorld);
+    const h = terrainAt(wp.x, wp.z);
+    let tilt = 0;
+    if (cam.parent && cam.parent !== this.scene && !this.replayMode && this.state !== 'intro') {
+      const p = this.player, fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+      tilt = Math.atan((terrainAt(p.x + fx * 3, p.z + fz * 3) - terrainAt(p.x - fx * 3, p.z - fz * 3)) / 6) * (cam === this.rearCam ? -1 : 1);
+    }
+    if (!h && !tilt) return () => {};
+    cam.position.y += h; cam.rotation.x += tilt; cam.updateMatrixWorld();
+    return () => { cam.position.y -= h; cam.rotation.x -= tilt; cam.updateMatrixWorld(); };
+  }
+
   applyCamera(quiet = false) {
     if (!CAMS[this.camMode]) this.camMode = 'cockpit';
     const m = this.camMode;
@@ -1206,6 +1228,23 @@ class Game {
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  }
+
+  // time trial: the record to beat (TV graphic), and our place after every valid lap
+  async showBoardTop() {
+    try {
+      const rows = await fetchBoard(this.def.id, this.opts.carStyle);
+      if (!rows.length || this.disposed) return;
+      const r = rows[0], where = boardMode() === 'local' ? 'DEIN REKORD' : 'REKORD';
+      setTimeout(() => this.hud.tv(`<span class="tv-tag">${where}</span><b>${clean(r.name).toUpperCase()}</b><em>${fmtTime(r.time)}</em>`, 'purple', 5), 2400);
+    } catch (_) { /* offline */ }
+  }
+  async showBoardRank(lt) {
+    const rows = await fetchBoard(this.def.id, this.opts.carStyle);
+    const i = rows.findIndex((r) => r.me);
+    if (i < 0 || this.disposed) return;
+    const txt = boardMode() === 'local' ? `PLATZ ${i + 1} DEINER ZEITEN` : `PLATZ ${i + 1} VON ${rows.length} WELTWEIT`;
+    this.hud.tv(`<span class="tv-tag">BESTENLISTE</span><b>${txt}</b><em>${fmtTime(rows[i].time)}</em>`, i === 0 ? 'purple' : '', 4);
   }
 
   // TV ticker for position changes at the front and anything involving a human driver
@@ -1378,6 +1417,7 @@ class Game {
     if (this.flying && !this.lapStarted && p.dist >= 0) {
       this.lapStarted = true; this.lap.start = this.raceTime; this.lap.sectorStart = this.raceTime;
       this.hud.message(this.mode === 'quali' ? 'QUALIFYING — 3 GEZEITETE RUNDEN' : 'ZEITFAHREN — FLIEGENDE RUNDE', 2);
+      if (this.mode === 'tt') this.showBoardTop();
     }
     if (racing && (!this.flying || this.lapStarted)) this.updateLapTiming();
     // spectators: the race ends for them once the field is home
@@ -2103,7 +2143,7 @@ class Game {
         this.hud.warn('NEUER GEIST GESPEICHERT', 2);
       }
       this.rec = [];
-      if (valid) submitLap(this.def.id, lt, this.opts);
+      if (valid) submitLap(this.def.id, lt, this.opts).then(() => this.showBoardRank(lt)).catch(() => {});
     }
     if (this.mode === 'quali' && valid) submitLap(this.def.id, lt, this.opts);
   }
@@ -2618,6 +2658,7 @@ class Game {
       const P = this.podium;
       if (P.camera.aspect !== innerWidth / innerHeight) { P.camera.aspect = innerWidth / innerHeight; P.camera.updateProjectionMatrix(); }
       P.update(dt);
+      terrainEnable(false);
       renderer.render(P.scene, P.camera);
       audio.quiet(0.12);
       return;
@@ -2658,7 +2699,7 @@ class Game {
     const wantWorld = !!v.world && !this.lookBack;
     if (!this.replayMode && !this.photo && !this.spectator && wantWorld && cam.parent !== this.scene) { this.scene.add(cam); this.chaseCam = null; }
     if (!this.replayMode && !this.photo && !this.spectator && !wantWorld && cam.parent !== this.playerBody) this.playerBody.add(cam);
-    if (this.state === 'intro' && !this.replayMode) {
+    if (this.state === 'intro' && !this.replayMode && !this.photo) {
       this.introCamera();
     } else if (this.replayMode) {
       this.replayCamera(dt);
@@ -2719,6 +2760,8 @@ class Game {
     const fastBlink = (performance.now() / 110 | 0) % 2 === 0;
     this.applyWeather(dt);
     this.updateSparks(dt);
+    cam.updateMatrixWorld();
+    const camP = CAM_P.setFromMatrixPosition(cam.matrixWorld);
     for (const c of this.cars) {
       if (c.isPlayer) continue;
       const o = c.obj, m = c.mesh;
@@ -2726,6 +2769,8 @@ class Game {
       const far = c.gone || Math.hypot(o.x - ref.x, o.z - ref.z) > 650;
       m.visible = !far;
       if (far) continue;
+      const dCam = Math.hypot(o.x - camP.x, o.z - camP.z);
+      setCarLod(m, dCam < 75 || !!this.photo, dCam < 55 || !!this.photo); // details and shadow-map casting only up close
       m.position.set(o.x, -Math.min(0.025, o.v * o.v * 0.0000035), o.z);
       o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
       m.rotation.set(0, o.yaw, o.rollVis);
@@ -2755,9 +2800,10 @@ class Game {
       U.lamps.green[0].material.color.setHex(this.sc && this.sc.ph === 'in' ? (ph ? 0x19d65b : 0x052a10) : 0x052a10);
     }
     // sun/shadow follow
-    this.sun.position.set(p.x + this.sunDir.x * 300, Math.max(60, this.sunDir.y * 300), p.z + this.sunDir.z * 300);
+    const hSun = terrainAt(p.x, p.z);
+    this.sun.position.set(p.x + this.sunDir.x * 300, Math.max(60, this.sunDir.y * 300) + hSun, p.z + this.sunDir.z * 300);
     if (this.sunSprite) { const cw = this.camWorld().position; this.sunSprite.position.set(cw.x + this.sunDir.x * 2500, cw.y + this.sunDir.y * 2500, cw.z + this.sunDir.z * 2500); }
-    this.sun.target.position.set(p.x, 0, p.z);
+    this.sun.target.position.set(p.x, hSun, p.z);
     this.sky.position.set(p.x, 0, p.z);
 
     this.updateRacingLine();
@@ -2771,15 +2817,20 @@ class Game {
     // mirrors
     this.mirrorFrame = (this.mirrorFrame || 0) + 1;
     const every = this.opts.quality === 'high' ? 1 : this.opts.quality === 'medium' ? 2 : 3;
+    terrainEnable(true);
+    const undoLift = this.liftCamera(cam);
     if ((CAMS[this.camMode] || {}).ego && settings.mirrors && !this.lookBack && this.mirrorFrame % every === 0) {
       this.cockpit.visible = false; this.playerModel.visible = false;
+      const undoRear = this.liftCamera(this.rearCam);
       renderer.setRenderTarget(this.mirrorRT);
       renderer.render(this.scene, this.rearCam);
       renderer.setRenderTarget(null);
+      undoRear();
       this.cockpit.visible = true; this.playerModel.visible = true;
     }
     if (this.photo && this.photo.dof > 0) this.renderPhotoDof();
     else if (this.composer) this.composer.render(); else renderer.render(this.scene, cam);
+    undoLift();
     if (this.photo && this.photo.snap) { const cb = this.photo.snap; this.photo.snap = null; cb(renderer.domElement); }
 
     this.hud.update(dt, p, {
@@ -2989,7 +3040,9 @@ class Game {
   }
 
   dispose() {
+    this.disposed = true;
     document.body.classList.remove('intro-on');
+    disposeTerrain();
     this.radio.stop();
     if (this.photo) { this.photo = null; document.body.classList.remove('photo', 'ph-cinema', 'ph-hidepanel'); renderer.domElement.style.filter = ''; $('#photo-ui').hidden = true; }
     if (this.podium) { this.podium.dispose(); this.podium = null; document.body.classList.remove('podium-on'); $('#podium-ui').hidden = true; }
@@ -3007,12 +3060,24 @@ class Game {
 
 // ------------------------------------------------------------------ loop
 let last = performance.now();
+// automatic resolution: when frames take too long the picture renders a little smaller (down to 60 %),
+// with headroom it climbs back; slow hysteresis so it doesn't pump
+let frameAvg = 16.7, dynT = 0;
+function dynResolution(ms) {
+  if (settings.dynRes === false || settings.fpsLimit || !game || game.paused) return;
+  frameAvg += (Math.min(100, ms) - frameAvg) * 0.05;
+  dynT += ms;
+  if (frameAvg > 21 && dynT > 1500 && dynScale > 0.6) { dynScale = Math.max(0.6, dynScale - 0.1); dynT = 0; resize(); }
+  else if (frameAvg < 17.6 && dynT > 5000 && dynScale < 1) { dynScale = Math.min(1, dynScale + 0.05); dynT = 0; resize(); }
+  else if (dynT > 5000) dynT = 0;
+}
 function frame(now) {
   requestAnimationFrame(frame);
   if (settings.fpsLimit && now - last < 1000 / settings.fpsLimit - 2) return;
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const ms = now - last, dt = Math.min(0.05, ms / 1000);
   last = now;
   if (!game) return;
+  dynResolution(ms);
   game.update(dt);
   if (!game.paused || game.mp || game.photo) game.render(dt);
 }
@@ -3118,7 +3183,7 @@ async function renderBoard() {
   body.innerHTML = '<tr><td colspan="5">Lade …</td></tr>';
   const rows = await fetchBoard(boardTrack, settings.carStyle);
   const m = boardMode();
-  $('#board-note').textContent = (m === 'local' ? 'Nur deine Zeiten auf diesem Gerät. Online-Bestenliste ist hier nicht verfügbar.' : 'Bestzeiten aller Spieler.') + ` Fahrzeug: ${settings.carStyle === 'classic' ? 'Klassik' : 'Modern'}. Zeiten kommen aus Zeitfahren und Qualifying (gültige Runden).`;
+  $('#board-note').textContent = (m === 'local' ? 'Gerade nur auf diesem Gerät gespeichert: Für diese Seite ist noch kein Online-Speicher eingerichtet (auf Vercel: Upstash Redis mit dem Projekt verbinden, siehe README).' : m === 'db' ? 'Bestzeiten aller Spieler, die diese Seite öffnen können (Seite über „Teilen“ freigeben, damit Freunde mitfahren).' : 'Bestzeiten aller Spieler weltweit.') + ` Fahrzeug: ${settings.carStyle === 'classic' ? 'Klassik' : 'Modern'}. Zeiten kommen aus Zeitfahren und Qualifying (gültige Runden).`;
   body.innerHTML = '';
   if (!rows.length) { body.innerHTML = '<tr><td colspan="5">Noch keine Zeiten. Fahr im Zeitfahren eine gültige Runde!</td></tr>'; return; }
   rows.forEach((r, i) => {

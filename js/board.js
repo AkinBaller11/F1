@@ -81,8 +81,8 @@ export async function fetchBoard(track, style) {
       return rows.sort((a, b) => a.time - b.time).slice(0, 50);
     }
     if (mode === 'api') {
-      const r = await fetch(`api/board?track=${encodeURIComponent(recordId(track))}&style=${style === 'classic' ? 'classic' : 'modern'}`, { cache: 'no-store' });
-      if (r.ok) { const j = await r.json(); return (j.rows || []).map((x) => ({ ...x, me: false })); }
+      const r = await fetch(`api/board?track=${encodeURIComponent(recordId(track))}&style=${style === 'classic' ? 'classic' : 'modern'}&id=${encodeURIComponent(deviceId())}`, { cache: 'no-store' });
+      if (r.ok) { const j = await r.json(); return (j.rows || []).map((x) => ({ ...x, me: !!x.me })); }
     }
   } catch (_) { /* fall back to local */ }
   const L = loadLocal()[k];

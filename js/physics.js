@@ -145,6 +145,8 @@ export class PlayerCar {
     }
     let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
+    // gravity along the slope (Eau Rouge, Austin turn 1): uphill slows, downhill pulls
+    if (tr.hs) { const i = this.hint >= 0 ? this.hint : 0, along = -Math.sin(this.yaw) * tr.tx[i] - Math.cos(this.yaw) * tr.tz[i]; acc -= 9.81 * tr.gradeAt(this.s) * along; }
     const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2) * (this.brakeMul ?? 1); // off-balance brakes lock a wheel earlier; brake temperature
     // without ABS a stamp on the brakes locks the fronts: less stopping power, the car won't turn, tyres flat-spot
     this.lockup = this.opts.abs === false && brk > 0.9 && this.v > 8 ? Math.min(1, (brk - 0.9) * 10) : 0;
@@ -157,7 +159,9 @@ export class PlayerCar {
     if (Math.abs(this.v) < 0.05 && thr < 0.05 && brk < 0.05) this.v = 0;
 
     // --- lateral
-    const maxSteer = 0.42 / (1 + Math.abs(this.v) / 16);
+    // steering lock: full lock in hairpins (about 6.5 m radius at 25 km/h, enough for Loews and the Montreal
+    // hairpin), the same calm range as before at high speed
+    const maxSteer = Math.min(0.55, 1.2 / (1 + Math.abs(this.v) / 5));
     const wantYaw = (this.v / CAR.wheelBase) * Math.tan(this.steer * maxSteer);
     // friction circle: braking / traction eat into lateral grip
     const S = this.setup;
@@ -401,6 +405,7 @@ export class AICar {
     const traction = wetMu * (12 + 0.002 * this.v * this.v) * (raceTime < 4 ? this.launch : 1);
     if (this.v < target) this.v = Math.min(target, this.v + Math.min(acc, traction) * dt);
     else this.v = Math.max(target, this.v - brakeDecel(this.v, wetMu) * dt);
+    if (tr.hs && this.v > 3) this.v -= 9.81 * tr.gradeAt(s) * dt * 0.8; // slope (the speed profile is flat, so a little less)
     this.v = Math.max(0, this.v);
     this.dist += this.v * dt;
 

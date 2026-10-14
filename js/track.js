@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import * as TX from './textures.js';
 import { buildScenery } from './scenery.js';
+import { buildTerrain } from './terrain.js';
 
 export const HALF_W = 7;      // half track width (m)
 export const KERB_W = 1.6;
@@ -58,6 +59,8 @@ export class Track {
     this.buildRacingLine();
     this.buildSpeedProfile();
     this.buildLimits();
+    buildTerrain(this); // real elevation (no-op on flat circuits)
+    this.hilly = this.hs.some((h) => h > 0.5);
     this.group = new THREE.Group();
     scene.add(this.group);
     this.buildMeshes();
@@ -121,12 +124,12 @@ export class Track {
         for (let k = 1; k < ns; k++) dense.push([s0[0] + (s1[0] - s0[0]) * (k / ns), -(s0[1] + (s1[1] - s0[1]) * (k / ns))]);
       }
     } else {
-      const C = def.ctrl, n = C.length;
+      const C = def.ctrl, n = C.length, E = def.elev;
       for (let i = 0; i < n; i++) {
         const a = C[(i - 1 + n) % n], b = C[i], c = C[(i + 1) % n], d = C[(i + 2) % n];
         for (let k = 0; k < 60; k++) {
           const t = k / 60;
-          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t)]);
+          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t), E ? (E[i] + (E[(i + 1) % n] - E[i]) * t) / 10 : 0]);
         }
       }
     }
@@ -138,7 +141,7 @@ export class Track {
     const total = cum[dense.length];
     const N = Math.round(total / DS);
     this.N = N; this.ds = total / N; this.length = total;
-    this.px = new Float32Array(N); this.pz = new Float32Array(N);
+    this.px = new Float32Array(N); this.pz = new Float32Array(N); this.hs = new Float32Array(N);
     let j = 0;
     for (let i = 0; i < N; i++) {
       const s = i * this.ds;
@@ -147,6 +150,7 @@ export class Track {
       const p = dense[j], q = dense[(j + 1) % dense.length];
       this.px[i] = p[0] + (q[0] - p[0]) * f;
       this.pz[i] = p[1] + (q[1] - p[1]) * f;
+      this.hs[i] = (p[2] || 0) + ((q[2] || 0) - (p[2] || 0)) * f; // road height above the lowest point (m)
     }
     this.tx = new Float32Array(N); this.tz = new Float32Array(N);
     for (let i = 0; i < N; i++) {
@@ -187,6 +191,13 @@ export class Track {
     return this.race[i] + (this.race[j] - this.race[i]) * t;
   }
   targetSpeed(s) { return this.vProf[this.idx(s)]; }
+  // road height and gradient along the lap (rise per metre, + = uphill in race direction)
+  hAt(s) {
+    s = this.wrapS(s);
+    const f = s / this.ds, i = Math.floor(f) % this.N, j = (i + 1) % this.N, t = f - Math.floor(f);
+    return this.hs[i] + (this.hs[j] - this.hs[i]) * t;
+  }
+  gradeAt(s) { return (this.hAt(s + 6) - this.hAt(s - 6)) / 12; }
 
   buildRacingLine() {
     const N = this.N;
@@ -316,6 +327,7 @@ export class Track {
       if (near.L[i] < 1e9) left[i] = Math.min(left[i], Math.max(HALF_W + 1.6, near.L[i] / 2 - 1));
       if (near.R[i] < 1e9) right[i] = Math.min(right[i], Math.max(HALF_W + 1.6, near.R[i] / 2 - 1));
     }
+    if (near.pairs.length) this.levelCrossings(near.pairs);
     this.limL = smoothArr(left, 6, 2);
     this.limR = smoothArr(right, 6, 2);
     for (let i = 0; i < N; i++) if (near.cross[i]) { this.limL[i] = Math.max(this.limL[i], 24); this.limR[i] = Math.max(this.limR[i], 24); }
@@ -326,11 +338,27 @@ export class Track {
     for (let i = 0; i < N; i++) if (this.cross[i]) this.kerbL[i] = this.kerbR[i] = this.gravelL[i] = this.gravelR[i] = 0;
   }
 
+  // the two branches of a crossover get the same height there, blended in over 80 m each way
+  levelCrossings(pairs) {
+    const N = this.N, done = [];
+    pairs.sort((a, b) => a[2] - b[2]);
+    for (const [i, j] of pairs) {
+      if (done.some(([a, b]) => Math.min(Math.abs(a - i), N - Math.abs(a - i)) < 60 || Math.min(Math.abs(b - i), N - Math.abs(b - i)) < 60)) continue;
+      done.push([i, j]);
+      const h0 = this.hs.slice(), mean = (h0[i] + h0[j]) / 2, span = Math.round(80 / this.ds);
+      for (let d = -span; d <= span; d++) {
+        const w = 0.5 * (1 + Math.cos((Math.PI * d) / span));
+        const a = (i + d + N) % N, b = (j + d + N) % N;
+        this.hs[a] += (mean - h0[i]) * w; this.hs[b] += (mean - h0[j]) * w;
+      }
+    }
+  }
+
   // for every sample: lateral distance to the nearest unrelated part of the track on each side
   // (unrelated = much further along the lap than it is away in space, so hairpin legs don't count)
   neighbourGaps() {
     const N = this.N, ds = this.ds, R = 70, cell = 50;
-    const L = new Float32Array(N).fill(1e9), Rr = new Float32Array(N).fill(1e9), cross = new Uint8Array(N);
+    const L = new Float32Array(N).fill(1e9), Rr = new Float32Array(N).fill(1e9), cross = new Uint8Array(N), pairs = [];
     const grid = new Map(), key = (cx, cz) => cx * 100003 + cz;
     for (let j = 0; j < N; j++) { const k = key(Math.floor(this.px[j] / cell), Math.floor(this.pz[j] / cell)); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(j); }
     for (let i = 0; i < N; i++) {
@@ -349,7 +377,7 @@ export class Track {
             // a real crossover only if the other branch actually passes through our centre line
             const j0 = (j - 3 + N) % N, j1 = (j + 3) % N;
             const l0 = (this.px[j0] - x) * -tz + (this.pz[j0] - z) * tx, l1 = (this.px[j1] - x) * -tz + (this.pz[j1] - z) * tx;
-            if (Math.sign(l0) !== Math.sign(l1) && Math.abs(lat) < HALF_W) { cross[i] = 1; continue; }
+            if (Math.sign(l0) !== Math.sign(l1) && Math.abs(lat) < HALF_W) { cross[i] = 1; if (d < 4) pairs.push([i, j, d]); continue; }
           }
           if (lat > 0) Rr[i] = Math.min(Rr[i], lat); else L[i] = Math.min(L[i], -lat);
         }
@@ -358,7 +386,7 @@ export class Track {
     // the crossing zone reaches a little either side of the overlap
     const c2 = new Uint8Array(N);
     for (let i = 0; i < N; i++) if (cross[i]) for (let d = -15; d <= 15; d++) c2[(i + d + N) % N] = 1;
-    return { L, R: Rr, cross: c2 };
+    return { L, R: Rr, cross: c2, pairs };
   }
 
   // longest near-straight section hosts start line, grid and pit lane
