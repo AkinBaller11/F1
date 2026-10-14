@@ -14,6 +14,7 @@ export class Net {
     this.listeners = new Set();
     this.lobbyPeers = []; this.racePeers = [];
     this.startSeen = null;
+    this.chatSeen = new Map(); // peer -> last chat id
   }
 
   async init() {
@@ -56,6 +57,7 @@ export class Net {
         this.onStart && this.onStart(h.presence.start);
       }
       if (this.isHost) this.advertise();
+      this.readChat();
       this.emit();
     }, () => { this.race = null; this.emit(); });
     await this.race.presence({ name: me.name, drv: me.drv, host: host || null, car: null, start: null, ai: null, fin: null });
@@ -88,6 +90,22 @@ export class Net {
     if (this.isHost) this.advertise('open');
   }
 
+  // chat: each driver's latest message rides in their presence; new ids are shown once
+  say(text) {
+    const t = clean(text, 80);
+    if (!t || !this.race) return;
+    this.race.presence({ chat: { id: Date.now() + Math.random(), t } }).catch(() => {});
+  }
+  readChat() {
+    for (const p of this.racePeers) {
+      const c = p.presence && p.presence.chat;
+      if (!c || typeof c.id !== 'number' || this.chatSeen.get(p.peer) === c.id) continue;
+      this.chatSeen.set(p.peer, c.id);
+      if (Date.now() - c.id > 20000) continue; // old message from before we joined
+      this.onChat && this.onChat({ name: clean(p.presence.name) || 'Fahrer', text: clean(c.t, 80), me: p.sameTab });
+    }
+  }
+
   // per-frame car state (coalesced by the platform to ~30 Hz)
   sendCar(state) { if (this.race) this.race.presence(state).catch(() => {}); }
 
@@ -95,7 +113,7 @@ export class Net {
 
   async leave() {
     if (this.race) { const r = this.race; this.race = null; try { await r.leave(); } catch (_) { /* ignore */ } }
-    this.racePeers = []; this.code = null; this.startSeen = null;
+    this.racePeers = []; this.code = null; this.startSeen = null; this.chatSeen = new Map();
     if (this.room && this.isHost) this.room.presence({ host: null, hn: null, n: null, st: null }).catch(() => {});
     this.isHost = false; this.hostState = 'open';
     this.emit();

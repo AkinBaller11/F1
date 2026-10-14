@@ -7,11 +7,12 @@ export const ACTIONS = [
   ['ers', 'ERS Overtake'], ['drs', 'DRS'], ['up', 'Hochschalten'], ['down', 'Runterschalten'],
   ['cam', 'Kamera weiter'], ['camPrev', 'Kamera zurück'], ['look', 'Nach hinten schauen'],
   ['reset', 'Auto zurücksetzen'], ['pause', 'Pause'], ['mute', 'Ton an/aus'], ['hud', 'HUD umschalten'],
+  ['box', 'Boxenstopp anfordern'], ['tyre', 'Reifen für den Stopp wählen'],
 ];
 export const DEFAULT_BINDS = {
   throttle: ['KeyW', 'ArrowUp'], brake: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   ers: ['Space'], drs: ['KeyF'], up: ['KeyE'], down: ['KeyQ'], cam: ['KeyC'], camPrev: ['KeyV'], look: ['KeyB'],
-  reset: ['KeyR'], pause: ['Escape', 'KeyP'], mute: ['KeyM'], hud: ['KeyH'],
+  reset: ['KeyR'], pause: ['Escape', 'KeyP'], mute: ['KeyM'], hud: ['KeyH'], box: ['Enter', 'KeyI'], tyre: ['KeyO'],
 };
 export function keyLabel(code) {
   if (!code) return '—';
@@ -62,7 +63,7 @@ export class Input {
       el.addEventListener('lostpointercapture', off);
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     }
-    const tap = { 'tc-drs': 'drs', 'tc-cam': 'cam', 'tc-pause': 'pause', 'tc-camtop': 'cam', 'tc-hud': 'hud' };
+    const tap = { 'tc-drs': 'drs', 'tc-cam': 'cam', 'tc-pause': 'pause', 'tc-camtop': 'cam', 'tc-hud': 'hud', 'tc-box': 'box' };
     for (const [id, code] of Object.entries(tap)) {
       const el = document.getElementById(id);
       if (el) el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.pressed.add(code); });
@@ -219,6 +220,8 @@ export class Input {
       if (edge(4)) s.shiftDown = true;
       if (edge(3)) this.pressed.add('cam');
       if (edge(9)) this.pressed.add('pause');
+      if (edge(12)) this.pressed.add('box');
+      if (edge(13)) this.pressed.add('tyre');
       if (b(1)) T.look = true; else if (this.padLook) T.look = false;
       this.padLook = b(1);
       this.padPrev = p.buttons.map((x) => x.pressed);

@@ -82,6 +82,8 @@
   <div class="tc-top">
     <button id="tc-camtop" aria-label="Kamera wechseln"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-2h6l2 2h3v12H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
     <button id="tc-looktop" aria-label="Nach hinten schauen (halten)"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button id="tc-emote" class="tc-emote mp-only" aria-label="Emojis">💬</button>
+    <button id="tc-box" class="tc-box" aria-label="Boxenstopp anfordern">BOX</button>
     <button id="tc-hud" aria-label="Anzeige ein- oder ausblenden"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button>
     <button id="tc-fs" aria-label="Vollbild"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
     <button id="tc-pause" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/></svg></button>
@@ -99,7 +101,8 @@
   </header>
   <nav class="main-nav">
     <button data-action="start" class="primary"><span class="k">Schnelles Rennen</span><span class="d">Sofort losfahren mit deinen Einstellungen</span></button>
-    <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Strecke, Tageszeit, Runden, Wetter, Fahrer, KI</span></button>
+    <button data-action="modes"><span class="k">Spielmodi</span><span class="d">Rennwochenende, Meisterschaft, Zeitfahren, Bestenliste</span></button>
+    <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Strecke, Tageszeit, Runden, Wetter, Fahrer, Setup</span></button>
     <button data-action="mp"><span class="k">Multiplayer</span><span class="d">Online gegen Freunde fahren</span></button>
     <button data-action="controls"><span class="k">Steuerung</span><span class="d">Profile, Fahrhilfen, Tasten belegen</span></button>
     <button data-action="settings"><span class="k">Einstellungen</span><span class="d">Grafik, Kamera, Anzeige, Audio, Touch</span></button>
@@ -121,6 +124,8 @@
         <h3>FAHRZEUG</h3>
         <div class="opt" data-key="carStyle" data-vals='["modern","classic"]' data-labels='["Modern (2025)","Klassik (90er)"]'><span>Fahrzeug</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="retro" data-vals='[false,true]' data-labels='["Aktuell","Retro"]'><span>Lackierungen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <h3>FAHRZEUG-SETUP</h3>
+        <div id="car-setup" class="car-setup"></div>
         <h3>FAHRER WÄHLEN</h3>
         <div id="driver-grid"></div>
       </div>
@@ -134,6 +139,12 @@
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry"]' data-labels='["Wechselhaft","Regen","Trocken"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="grid" data-vals='[1,3,5,8,10,15,20,"random"]' data-labels='["P1 (Pole)","P3","P5","P8","P10","P15","P20","Zufällig"]'><span>Startplatz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="slider"><span>KI-Schwierigkeit</span><input type="range" id="difficulty" min="0" max="110" step="1"><b id="diff-val">75</b></div>
+        <h3>RENNREGELN</h3>
+        <div class="opt" data-key="startTyre" data-vals='["auto","S","M","H"]' data-labels='["Automatisch","Soft","Medium","Hard"]'><span>Startreifen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tyreWear" data-vals='[1,1.6,0]' data-labels='["Normal","Hoch","Aus"]'><span>Verschleiß</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="damage" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Schäden</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="penalties" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Strafen</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="safetyCar" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Safety Car</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell (Q/E)"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -231,6 +242,12 @@
       </div>
       <h3>FAHRER <span id="lobby-count"></span></h3>
       <div id="lobby-players" class="lobby-players"></div>
+      <h3>CHAT</h3>
+      <div class="lobby-chat">
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <div class="chat-row"><input id="chat-input" maxlength="80" placeholder="Nachricht …" autocomplete="off"><button id="chat-send">Senden</button></div>
+        <div class="emote-row" id="lobby-emotes"></div>
+      </div>
       <div class="host-only" id="host-opts">
         <h3>EINSTELLUNGEN (DU BIST GASTGEBER)</h3>
         <div class="opt" data-key="track" data-vals='["barcelona","monza","city"]' data-labels='["Barcelona","Monza","Neon City"]'><span>Strecke</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -248,16 +265,83 @@
   </div>
 </section>
 
+<!-- game modes -->
+<section class="screen panel-screen" id="modes">
+  <div class="panel">
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>SPIELMODI</h2><span></span></div>
+    <div class="mode-grid">
+      <button class="mode-card" data-action="weekend"><i class="mi">Q</i><b>Rennwochenende</b><span>Qualifying über 3 Runden entscheidet deinen Startplatz, danach das Rennen.</span></button>
+      <button class="mode-card" data-action="season-open"><i class="mi">🏆</i><b>Meisterschaft</b><span id="season-sub">Alle Strecken nacheinander, WM-Punkte und Tabelle.</span></button>
+      <button class="mode-card" data-action="tt"><i class="mi">⏱</i><b>Zeitfahren</b><span id="tt-sub">Allein auf der Strecke gegen dein Geist-Auto.</span></button>
+      <button class="mode-card" data-action="board"><i class="mi">≡</i><b>Bestenliste</b><span>Die schnellsten Runden aller Spieler pro Strecke.</span></button>
+    </div>
+    <p class="set-note">Strecke, Tageszeit, Runden und Wetter stellst du unter „Rennen einrichten“ ein.</p>
+  </div>
+</section>
+
+<!-- championship -->
+<section class="screen panel-screen" id="season">
+  <div class="panel">
+    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>MEISTERSCHAFT</h2><button class="back reset" id="season-reset">NEUE SAISON</button></div>
+    <div class="champion" id="season-champ" hidden></div>
+    <div class="season-cols">
+      <div>
+        <h3>KALENDER</h3><ol id="season-cal" class="season-cal"></ol>
+        <div class="opt" data-key="seasonQuali" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Qualifying</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="laps" data-vals='[3,5,8,12]' data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+      </div>
+      <div><h3>FAHRERWERTUNG</h3><div class="tablewrap"><table class="res"><thead><tr><th>POS</th><th>FAHRER</th><th>TEAM</th><th>SIEGE</th><th>PKT</th></tr></thead><tbody id="season-body"></tbody></table></div></div>
+    </div>
+    <div class="res-actions"><button class="primary" data-action="season-next" id="season-next">Nächstes Rennen ›</button></div>
+  </div>
+</section>
+
+<!-- leaderboard -->
+<section class="screen panel-screen" id="board">
+  <div class="panel">
+    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>BESTENLISTE</h2><span></span></div>
+    <div class="board-tabs" id="board-tabs"></div>
+    <p class="set-note" id="board-note"></p>
+    <div class="tablewrap"><table class="res"><thead><tr><th>POS</th><th>FAHRER</th><th>AUTO</th><th>ZEIT</th><th>DATUM</th></tr></thead><tbody id="board-body"></tbody></table></div>
+  </div>
+</section>
+
 <section class="screen" id="loading"><div class="loader"><div class="mark"><i></i><i></i><i></i></div><p>STRECKE WIRD GELADEN…</p></div></section>
 
 <!-- pause -->
 <div id="pause"><div class="pbox">
   <h2>PAUSE</h2>
   <button data-action="resume" class="primary">Weiterfahren</button>
-  <button data-action="restart">Rennen neu starten</button>
+  <div class="pause-pit"><button data-action="pause-box" id="pause-box">Boxenstopp anfordern</button><button data-action="pause-tyre" id="pause-tyre">Reifen: Automatisch</button></div>
+  <button data-action="quali-end" id="pause-qend" hidden>Qualifying beenden</button>
+  <button data-action="restart">Neu starten</button>
   <button data-action="settings">Einstellungen</button>
   <button data-action="quit">Zum Hauptmenü</button>
 </div></div>
+
+<!-- multiplayer: messages + emoji bar during the race -->
+<div id="chat-feed" aria-live="polite"></div>
+<div id="emote-bar" hidden></div>
+
+<!-- podium ceremony overlay -->
+<div id="podium-ui" hidden>
+  <div class="pod-box"><span class="pod-tag">PODIUM</span><ol id="podium-list"></ol></div>
+  <button class="primary" data-action="podium-next">Weiter zum Ergebnis ›</button>
+</div>
+
+<!-- replay controls -->
+<div id="replay-ui" hidden>
+  <div class="rp-top"><b class="rp-tag">REPLAY</b><span id="rp-time">0:00.000</span><button id="rp-exit">Beenden ✕</button></div>
+  <div class="rp-events" id="rp-events"></div>
+  <div class="rp-bar">
+    <button id="rp-back" aria-label="10 Sekunden zurück">↺10</button>
+    <button id="rp-play" aria-label="Abspielen / Pause">❚❚</button>
+    <input type="range" id="rp-seek" min="0" max="1000" value="0" aria-label="Zeit">
+    <button id="rp-speed">1×</button>
+    <button id="rp-cam">TV</button>
+    <span class="rp-car"><button id="rp-prev" aria-label="Vorheriges Auto">‹</button><b id="rp-car">-</b><button id="rp-next" aria-label="Nächstes Auto">›</button></span>
+  </div>
+</div>
 
 <!-- results -->
 <section class="screen panel-screen" id="results">
@@ -265,10 +349,10 @@
     <div class="panel-head"><span></span><h2 id="res-title">ERGEBNIS</h2><span></span></div>
     <div class="res-sum"><div><span>Position</span><b id="res-pos">P1</b></div><div><span>Schnellste Runde</span><b id="res-best">-</b></div><div><span>Streckenverstöße</span><b id="res-warn">0</b></div></div>
     <div class="tablewrap"><table class="res">
-      <thead><tr><th>POS</th><th>FAHRER</th><th>TEAM</th><th>START</th><th>ZEIT</th><th>PKT</th></tr></thead>
+      <thead><tr><th>POS</th><th>FAHRER</th><th>TEAM</th><th>START</th><th>ZEIT</th><th>STOPPS</th><th>PKT</th></tr></thead>
       <tbody id="results-body"></tbody>
     </table></div>
-    <div class="res-actions"><button data-action="restart" class="primary" id="res-again">Nochmal fahren</button><button data-action="menu">Hauptmenü</button></div>
+    <div class="res-actions"><button data-action="weekend-race" class="primary" id="res-race" hidden>Zum Rennen ›</button><button data-action="season-open" class="primary" id="res-season" hidden>Zur Meisterschaft ›</button><button data-action="restart" class="primary" id="res-again">Nochmal fahren</button><button data-action="replay" id="res-replay">Replay ansehen</button><button data-action="menu">Hauptmenü</button></div>
   </div>
 </section>
 

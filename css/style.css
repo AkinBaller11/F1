@@ -473,3 +473,119 @@ body.hud-minimal.cam-tcam .pill { display: none; }
 .pill span { font: 700 26px/1 var(--display); min-width: 2.2em; text-align: right; }
 .pill small { font-size: 13px; color: var(--muted); font-weight: 600; }
 body.touch.steer-wheel.hud-minimal .pill { left: auto; right: calc(230px + env(safe-area-inset-right, 0px)); transform: none; }
+
+/* car status in the timing box: tyre, wear, damage, pit request, penalties */
+.cstat { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding: 5px 7px; font-size: clamp(9px, .7vw, 12px); }
+.cstat .ty { width: 1.9em; height: 1.9em; border-radius: 50%; border: 3px solid #f2c80f; display: grid; place-items: center; font-weight: 900; font-size: 1.05em; flex: none; }
+.cstat .wear { flex: 1; height: 5px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.cstat .wear i { display: block; height: 100%; width: 100%; background: #2ad46a; transition: width .4s; }
+.cstat .cs-car { width: 1.7em; height: 2.5em; flex: none; }
+.cstat .cs-car rect { fill: #2ad46a; }
+.cstat .cs-box { font-weight: 900; letter-spacing: .08em; padding: 1px 5px; border-radius: 3px; color: var(--muted); border: 1px solid var(--line); }
+.cstat .cs-box.on { background: #2e7dff; color: #fff; border-color: #2e7dff; animation: boxblink 1s steps(2) infinite; }
+@keyframes boxblink { 50% { opacity: .55; } }
+.cstat .cs-pen { color: var(--yellow); font-weight: 900; }
+.cstat .cs-pen:empty { display: none; }
+.res small.pen { color: var(--yellow); font-weight: 900; }
+#touch .tc-box { font-size: 11px; font-weight: 900; letter-spacing: .04em; }
+#pause .pause-pit { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#pause .pause-pit button { font-size: .85em; }
+#pause.no-pit .pause-pit { display: none; }
+#touch .tc-box.on { background: #2e7dff; border-color: #2e7dff; }
+
+/* flag banner + team radio */
+.flag { position: absolute; left: 50%; top: calc(2vh + 4px); transform: translateX(-50%); padding: 4px 14px 4px 34px; font-weight: 900; letter-spacing: .1em; font-size: clamp(10px, .85vw, 14px); background: var(--panel); border-radius: 3px; opacity: 0; transition: opacity .25s; white-space: nowrap; }
+.flag::before { content: ''; position: absolute; left: 8px; top: 50%; width: 18px; height: 12px; transform: translateY(-50%); border-radius: 2px; background: #888; }
+.flag.show { opacity: 1; }
+.flag.yellow::before { background: var(--yellow); } .flag.yellow { color: var(--yellow); }
+.flag.sc, .flag.vsc { background: var(--yellow); color: #1a1600; } .flag.sc::before, .flag.vsc::before { background: #1a1600; }
+.flag.green::before { background: var(--green); } .flag.green { color: var(--green); }
+.msg.sc { border-left-color: var(--yellow); } .msg.green { border-left-color: var(--green); }
+.radio { position: absolute; left: 1.4vw; bottom: 3vh; max-width: min(380px, 34vw); background: var(--panel); border-left: 4px solid #2e7dff; padding: 6px 12px 8px; border-radius: 3px; opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; }
+.radio.show { opacity: 1; transform: none; }
+.radio .rl { display: block; font-size: clamp(8px, .6vw, 10px); letter-spacing: .18em; color: #6fb0ff; font-weight: 900; margin-bottom: 2px; }
+.radio .rl::before { content: '◉ '; animation: boxblink 1s steps(2) infinite; }
+#h-radiotxt { font-weight: 600; font-size: clamp(11px, .9vw, 15px); }
+body.touch .radio { left: auto; right: calc(1.4vw + env(safe-area-inset-right, 0px)); bottom: auto; top: 46%; max-width: 32vw; }
+body.hide-msg .flag, body.hide-msg .radio { display: none !important; }
+
+/* game modes, championship, leaderboard */
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+.mode-card { display: grid; gap: 6px; text-align: left; padding: 18px 18px 20px; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 6px; border-left: 4px solid var(--red); }
+.mode-card:hover { background: rgba(255,255,255,.12); }
+.mode-card .mi { font-style: normal; font: italic 900 26px/1 var(--display); color: var(--red); }
+.mode-card b { font: italic 900 22px/1.1 var(--display); text-transform: uppercase; }
+.mode-card span { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.season-cols { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 18px; }
+@media (max-width: 820px) { .season-cols { grid-template-columns: 1fr; } }
+.season-cal { margin: 0 0 10px; padding: 0; list-style: none; display: grid; gap: 4px; counter-reset: rnd; }
+.season-cal li { counter-increment: rnd; display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: rgba(255,255,255,.05); border-radius: 4px; font-weight: 600; }
+.season-cal li::before { content: counter(rnd); width: 1.6em; color: var(--muted); font-weight: 900; }
+.season-cal li.done { opacity: .6; } .season-cal li.next { background: rgba(225,6,0,.22); border-left: 3px solid var(--red); }
+.season-cal li small { margin-left: auto; color: var(--muted); font-weight: 700; }
+.champion { padding: 14px 18px; margin-bottom: 12px; background: linear-gradient(90deg, rgba(245,196,0,.25), transparent); border-left: 4px solid var(--yellow); font: italic 900 22px/1.2 var(--display); }
+.board-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.board-tabs button { padding: 8px 14px; border: 1px solid var(--line); background: rgba(255,255,255,.06); border-radius: 4px; font-weight: 700; }
+.board-tabs button.sel { background: var(--red); border-color: var(--red); }
+/* time trial delta */
+.posbox .delta { font-weight: 900; padding: 0 8px 4px; font-size: clamp(12px, 1vw, 17px); text-align: right; }
+.posbox .delta:empty { display: none; }
+.posbox .delta.up { color: #ff5a5a; } .posbox .delta.down { color: var(--green); }
+body.mode-tt .tower { display: none; }
+
+/* replay viewer */
+#replay-ui { position: fixed; inset: 0; z-index: 12; pointer-events: none; font-weight: 700; }
+#replay-ui[hidden] { display: none; }
+#replay-ui button, #replay-ui input { pointer-events: auto; }
+body.replaying #hud, body.replaying #touch, body.replaying #droplets, body.replaying #visor, body.replaying #speedfx { display: none !important; }
+.rp-top { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; background: var(--panel); padding: 6px 8px 6px 14px; border-radius: 4px; }
+.rp-tag { background: var(--red); padding: 2px 8px; font-style: italic; letter-spacing: .1em; }
+.rp-top button, .rp-bar button { border: 0; background: rgba(255,255,255,.1); padding: 8px 12px; border-radius: 4px; font-weight: 900; min-width: 44px; min-height: 40px; }
+.rp-bar { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(980px, calc(100vw - 24px)); display: flex; gap: 8px; align-items: center; background: var(--panel); padding: 8px; border-radius: 6px; }
+.rp-bar input { flex: 1; min-width: 60px; accent-color: var(--red); }
+.rp-car { display: flex; align-items: center; gap: 4px; }
+.rp-car b { min-width: 7.5em; text-align: center; letter-spacing: .04em; }
+.rp-events { position: absolute; right: calc(12px + env(safe-area-inset-right, 0px)); top: calc(64px + env(safe-area-inset-top, 0px)); display: grid; gap: 4px; max-height: 55vh; overflow-y: auto; pointer-events: auto; width: min(260px, 40vw); }
+.rp-events button { text-align: left; border: 0; border-left: 3px solid var(--red); background: var(--panel); padding: 6px 10px; font-size: 12px; font-weight: 700; }
+.rp-events .none { color: var(--muted); font-size: 12px; background: var(--panel); padding: 6px 10px; }
+@media (max-width: 700px) { .rp-car b { min-width: 5.5em; font-size: 12px; } .rp-bar { gap: 4px; } .rp-bar button { padding: 6px 8px; min-width: 38px; } }
+
+/* podium ceremony */
+#podium-ui { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+#podium-ui[hidden] { display: none; }
+body.podium-on #touch, body.podium-on #droplets, body.podium-on #visor, body.podium-on #speedfx { display: none !important; }
+.pod-box { position: absolute; left: calc(16px + env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); background: var(--panel); padding: 10px 14px; border-radius: 4px; min-width: 220px; }
+.pod-tag { font: italic 900 14px/1 var(--display); letter-spacing: .14em; background: var(--yellow); color: #1a1600; padding: 3px 8px; }
+#podium-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+#podium-list li { display: flex; align-items: center; gap: 8px; font-weight: 900; letter-spacing: .04em; }
+#podium-list li b { width: 1.2em; color: var(--yellow); }
+#podium-list li .bar { width: 4px; height: 1.1em; }
+#podium-list li small { margin-left: auto; color: var(--muted); font-weight: 600; padding-left: 10px; }
+#podium-list li.me { color: var(--yellow); }
+#podium-ui > button { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: auto; padding: 14px 22px; border: 0; border-radius: 4px; background: var(--red); font-weight: 900; font-size: 16px; }
+
+/* car setup */
+.setup-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
+.setup-presets button { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.06); border-radius: 4px; text-align: left; }
+.setup-presets button b { font-size: 13px; } .setup-presets button small { color: var(--muted); font-size: 11px; }
+.setup-presets button.sel { border-color: var(--red); background: rgba(225,6,0,.2); }
+.setup-sum { margin: 6px 0 10px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+/* multiplayer chat */
+.lobby-chat { display: grid; gap: 6px; }
+.chat-log { height: 120px; overflow-y: auto; background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: 14px; }
+.chat-log p { margin: 2px 0; } .chat-log p.me b { color: var(--yellow); }
+.chat-row { display: flex; gap: 6px; }
+.chat-row input { flex: 1; min-width: 0; padding: 10px; background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 4px; color: var(--fg); font: inherit; }
+.chat-row button { padding: 10px 14px; border: 0; border-radius: 4px; background: var(--red); font-weight: 900; }
+.emote-row, #emote-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.emote-row button, #emote-bar button { min-width: 44px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); background: rgba(255,255,255,.08); border-radius: 20px; font-weight: 900; font-size: 15px; }
+#chat-feed { position: fixed; left: calc(1.4vw + env(safe-area-inset-left, 0px)); top: 42%; z-index: 7; display: grid; gap: 4px; pointer-events: none; max-width: 40vw; }
+#chat-feed p { margin: 0; background: var(--panel); padding: 5px 10px; border-left: 3px solid #2e7dff; border-radius: 3px; font-weight: 700; font-size: 14px; animation: feedin .25s; }
+#chat-feed p.me { border-left-color: var(--yellow); }
+@keyframes feedin { from { opacity: 0; transform: translateX(-10px); } }
+body:not(.ingame) #chat-feed { display: none; }
+#emote-bar { position: fixed; z-index: 8; left: 50%; top: calc(62px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--panel); padding: 6px; border-radius: 24px; }
+#emote-bar[hidden] { display: none; }
+#touch .tc-emote { display: none; font-size: 18px; }
+body.mp-race #touch .tc-emote { display: grid; }

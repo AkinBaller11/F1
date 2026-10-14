@@ -93,6 +93,14 @@ export class Audio {
     this.crowd.g.gain.setTargetAtTime(Math.min(0.12, near * 0.05), t, 0.1);
   }
 
+  // engines off (replay / podium); crowd level for the ceremony
+  quiet(crowd = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (const g of [this.engGain.gain, this.whineGain.gain, this.wind.g.gain, this.rumble.g.gain]) g.setTargetAtTime(0, t, 0.15);
+    this.crowd.g.gain.setTargetAtTime(crowd, t, 0.4);
+  }
+
   shift() {
     if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime;
@@ -117,6 +125,17 @@ export class Audio {
     const src = this.ctx.createBufferSource(); src.buffer = buf;
     const g = this.ctx.createGain(); g.gain.value = 0.4 * intensity;
     const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+    src.connect(f); f.connect(g); g.connect(this.fxBus); src.start(t);
+  }
+  // team radio: short band-passed static burst with a click
+  radioClick() {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime, len = this.ctx.sampleRate * 0.18;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (i < 300 ? 1 : 0.35) * (1 - i / len);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 1.2;
+    const g = this.ctx.createGain(); g.gain.value = 0.18;
     src.connect(f); f.connect(g); g.connect(this.fxBus); src.start(t);
   }
   stop() { if (this.ctx) { this.ctx.close(); this.ctx = null; } }

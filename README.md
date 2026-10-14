@@ -1,6 +1,6 @@
 # Apex GP 25
 
-Browser-Rennspiel im Stil von F1 25 mit drei Strecken (Barcelona, Monza, Neon City) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, Barcelona-ähnliche Strecke, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
+Browser-Rennspiel im Stil von F1 25 mit sechs Strecken (Barcelona, Monza, Neon City, Silverstone, Spa, Monaco) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, Barcelona-ähnliche Strecke, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
 
 Läuft ohne Build-Schritt mit Three.js vom CDN:
 
@@ -11,7 +11,7 @@ python3 -m http.server 8000
 # dann http://localhost:8000 öffnen
 ```
 
-Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera, B Rückblick, R Zurücksetzen, Esc Pause. Controller wird unterstützt.
+Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera, B Rückblick, R Zurücksetzen, Enter/I Boxenstopp, O Reifen für den Stopp, Esc Pause. Im Multiplayer schicken die Tasten 1–8 Emojis. Controller wird unterstützt.
 
 **iPad & Handy:** Touch-Steuerung mit Joystick, Tasten oder Neigen, Gas/Bremse-Pedale, Auto-Gas und Bremshilfe. Über „Zum Home-Bildschirm“ lässt sich das Spiel als Vollbild-App installieren (Querformat).
 
@@ -20,5 +20,11 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 **Steuerung:** Profile Einfach / Normal / Profi, einzelne Fahrhilfen (Auto-Gas, Bremshilfe, Lenkhilfe, Getriebe, Ideallinie), Lenkempfindlichkeit, frei belegbare Tasten, Touch-Lenkrad in drei Größen und Pedale links oder rechts.
 
 **Wetter:** Wechselhaft, Regen oder Trocken. Bei „Wechselhaft“ setzt Regen während des Rennens ein und hört wieder auf; die Strecke wird nass und trocknet ab, mit Vorhersage im HUD.
+
+**Rennen:** Reifen Soft/Medium/Hard/Intermediate/Regen mit Verschleiß, Boxenstopps mit Boxengasse und Reifenwechsel, KI mit eigener Strategie, Schäden (Frontflügel bricht ab, Trümmerteile), 5-Sekunden-Strafen, gelbe Flaggen, Safety Car und virtuelles Safety Car, Boxenfunk mit Sprachausgabe, Siegerehrung und Replay mit TV-, Verfolger-, Heli- und Onboard-Kamera.
+
+**Spielmodi:** Rennwochenende (Qualifying + Rennen), Meisterschaft über alle Strecken, Zeitfahren mit Geist-Auto und Bestenliste. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
+
+**Bestenliste online:** In der Claude-Artifact-Version teilen alle Spieler eine Bestenliste. Auf Vercel braucht sie einen Redis-Speicher: im Vercel-Projekt unter *Storage* (Marketplace) „Upstash for Redis“ verbinden, dann setzt Vercel `KV_REST_API_URL` und `KV_REST_API_TOKEN` automatisch und `api/board.js` nutzt sie. Ohne Speicher werden Bestzeiten nur auf dem Gerät gespeichert.
 
 Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.

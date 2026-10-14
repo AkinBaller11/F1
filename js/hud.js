@@ -1,5 +1,6 @@
 // In-race HUD styled after the modern F1 broadcast / game overlay
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+const TYRE_COL = { S: '#e8242b', M: '#f2c80f', H: '#f0f0f0', I: '#33c23e', W: '#2e7dff' };
 
 export function fmtTime(t, showMin = true) {
   if (!isFinite(t) || t < 0) return '-:--.---';
@@ -9,12 +10,12 @@ export function fmtTime(t, showMin = true) {
 }
 
 export class HUD {
-  constructor(root, laps) {
+  constructor(root, laps, mode = 'race') {
     this.root = root;
-    this.laps = laps;
+    this.laps = laps; this.mode = mode;
     root.innerHTML = `
       <div class="tower">
-        <div class="tower-head"><span class="logo"><i></i><i></i><i></i></span><span class="race">RACE</span></div>
+        <div class="tower-head"><span class="logo"><i></i><i></i><i></i></span><span class="race">${mode === 'quali' ? 'QUALI' : mode === 'tt' ? 'ZEITFAHREN' : 'RACE'}</span></div>
         <div class="tower-lap">RUNDE <b id="h-lap">1</b> / ${laps}</div>
         <div class="tower-rows" id="h-rows"></div>
       </div>
@@ -22,7 +23,19 @@ export class HUD {
         <div class="sectors"><i id="h-s1"></i><i id="h-s2"></i><i id="h-s3"></i></div>
         <div class="posrow"><span class="pos"><b id="h-pos">-</b> / <span id="h-tot">20</span></span><span class="laptime" id="h-time">0.000</span></div>
         <div class="best">BESTE <span id="h-best">-:--.---</span></div>
+        <div class="delta" id="h-delta"></div>
         <div class="wx" id="h-wx"></div>
+        <div class="cstat">
+          <span class="ty" id="cs-ty">M</span>
+          <span class="wear"><i id="cs-wear"></i></span>
+          <svg class="cs-car" viewBox="0 0 44 64" aria-hidden="true">
+            <rect id="cs-fl" x="3" y="2" width="17" height="6" rx="1.5"/><rect id="cs-fr" x="24" y="2" width="17" height="6" rx="1.5"/>
+            <path d="M18 9h8l2 14 6 4v18l-4 6h-16l-4-6V27l6-4z" fill="rgba(255,255,255,.22)"/>
+            <rect id="cs-rw" x="10" y="55" width="24" height="6" rx="1.5"/>
+          </svg>
+          <span class="cs-box" id="cs-box">BOX</span>
+          <span class="cs-pen" id="cs-pen"></span>
+        </div>
       </div>
       <div class="dash">
         <div class="revs" id="h-revs">${'<i></i>'.repeat(15)}</div>
@@ -40,6 +53,8 @@ export class HUD {
       </div>
       <div class="msg" id="h-msg"></div>
       <div class="warn" id="h-warn"></div>
+      <div class="flag" id="h-flag"></div>
+      <div class="radio" id="h-radio"><span class="rl">BOXENFUNK</span><span id="h-radiotxt"></span></div>
       <div class="startlights" id="h-lights">${'<div class="pod"><i></i><i></i></div>'.repeat(5)}</div>
       <div class="camhint" id="h-cam"></div>
       <canvas class="minimap" id="h-map" width="220" height="220"></canvas>
@@ -60,7 +75,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -146,7 +161,7 @@ export class HUD {
       this.t('ob-pos', 'P' + race.playerPos);
     }
     // timing
-    this.t('h-lap', Math.min(this.laps, Math.max(1, race.playerLap)));
+    this.t('h-lap', typeof this.laps === 'number' ? Math.min(this.laps, Math.max(1, race.playerLap)) : Math.max(1, race.playerLap));
     this.t('h-time', fmtTime(race.curLapTime, false));
     this.t('h-best', fmtTime(race.bestLap));
     this.t('h-pos', race.playerPos);
@@ -159,6 +174,41 @@ export class HUD {
 
     if (this.msgTimer > 0) { this.msgTimer -= dt; if (this.msgTimer <= 0) e['h-msg'].classList.remove('show'); }
     if (this.warnTimer > 0) { this.warnTimer -= dt; if (this.warnTimer <= 0) e['h-warn'].classList.remove('show'); }
+  }
+
+  // tyre compound + remaining life, front wing / rear damage, pit request, penalties
+  setCarStatus(st) {
+    this.t('cs-ty', st.tyre);
+    this.st('cs-ty', 'borderColor', TYRE_COL[st.tyre] || '#888');
+    const life = st.wearOn ? 1 - st.wear : 1;
+    this.st('cs-wear', 'width', Math.round(life * 100) + '%');
+    this.st('cs-wear', 'background', life > 0.45 ? '#2ad46a' : life > 0.2 ? '#f5c400' : '#e10600');
+    const col = (d) => (d < 0.12 ? '#2ad46a' : d < 0.5 ? '#f5c400' : '#e10600');
+    this.st('cs-fl', 'fill', col(st.dmg.L)); this.st('cs-fr', 'fill', col(st.dmg.R)); this.st('cs-rw', 'fill', col(st.dmg.rear));
+    this.cl('cs-box', st.box ? 'cs-box on' : 'cs-box');
+    this.t('cs-pen', st.pen ? `+${st.pen}s` : '');
+  }
+
+  // live delta to the time-trial ghost (null = hide)
+  setDelta(d) {
+    if (d === null || !isFinite(d)) { this.t('h-delta', ''); return; }
+    this.t('h-delta', (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2));
+    this.cl('h-delta', 'delta ' + (d >= 0 ? 'up' : 'down'));
+  }
+
+  setFlag(kind, text) {
+    if (this._flag === kind + text) return;
+    this._flag = kind + text;
+    const f = this.el['h-flag'];
+    f.className = 'flag' + (kind ? ' show ' + kind : '');
+    f.textContent = text;
+  }
+
+  radioMsg(text, dur) {
+    const r = this.el['h-radio'];
+    this.el['h-radiotxt'].textContent = text;
+    r.classList.add('show');
+    clearTimeout(this.radioT); this.radioT = setTimeout(() => r.classList.remove('show'), dur * 1000);
   }
 
   setDriver(name, number, team) {
@@ -228,13 +278,14 @@ export class HUD {
     for (let i = from; i < to; i++) {
       const c = order[i];
       let gap = '';
-      if (c.isPlayer) gap = race.playerLap <= 1 && race.time < 3 ? '' : '<span class="me">—</span>';
+      if (race.quali) gap = c.qt && isFinite(c.qt) ? fmtTime(c.qt) : '—';
+      else if (c.isPlayer) gap = race.playerLap <= 1 && race.time < 3 ? '' : '<span class="me">—</span>';
       else {
         const gt = race.gapTo(c);
         if (gt !== null) gap = (gt < 0 ? '-' : '+') + Math.abs(gt).toFixed(3);
         if (c.finished) gap = '<span class="fin">ZIEL</span>';
       }
-      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name}</span><span class="tyre ${race.wet ? 'i' : 's'}">${race.wet ? 'I' : 'S'}</span><span class="gap">${gap}</span></div>`;
+      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name}</span><span class="tyre" style="border-color:${TYRE_COL[c.obj.tyre] || '#888'}">${c.obj.tyre || '-'}</span><span class="gap">${gap}</span></div>`;
     }
     this.html('h-rows', html);
   }

@@ -328,8 +328,10 @@ export class Track {
     }
     const a = best[0] * this.ds, len = (best[1] - best[0]) * this.ds;
     this.mainStraight = [a, a + len];
-    this.startS = this.wrapS(a + Math.max(200, Math.min(len - 160, len * 0.5)));
-    this.pit = [a + 15, a + len - 50];
+    const st = a + Math.max(200, Math.min(len - 160, len * 0.5));
+    this.startS = this.wrapS(st);
+    // pit lane around the start line, about as long as a real one (~20 s at the 80 km/h limit)
+    this.pit = [Math.max(a + 15, st - 220), Math.min(a + len - 50, st + 170)];
   }
   inRange(s, a, b) { const L = this.length; s = this.wrapS(s - a); return s < b - a && s >= 0 && b - a < L; }
   inPitStraight(s) { return this.inRange(s, this.pit[0], this.pit[1]); }

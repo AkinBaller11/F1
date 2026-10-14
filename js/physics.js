@@ -25,6 +25,10 @@ export class PlayerCar {
     this.hint = -1; this.s = 0; this.lat = 0; this.dist = 0;
     this.impact = 0; this.bump = 0; this.wheelRot = 0; this.limiter = false;
     this.kx = 0; this.kz = 0; this.spin = 0; // shove velocity (world m/s) and yaw kick (rad/s) from contact
+    // tyres / damage / setup feed in as multipliers (set by the race each frame)
+    this.tyre = 'M'; this.wear = 0; this.dmg = { L: 0, R: 0, rear: 0 };
+    this.gripMul = 1; this.dragMul = 1; this.pull = 0;
+    this.setup = { df: 1, cd: 1, bias: 0.56, diff: 0.5 };
     this.loc = {};
   }
 
@@ -45,7 +49,7 @@ export class PlayerCar {
     const i = this.hint;
     const kerb = lat > 0 ? tr.kerbR[i] : tr.kerbL[i];
     const gravel = lat > 0 ? tr.gravelR[i] : tr.gravelL[i];
-    let mu = tr.mu, extraDrag = 0;
+    let mu = tr.mu * this.gripMul, extraDrag = 0;
     if (a < HALF_W) this.surface = 'road';
     else if (kerb && a < HALF_W + KERB_W) { this.surface = 'kerb'; mu *= tr.wet ? 0.8 : 0.95; }
     else if (kerb && a < HALF_W + 4.5) { this.surface = 'runoff'; mu *= 0.85; }
@@ -84,7 +88,7 @@ export class PlayerCar {
     // braking assist
     if (this.opts.brakeAssist && raceOn) {
       const safe = this.opts.steerAssist === true ? 0.92 : this.opts.steerAssist ? 0.97 : 1; // assisted modes keep a margin to the limit
-      const ahead = safe * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
+      const ahead = safe * Math.sqrt(this.gripMul) * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
       if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(1, (this.v - ahead) / 4));
     }
     let thrEff = thr;
@@ -102,7 +106,7 @@ export class PlayerCar {
     if (brk > 0.1) this.drsOpen = false;
     if ((input.drs || (this.opts.autoDrs && thr > 0.9 && brk < 0.05 && Math.abs(this.steer) < 0.35)) && this.drsAvailable && !this.drsOpen) this.drsOpen = true;
     if (!this.drsAvailable && this.drsOpen && brk > 0) this.drsOpen = false;
-    const cdA = this.drsOpen ? CAR.drsCdA : CAR.cdA;
+    const cdA = (this.drsOpen ? CAR.drsCdA : CAR.cdA) * this.dragMul * this.setup.cd;
 
     // --- gearbox
     this.shiftTimer = Math.max(0, this.shiftTimer - dt);
@@ -123,14 +127,15 @@ export class PlayerCar {
     this.limiter = this.gear >= 1 && v >= gTop * 0.995;
 
     // --- longitudinal
-    let eng = engineAccel(v, power, mu);
+    const S0 = this.setup;
+    let eng = engineAccel(v, power, mu) * (1 + (S0.diff - 0.5) * 0.08 * Math.max(0, 1 - v / 50));
     // low rpm in a tall gear (manual) -> weaker pull
     // only a manual driver lugging a tall gear loses pull; launches in 1st are traction-limited, not rpm-limited
     if (this.opts.manual && this.gear >= 2) eng *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
     if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
     let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
-    const bd = brakeDecel(v, mu);
+    const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2); // off-balance brakes lock a wheel earlier
     if (this.v > 0.3) acc -= brk * bd;
     // reverse when stationary and holding brake
     if (this.v <= 0.3 && brk > 0.5 && thr < 0.05) acc = -3;
@@ -143,11 +148,14 @@ export class PlayerCar {
     const maxSteer = 0.42 / (1 + Math.abs(this.v) / 16);
     const wantYaw = (this.v / CAR.wheelBase) * Math.tan(this.steer * maxSteer);
     // friction circle: braking / traction eat into lateral grip
-    const latMax = lateralGrip(v, mu) * 1.06; // a touch more forgiving than the AI's limit
+    const S = this.setup;
+    // setup: wings scale downforce, diff lock trades traction for rotation on throttle
+    let latMax = mu * (CAR.gripBase + CAR.downforce * S.df * v * v) * 1.06; // a touch more forgiving than the AI's limit
+    latMax *= 1 - (S.diff - 0.5) * 0.12 * this.throttle;
     const longUse = Math.min(0.85, (brk * bd + this.throttle * eng * 0.4) / (latMax + 1e-3));
     const latAvail = latMax * Math.sqrt(1 - longUse * longUse);
     const maxYaw = latAvail / Math.max(Math.abs(this.v), 2);
-    let yawRate = wantYaw;
+    let yawRate = wantYaw * (1 + (0.56 - S.bias) * brk * 1.6) * (1 + (S.bal || 0)); // rearward bias rotates the car on the brakes; wing balance sets turn-in
     this.slip *= Math.exp(-dt * 3);
     if (Math.abs(wantYaw) > maxYaw) {
       const excess = Math.abs(wantYaw) / maxYaw - 1;
@@ -158,6 +166,7 @@ export class PlayerCar {
     // power oversteer in the wet / off-track wobble
     if (tr.wet && thr > 0.8 && this.gear <= 3 && v > 8 && v < 40) yawRate += Math.sign(this.steer) * 0.06 * thr;
     if (this.surface === 'grass' || this.surface === 'gravel') yawRate += (Math.random() - 0.5) * 0.25 * Math.min(1, v / 20);
+    if (this.pull) yawRate += this.pull * Math.min(1, v / 40); // bent wing pulls to one side
     this.yawRate += (yawRate - this.yawRate) * Math.min(1, dt * 14);
     this.yaw -= this.yawRate * dt;
 
@@ -195,7 +204,7 @@ export class PlayerCar {
       let rel = this.yaw - heading; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
       const into = Math.abs(Math.sin(rel));
       const hit = this.v * into;
-      if (hit > 2) { this.impact = Math.min(1, hit / 30); }
+      if (hit > 2) { this.impact = Math.min(1, hit / 30); this.wallHit = Math.max(this.wallHit || 0, hit); this.wallSide = side; }
       this.v *= 1 - Math.min(0.9, into * 1.6);
       // shove into the wall is absorbed
       const kin = this.kx * f.rx * side + this.kz * f.rz * side;
@@ -219,6 +228,7 @@ export class AICar {
     this.wobble = Math.random() * 100;
     this.launch = 0.86 + Math.random() * 0.18; // good or bad getaway
     this.knock = 0; this.spinRate = 0; this.spinYaw = 0; this.spunT = 0; // contact response
+    this.tyre = 'M'; this.wear = 0; this.dmg = { L: 0, R: 0, rear: 0 }; this.gripMul = 1; this.pitCtl = null; this.stops = 0;
   }
   get s() { return this.track.wrapS(this.dist + this.track.startS); }
 
@@ -249,7 +259,7 @@ export class AICar {
     }
     const s = this.s;
     const look = Math.max(this.v, 10) * 0.12;
-    let target = tr.targetSpeed(s + look) * this.skill;
+    let target = tr.targetSpeed(s + look) * this.skill * Math.sqrt(this.gripMul) * (this.paceMul || 1);
     // traffic awareness
     let blocked = null, blockGap = 1e9;
     for (const c of cars) {
@@ -261,7 +271,7 @@ export class AICar {
     }
     if (blocked) {
       const closing = this.v - blocked.v;
-      if (closing > -1 && this.laneTimer <= 0) {
+      if (closing > -1 && this.laneTimer <= 0 && !this.noPass) {
         // try to pass on the side with more room
         const room = (dir) => {
           const nl = blocked.lat + dir * 3.0;
@@ -285,6 +295,7 @@ export class AICar {
       // slipstream
       if (blockGap < 25) target *= 1.012;
     }
+    if (this.scCap !== undefined) target = Math.min(target, this.scCap); // safety car / VSC / yellow flag
     this.laneTimer -= dt;
     if (this.laneTimer <= 0) this.latOff *= Math.exp(-dt * 0.6);
 
