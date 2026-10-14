@@ -36,7 +36,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
   profile: 'normal', gearbox: 'auto', tc: 'full', abs: true, brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
-  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, mpCollide: true, carStyle: 'modern', retro: false,
+  touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, mpCollide: true, mpGrid: 'random', mpAIDiff: 75, mpEqual: false, mpAssists: 'all', mpPrivate: false, carStyle: 'modern', retro: false,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
   // camera
@@ -363,7 +363,7 @@ function applyTouchLayout() {
 
 function onSettingChanged(key) {
   applyLive();
-  if (['laps', 'weather', 'mpAI', 'track', 'tod', 'mpLeague', 'mpCollide', 'playStyle', 'tyreWear', 'damage', 'penalties', 'safetyCar', 'tyreTemp'].includes(key) && net.isHost) mpSendCfg();
+  if (['laps', 'weather', 'mpAI', 'track', 'tod', 'mpLeague', 'mpCollide', 'playStyle', 'tyreWear', 'damage', 'penalties', 'safetyCar', 'tyreTemp', 'mpGrid', 'mpAIDiff', 'mpEqual', 'mpAssists', 'mpPrivate'].includes(key) && net.isHost) mpSendCfg();
   if (key === 'track' && trackById(settings.track).tod) { settings.tod = trackById(settings.track).tod; save(); renderOpts(); } // night races start at night, like the real event
   if (key === 'track' || key === 'tod') updateLivery();
 }
@@ -786,7 +786,7 @@ class Game {
         mesh.add(nameTag(name, d.team)); // other players get their name above the car
       } else {
         const R = driverRating(d.name);
-        const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (1 + R[0] / 100) * (0.995 + rand() * 0.005);
+        const skill = diffF * (opts.mpEqual ? 0.985 : (1 - (1 - d.team.pace) * 0.55) * (1 + R[0] / 100)) * (0.995 + rand() * 0.005); // equal cars: only the driver's luck differs
         const ai = new AICar(this.track, d.team, d.name, d.number, skill);
         ai.agg = R[1]; ai.cons = R[2];
         ai.tyre = this.weather.wetness > 0.32 ? wetChoice(this.weather.wetness) : opts.laps >= 8 && rand() < 0.3 ? 'H' : rand() < 0.5 ? 'S' : 'M';
@@ -2907,6 +2907,7 @@ function startRace(mpStart, extra = null) {
     if (game) { game.dispose(); game = null; }
     const opts = { ...settings, ...(extra || {}) };
     if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } }, mpRules(mpStart.rules));
+    if (mpStart) input.setMode({ touchSteer: settings.touchSteer, autoGas: opts.autoGas });
     game = new Game(opts);
     game.warmup();
     $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
@@ -3440,11 +3441,12 @@ function renderLobby() {
       row.style.setProperty('--tc', hex(d.team.body === 0xf0f0f0 || d.team.body === 0x161616 ? d.team.accent : d.team.body));
       const n = document.createElement('b'); n.textContent = p.name;
       const c = document.createElement('span'); c.textContent = `${d.name} · ${d.team.name}`;
-      row.append(n, c);
-      if (p.host) { const t = document.createElement('i'); t.textContent = 'GASTGEBER'; row.append(t); }
-      if (p.spec) { const t = document.createElement('i'); t.className = 'spec'; t.textContent = 'ZUSCHAUER'; row.append(t); }
-      else if (p.ready || p.host) { const t = document.createElement('i'); t.className = 'rdy'; t.textContent = '✓ BEREIT'; row.append(t); }
-      if (p.me) { const t = document.createElement('i'); t.className = 'you'; t.textContent = 'DU'; row.append(t); }
+      const tags = document.createElement('div'); tags.className = 'tags';
+      const tag = (cls, text) => { const t = document.createElement('i'); t.className = cls; t.textContent = text; tags.append(t); };
+      if (p.host) tag('', 'GASTGEBER');
+      if (p.spec) tag('spec', 'ZUSCHAUER'); else if (p.ready || p.host) tag('rdy', '✓ BEREIT');
+      if (p.me) tag('you', 'DU');
+      row.append(n, c, tags);
       box.appendChild(row);
     }
     document.body.classList.toggle('mp-host', net.isHost);
@@ -3469,7 +3471,9 @@ function renderLobby() {
     $('#mp-ready').hidden = net.isHost || !!(me && me.spec);
     $('#mp-spec').textContent = `👁 Zuschauen: ${me && me.spec ? 'An' : 'Aus'}`; $('#mp-spec').classList.toggle('on', !!(me && me.spec));
     const R = mpRules(cfg && cfg.rules);
-    const rules = cfg && cfg.rules ? ` · Schäden ${R.damage ? 'an' : 'aus'} · Strafen ${R.penalties ? 'an' : 'aus'} · Verschleiß ${R.tyreWear ? 'an' : 'aus'}${R.mpCollide ? '' : ' · Geisterautos'}` : '';
+    const GRID = { random: 'Startplätze zufällig', front: 'Spieler vorne', back: 'Spieler hinten', league: 'Liga umgekehrt' };
+    const AS = { all: '', limited: ' · Hilfen begrenzt', none: ' · ohne Fahrhilfen' };
+    const rules = cfg && cfg.rules ? ` · Schäden ${R.damage ? 'an' : 'aus'} · Strafen ${R.penalties ? 'an' : 'aus'} · Verschleiß ${R.tyreWear ? 'an' : 'aus'}${R.mpCollide ? '' : ' · Geisterautos'}${R.mpEqual ? ' · gleiche Autos' : ''}${AS[R.mpAssists] || ''}${cfg.grid ? ' · ' + (GRID[cfg.grid] || '') : ''}${cfg.ai && cfg.aiDiff ? ' · KI-Stärke ' + cfg.aiDiff : ''}` : '';
     $('#lobby-set').textContent = cfg ? `${tName} · ${tTime} · ${cfg.laps} Runden · ${W[cfg.weather] || ''} · ${cfg.ai ? '+' + cfg.ai + ' KI' : 'ohne KI'}${rules}` : '';
     // only in the lobby screen: a host missing for 6 s straight has left
     const inLobby = !game && document.querySelector('.screen.active')?.id === 'mp';
@@ -3482,15 +3486,21 @@ net.on(renderLobby);
 // race rules set by the host; guests race under exactly these (only known keys, sane values)
 function mpRules(r) {
   if (!r || typeof r !== 'object') return {};
-  return {
+  const out = {
     tyreWear: [0, 1, 1.6].includes(r.tyreWear) ? r.tyreWear : 0, damage: !!r.damage, penalties: !!r.penalties, safetyCar: r.safetyCar !== false,
-    tyreTemp: !!r.tyreTemp, mpCollide: r.mpCollide !== false, formation: false,
+    tyreTemp: !!r.tyreTemp, mpCollide: r.mpCollide !== false, mpEqual: !!r.mpEqual, formation: false,
   };
+  // assist limits for a fair race: 'limited' = no driving-for-you aids, 'none' = like the real thing
+  if (r.assists === 'limited' || r.assists === 'none') Object.assign(out, { steerAssist: false, autoGas: false });
+  if (r.assists === 'none') Object.assign(out, { brakeAssist: false, line: 'off', tc: 'off', abs: false, launchAssist: false });
+  out.mpAssists = ['limited', 'none'].includes(r.assists) ? r.assists : 'all';
+  return out;
 }
-const hostRules = () => ({ tyreWear: settings.tyreWear, damage: settings.damage, penalties: settings.penalties, safetyCar: settings.safetyCar, tyreTemp: settings.tyreTemp, mpCollide: settings.mpCollide });
+const hostRules = () => ({ tyreWear: settings.tyreWear, damage: settings.damage, penalties: settings.penalties, safetyCar: settings.safetyCar, tyreTemp: settings.tyreTemp, mpCollide: settings.mpCollide, mpEqual: settings.mpEqual, assists: settings.mpAssists });
 
 function mpSendCfg() {
-  if (net.race && net.isHost) net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI, track: settings.track, tod: settings.tod, rules: hostRules() }, league: leaguePresence() }).catch(() => {});
+  net.private = !!settings.mpPrivate;
+  if (net.race && net.isHost) { net.race.presence({ cfg: { laps: settings.laps, weather: settings.weather, ai: settings.mpAI, aiDiff: settings.mpAIDiff, grid: settings.mpGrid, track: settings.track, tod: settings.tod, rules: hostRules() }, league: leaguePresence() }).catch(() => {}); net.advertise(); }
 }
 // friends league: kept by the host, everyone sees the table in the lobby
 const KEY_LEAGUE = 'apexgp25-league';
@@ -3509,7 +3519,7 @@ function leagueAddRace(names) {
 
 async function mpCreate() {
   const code = String(1000 + Math.floor(Math.random() * 9000));
-  net.myName = myName();
+  net.myName = myName(); net.private = !!settings.mpPrivate;
   try { await net.open(code, true, meInfo()); } catch (e) {
     if (e && e.code === 'unavailable-id') return mpCreate(); // code already taken: pick another
     mpToast(e && e.code === 'browser-incompatible' ? 'Dein Browser unterstützt keine Direktverbindungen (WebRTC).' : 'Rennen konnte nicht erstellt werden. Prüf deine Internetverbindung und versuch es nochmal.'); return;
@@ -3536,13 +3546,21 @@ function mpStart() {
   if (!net.isHost || !net.race) return;
   const humans = net.players().filter((h) => !h.spec);
   if (!humans.length && !(+settings.mpAI)) { mpToast('Alle schauen nur zu: stell KI-Gegner ein oder fahr selbst mit.'); return; }
-  for (let i = humans.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [humans[i], humans[j]] = [humans[j], humans[i]]; }
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  shuffle(humans);
   const taken = new Set(humans.map((h) => h.drv));
   const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 20 - humans.length));
+  // grid: random mix, players in front / at the back (a chase through the field), or reversed league table
+  const hs = humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv, l: h.liv || null })), as = ai.map((d) => ({ a: d.name }));
+  let slots;
+  if (settings.mpGrid === 'front') slots = [...hs, ...as];
+  else if (settings.mpGrid === 'back') slots = [...as, ...hs];
+  else if (settings.mpGrid === 'league') { const L = loadLeague(); hs.sort((a, b) => (L.pts[clean(a.n).toUpperCase()] || 0) - (L.pts[clean(b.n).toUpperCase()] || 0)); slots = [...hs, ...as]; }
+  else slots = shuffle([...hs, ...as]);
   const start = {
     id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36),
-    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.difficulty, track: settings.track, tod: settings.tod, rules: hostRules(),
-    slots: [...humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv, l: h.liv || null })), ...ai.map((d) => ({ a: d.name }))],
+    seed: Math.floor(Math.random() * 2 ** 31), laps: settings.laps, weather: settings.weather, difficulty: settings.mpAIDiff, track: settings.track, tod: settings.tod, rules: hostRules(),
+    slots,
   };
   net.startRace(start);
   startRace(start);

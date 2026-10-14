@@ -74,6 +74,8 @@ export class Net {
   advertise(state) {
     if (!this.room || !this.isHost) return;
     if (state) this.hostState = state;
+    // a private race isn't listed in the lobby: only the code (or an invite) gets you in
+    if (this.private) { this.room.presence({ host: null, hn: null, n: null, st: null }).catch(() => {}); return; }
     this.room.presence({ host: this.code, hn: this.myName || '', n: this.players().length || 1, st: this.hostState || 'open' }).catch(() => {});
   }
 
