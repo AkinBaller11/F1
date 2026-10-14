@@ -2,6 +2,7 @@
 //  - inside the Claude artifact: the `db` capability (one document per player, everyone reads all)
 //  - on Vercel: /api/board (needs a connected Redis store)
 //  - otherwise: this device only (localStorage)
+import { recordId } from './tracks.js';
 const LOCAL = 'apexgp25-board';
 let mode = null, db = null, uid = null, initP = null;
 
@@ -13,7 +14,7 @@ const deviceId = () => {
   } catch (_) { return 'anon'; }
 };
 const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LOCAL) || '{}'); } catch (_) { return {}; } };
-const key = (track, style) => `${track}-${style === 'classic' ? 'classic' : 'modern'}`;
+const key = (track, style) => `${recordId(track)}-${style === 'classic' ? 'classic' : 'modern'}`;
 
 export function initBoard() {
   if (initP) return initP;
@@ -30,7 +31,7 @@ export function initBoard() {
     } catch (_) { /* fall through */ }
     if (location.protocol.startsWith('http') && !/claudeusercontent|claude\.ai/.test(location.host)) {
       try {
-        const r = await fetch('api/board?track=barcelona&style=modern', { cache: 'no-store' });
+        const r = await fetch('api/board?track=barcelona2&style=modern', { cache: 'no-store' });
         if (r.ok) { mode = 'api'; return mode; }
       } catch (_) { /* no API */ }
     }
@@ -60,7 +61,7 @@ export async function submitLap(track, time, opts) {
       times[k] = { time, drv: opts.driver, at: Date.now() };
       await ref.set({ name, times });
     } else if (mode === 'api') {
-      await fetch('api/board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track, style, time, name, drv: opts.driver, id: deviceId() }) });
+      await fetch('api/board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track: recordId(track), style, time, name, drv: opts.driver, id: deviceId() }) });
     }
   } catch (_) { /* offline or not allowed: the local best stays */ }
 }
@@ -80,7 +81,7 @@ export async function fetchBoard(track, style) {
       return rows.sort((a, b) => a.time - b.time).slice(0, 50);
     }
     if (mode === 'api') {
-      const r = await fetch(`api/board?track=${encodeURIComponent(track)}&style=${style === 'classic' ? 'classic' : 'modern'}`, { cache: 'no-store' });
+      const r = await fetch(`api/board?track=${encodeURIComponent(recordId(track))}&style=${style === 'classic' ? 'classic' : 'modern'}`, { cache: 'no-store' });
       if (r.ok) { const j = await r.json(); return (j.rows || []).map((x) => ({ ...x, me: false })); }
     }
   } catch (_) { /* fall back to local */ }

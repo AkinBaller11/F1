@@ -309,6 +309,18 @@ function drawTrackPreview() {
 // track selectors are generated from the circuit list
 function trackOpts() {
   document.querySelectorAll('.opt[data-key="track"]').forEach((o) => { o.dataset.vals = JSON.stringify(TRACKS.map((t) => t.id)); o.dataset.labels = JSON.stringify(TRACKS.map((t) => t.name)); });
+  // calendar list: round number + circuit, one tap selects
+  const list = $('#track-list');
+  if (!list) return;
+  list.innerHTML = '';
+  TRACKS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.dataset.track = t.id; b.setAttribute('role', 'option');
+    b.innerHTML = `<small>${t.real ? 'R' + (i + 1) : '★'}</small>`;
+    b.append(t.name);
+    b.addEventListener('click', () => { settings.track = t.id; save(); renderOpts(); onSettingChanged('track'); });
+    list.append(b);
+  });
 }
 trackOpts();
 
@@ -338,6 +350,7 @@ function renderOpts() {
     o.querySelector('.val').textContent = labels[i < 0 ? 0 : i];
   });
   document.querySelectorAll('.prof').forEach((b) => b.classList.toggle('sel', b.dataset.profile === settings.profile));
+  document.querySelectorAll('#track-list button').forEach((b) => { const on = b.dataset.track === settings.track; b.classList.toggle('sel', on); b.setAttribute('aria-selected', on); });
   applyTouchLayout();
 }
 
@@ -350,6 +363,7 @@ function applyTouchLayout() {
 function onSettingChanged(key) {
   applyLive();
   if (['laps', 'weather', 'mpAI', 'track', 'tod', 'mpLeague'].includes(key) && net.isHost) mpSendCfg();
+  if (key === 'track' && trackById(settings.track).tod) { settings.tod = trackById(settings.track).tod; save(); renderOpts(); } // night races start at night, like the real event
   if (key === 'track' || key === 'tod') updateLivery();
 }
 
@@ -2279,6 +2293,9 @@ class Game {
         if (A.gone || B.gone || (A.remote && B.remote)) continue;
         const cx = B.x - A.x, cz = B.z - A.z;
         if (cx * cx + cz * cz > 36) continue;
+        // close in space but far apart along the lap: the two branches of a crossover (the bridge at Suzuka)
+        const sA = A.s, sB = B.s;
+        if (Number.isFinite(sA) && Number.isFinite(sB)) { let dsAB = Math.abs(sA - sB); dsAB = Math.min(dsAB, this.track.length - dsAB); if (dsAB > 60) continue; }
         // closest points between the two spines
         const [ax, az, ax2, az2] = seg(A, sa), [bx, bz, bx2, bz2] = seg(B, sb);
         const c = closestSeg(ax, az, ax2, az2, bx, bz, bx2, bz2);

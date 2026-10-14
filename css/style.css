@@ -259,6 +259,12 @@ details.more summary::before { content: '▸ '; color: var(--red); }
 details.more[open] summary::before { content: '▾ '; }
 details.more summary small { letter-spacing: .04em; text-transform: none; margin-left: 6px; font-weight: 600; }
 details.more summary:hover { color: #fff; }
+.track-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; margin: 6px 0 8px; }
+.track-list button { display: flex; align-items: baseline; gap: 6px; text-align: left; padding: 6px 8px; background: rgba(255,255,255,.04); border: 1px solid transparent; font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-list button small { color: var(--muted); font-size: 10px; min-width: 2.2em; }
+.track-list button:hover { background: rgba(255,255,255,.1); }
+.track-list button.sel { background: var(--red); border-color: var(--red); }
+.track-list button.sel small { color: #fff; }
 #driver-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 .drv { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; text-align: left; padding: 8px 10px; background: rgba(255,255,255,.04); border: 1px solid transparent; border-left: 4px solid var(--tc); transition: background .12s; }
 .drv:hover { background: rgba(255,255,255,.09); }

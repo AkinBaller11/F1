@@ -307,18 +307,72 @@ export class Track {
       const s = i * this.ds;
       if (this.inPitStraight(s)) { right[i] = 11; left[i] = this.style === 'city' ? 11 : 15; this.gravelL[i] = this.gravelR[i] = 0; }
     }
+    // other parts of the circuit close by (parallel sections, Suzuka's crossover): run-off and walls stop
+    // halfway to them; where the road crosses itself there are no walls, kerbs or gravel at all
+    this.cross = new Uint8Array(N);
+    const near = this.neighbourGaps();
+    for (let i = 0; i < N; i++) {
+      if (near.cross[i]) { this.cross[i] = 1; left[i] = right[i] = 24; continue; }
+      if (near.L[i] < 1e9) left[i] = Math.min(left[i], Math.max(HALF_W + 1.6, near.L[i] / 2 - 1));
+      if (near.R[i] < 1e9) right[i] = Math.min(right[i], Math.max(HALF_W + 1.6, near.R[i] / 2 - 1));
+    }
     this.limL = smoothArr(left, 6, 2);
     this.limR = smoothArr(right, 6, 2);
+    for (let i = 0; i < N; i++) if (near.cross[i]) { this.limL[i] = Math.max(this.limL[i], 24); this.limR[i] = Math.max(this.limR[i], 24); }
     // dilate kerbs a little so they start before turn-in
     const dil = (a) => { const o = new Uint8Array(N); for (let i = 0; i < N; i++) if (a[i]) for (let d = -6; d <= 6; d++) o[(i + d + N) % N] = 1; return o; };
     this.kerbL = dil(this.kerbL); this.kerbR = dil(this.kerbR);
     this.gravelL = dil(this.gravelL); this.gravelR = dil(this.gravelR);
+    for (let i = 0; i < N; i++) if (this.cross[i]) this.kerbL[i] = this.kerbR[i] = this.gravelL[i] = this.gravelR[i] = 0;
+  }
+
+  // for every sample: lateral distance to the nearest unrelated part of the track on each side
+  // (unrelated = much further along the lap than it is away in space, so hairpin legs don't count)
+  neighbourGaps() {
+    const N = this.N, ds = this.ds, R = 70, cell = 50;
+    const L = new Float32Array(N).fill(1e9), Rr = new Float32Array(N).fill(1e9), cross = new Uint8Array(N);
+    const grid = new Map(), key = (cx, cz) => cx * 100003 + cz;
+    for (let j = 0; j < N; j++) { const k = key(Math.floor(this.px[j] / cell), Math.floor(this.pz[j] / cell)); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(j); }
+    for (let i = 0; i < N; i++) {
+      const x = this.px[i], z = this.pz[i], tx = this.tx[i], tz = this.tz[i];
+      const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+      for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+        const list = grid.get(key(cx + a, cz + b)); if (!list) continue;
+        for (const j of list) {
+          const dx = this.px[j] - x, dz = this.pz[j] - z, d = Math.hypot(dx, dz);
+          if (d > R) continue;
+          let arc = Math.abs(i - j); arc = Math.min(arc, N - arc) * ds;
+          if (arc < d * 3 + 40) continue;
+          const along = dx * tx + dz * tz, lat = dx * -tz + dz * tx;
+          if (Math.abs(along) > 20) continue;
+          if (Math.abs(lat) < 2 * HALF_W + 2) { cross[i] = 1; continue; }
+          if (lat > 0) Rr[i] = Math.min(Rr[i], lat); else L[i] = Math.min(L[i], -lat);
+        }
+      }
+    }
+    // the crossing zone reaches a little either side of the overlap
+    const c2 = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (cross[i]) for (let d = -15; d <= 15; d++) c2[(i + d + N) % N] = 1;
+    return { L, R: Rr, cross: c2 };
   }
 
   // longest near-straight section hosts start line, grid and pit lane
   findStart() {
     const N = this.N, ks = smoothArr(this.k, 10, 2);
-    const straight = (i) => Math.abs(ks[i % N]) < 1 / 700;
+    const straight = (i) => Math.abs(ks[((i % N) + N) % N]) < 1 / 700;
+    if (this.def.real) {
+      // real circuit: the data starts at the start/finish line; the main straight is the near-straight run
+      // around it (gentle kinks allowed), the pit lane sits around the line like at the real track
+      const st = this.def.start || 0, i0 = this.idx(st);
+      const loose = (i) => Math.abs(ks[((i % N) + N) % N]) < 1 / 350;
+      let b = i0, f = i0;
+      while (loose(b - 1) && i0 - b < N / 3) b--;
+      while (loose(f + 1) && f - i0 < N / 3) f++;
+      this.mainStraight = [b * this.ds, f * this.ds];
+      this.startS = this.wrapS(st);
+      this.pit = [st - 220, st + 170];
+      return;
+    }
     let i0 = 0; while (straight(i0) && i0 < N) i0++;
     let best = [0, 0], run = -1;
     for (let c = 0; c <= N; c++) {
@@ -399,7 +453,7 @@ export class Track {
     let run = false, dist = 0, prevX = null, prevZ = null;
     for (let c = 0; c <= N; c++) {
       const i = c % N;
-      const ok = !filter || filter(i);
+      const ok = (!filter || filter(i)) && !(this.cross && this.cross[i]);
       const l = latFn(i);
       const x = this.px[i] - this.tz[i] * l, z = this.pz[i] + this.tx[i] * l;
       if (prevX !== null) dist += Math.hypot(x - prevX, z - prevZ);

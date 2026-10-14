@@ -314,8 +314,10 @@ export class AICar {
       }
       if (ds <= 0 || ds > 60) continue;
       if (ds < aheadAny) aheadAny = ds;
-      // a car half a lane over still counts: in braking zones the lines converge (a stopped car only blocks its own width)
-      if (Math.abs(c.lat - this.lat) < (c.v < 5 ? 2.4 : 3.4) && ds < blockGap) { blocked = c; blockGap = ds; }
+      // a car half a lane over still counts: in braking zones the lines converge (a stopped car only blocks its own width);
+      // also a car sitting where our line will take us
+      const dl = Math.min(Math.abs(c.lat - this.lat), Math.abs(c.lat - (tr.racingLat(s + ds) + this.latOff)));
+      if (dl < (c.v < 5 ? 2.4 : 3.4) && ds < blockGap) { blocked = c; blockGap = ds; }
     }
     // blue flag: move off the line and lift a little to let the leader through
     if (lapper && !blocked) this.blueT = 1.6;
@@ -381,7 +383,7 @@ export class AICar {
         }
       }
       // otherwise follow: never faster than what still lets us stop 7 m behind it (predictive gap)
-      if (Math.abs(blocked.lat - this.lat) < (blocked.v < 5 ? 2.4 : 3.4)) {
+      if (Math.min(Math.abs(blocked.lat - this.lat), Math.abs(blocked.lat - (tr.racingLat(s + blockGap) + this.latOff))) < (blocked.v < 5 ? 2.4 : 3.4)) {
         const safe = Math.sqrt(Math.max(0, blocked.v * blocked.v + 2 * 22 * (blockGap - 7)));
         target = Math.min(target, safe);
         if (blockGap < 9) target = Math.min(target, blocked.v - (9 - blockGap) * 0.6);
@@ -391,6 +393,7 @@ export class AICar {
       else if (!onStraight && blockGap < 22) target *= 0.988;
     }
     if (this.scCap !== undefined) target = Math.min(target, this.scCap); // safety car / VSC / yellow flag
+    if (this.backOff !== undefined) { target = Math.min(target, this.backOff); this.backOff = undefined; } // squeezed alongside: lift
     this.laneTimer -= dt;
     if (this.laneTimer <= 0) this.latOff *= Math.exp(-dt * 0.6);
 
@@ -412,7 +415,11 @@ export class AICar {
       const dl = c.lat - this.lat;
       if (Math.abs(dl) > 3.2) continue;
       if (Math.sign(wantLat - this.lat) === Math.sign(dl)) wantLat = this.lat; // hold the line
-      if (Math.abs(dl) < 2.3) wantLat = this.lat - Math.sign(dl || 1) * (2.4 - Math.abs(dl));
+      if (Math.abs(dl) < 2.3) {
+        wantLat = this.lat - Math.sign(dl || 1) * (2.4 - Math.abs(dl));
+        // no room to ease away (track edge) and the other car is a little ahead: lift and tuck in behind
+        if (ds > 0 && Math.abs(wantLat) > HALF_W - 1.2) this.backOff = Math.min(this.backOff ?? 1e9, c.v - 1.5);
+      }
     }
     wantLat = Math.max(-HALF_W + 0.8, Math.min(HALF_W - 0.8, wantLat));
     const maxMove = (1.2 + this.v * 0.04) * dt;

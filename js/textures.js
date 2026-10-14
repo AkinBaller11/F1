@@ -89,10 +89,10 @@ export function kerb() {
   return tex(c, 1, 1);
 }
 
-export function grass() {
+export function grass(sand = false) {
   const [c, g] = canvas(512, 512);
   const r = rand(3);
-  g.fillStyle = '#467531';
+  g.fillStyle = sand ? '#c4a26a' : '#467531';
   g.fillRect(0, 0, 512, 512);
   // soft mottling + fine blades, low contrast for a clean lawn
   for (let i = 0; i < 160; i++) {
@@ -104,8 +104,9 @@ export function grass() {
   }
   for (let i = 0; i < 16000; i++) {
     const gr = 90 + r() * 60;
-    g.fillStyle = `rgba(${gr * 0.5},${gr},${gr * 0.32},0.16)`;
-    g.fillRect(r() * 512, r() * 512, 1, 2 + r() * 2);
+    // desert: fine grains of light and dark sand instead of blades
+    g.fillStyle = sand ? `rgba(${gr * 1.6},${gr * 1.35},${gr * 0.9},0.18)` : `rgba(${gr * 0.5},${gr},${gr * 0.32},0.16)`;
+    g.fillRect(r() * 512, r() * 512, 1, sand ? 1 : 2 + r() * 2);
   }
   return tex(c, 1, 1);
 }
@@ -155,7 +156,7 @@ const SPONSORS = [
 ];
 
 export function banner(i) {
-  const [bg, fg, text] = SPONSORS[i % SPONSORS.length];
+  const [bg, fg, text] = SPONSORS[((i % SPONSORS.length) + SPONSORS.length) % SPONSORS.length];
   const [c, g] = canvas(1024, 128);
   g.fillStyle = bg; g.fillRect(0, 0, 1024, 128);
   g.fillStyle = fg;

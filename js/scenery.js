@@ -142,7 +142,7 @@ function treeTexture(kind, R) {
 
 // ------------------------------------------------------------------ main
 export function buildScenery(tr) {
-  const G = tr.group, tod = tr.tod || {}, city = tr.style === 'city';
+  const G = tr.group, tod = tr.tod || {}, city = tr.style === 'city', desert = tr.style === 'desert';
   const lampsOn = tod.lamps || 0;
   const q = tr.quality;
   const N = tr.N;
@@ -158,7 +158,7 @@ export function buildScenery(tr) {
 
   // ---------------- lake (park / forest): a calm, reflective pond in the infield
   let lake = null;
-  if (!city) {
+  if (!city && !desert) {
     let best = null;
     for (let k = 0; k < 400; k++) {
       const x = df.cx + (R() - 0.5) * 900, z = df.cz + (R() - 0.5) * 700;
@@ -198,13 +198,14 @@ export function buildScenery(tr) {
       const mown = 1 - smooth(40, 160, d);
       let r = 0.75 + n * 0.3, g = 0.85 + n * 0.25, b = 0.7 + n * 0.2;
       r += mown * 0.08; g += mown * 0.12;
+      if (desert) { r = 0.95 + n * 0.2; g = 0.92 + n * 0.18; b = 0.88 + n * 0.14; }
       if (h > 120) { const k = smooth(120, 300, h); r = r * (1 - k) + 0.9 * k; g = g * (1 - k) + 0.86 * k; b = b * (1 - k) + 0.8 * k; } // rocky tops
       const l = lakeAt(x, z); if (l < 1.25) { const k = 1 - smooth(1.0, 1.25, l); r = r * (1 - k) + 0.95 * k; g = g * (1 - k) + 0.85 * k; b = b * (1 - k) + 0.6 * k; } // sandy shore
       col.set([r, g, b], i * 3);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     geo.computeVertexNormals();
-    const tex = city ? pavementTex() : TX.grass();
+    const tex = city ? pavementTex() : TX.grass(desert);
     tex.repeat.set(city ? 900 : 700, city ? 900 : 700);
     const mat = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.95 });
     const ground = new THREE.Mesh(geo, mat);
@@ -433,7 +434,7 @@ export function buildScenery(tr) {
 // ------------------------------------------------------------------ park / forest
 function buildNature(tr, df, height, lakeAt, R) {
   const G = tr.group, q = tr.trees || tr.quality, forest = tr.style === 'forest';
-  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 1.5 : 1));
+  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 1.5 : tr.style === 'desert' ? 0.12 : 1));
   // trees as painted impostors: three crossed planes with a hand-drawn crown (much cleaner than low-poly blobs)
   const treeGeo = (w, h) => {
     const planes = [0, Math.PI / 3, (2 * Math.PI) / 3].map((a) => { const p = new THREE.PlaneGeometry(w, h); p.translate(0, h / 2, 0); p.rotateY(a); return p; });

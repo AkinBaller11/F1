@@ -1,6 +1,6 @@
 # Apex GP 25
 
-Browser-Rennspiel im Stil von F1 25 mit sechs Strecken (Barcelona, Monza, Neon City, Silverstone, Spa, Monaco) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, Barcelona-ähnliche Strecke, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
+Browser-Rennspiel im Stil von F1 26 mit allen 24 Strecken des Kalenders 2026 im echten Verlauf (plus die Fantasie-Strecke Neon City) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
 
 Läuft ohne Build-Schritt mit Three.js vom CDN:
 
@@ -38,3 +38,9 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 **Bestenliste online:** In der Claude-Artifact-Version teilen alle Spieler eine Bestenliste. Auf Vercel braucht sie einen Redis-Speicher: im Vercel-Projekt unter *Storage* (Marketplace) „Upstash for Redis“ verbinden, dann setzt Vercel `KV_REST_API_URL` und `KV_REST_API_TOKEN` automatisch und `api/board.js` nutzt sie. Ohne Speicher werden Bestzeiten nur auf dem Gerät gespeichert.
 
 Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.
+
+## Streckendaten
+
+Die echten Streckenverläufe stammen aus [f1-circuits](https://github.com/bacinger/f1-circuits) von Tomislav Bacinger (MIT-Lizenz). Die GPS-Linien werden alle 20 m neu abgetastet, leicht geglättet und auf die offizielle Rundenlänge skaliert. Start-Ziel liegt wie im Original, Nachtrennen (Bahrain, Dschidda, Singapur, Las Vegas, Katar) starten bei Nacht. Höhenunterschiede und die Umgebung sind nachempfunden; an Suzukas Kreuzung gibt es statt der Brücke eine ebene Kreuzung ohne Kollisionen zwischen den beiden Ästen.
+
+Formula 1, F1 und verwandte Marken gehören der Formula One Licensing B.V.; dies ist ein inoffizielles Fan-Projekt.

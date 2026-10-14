@@ -1,5 +1,5 @@
 // Game modes: championship season and time-trial ghosts, persisted in localStorage.
-import { TRACKS } from './tracks.js';
+import { CALENDAR, recordId } from './tracks.js';
 
 const KEY_SEASON = 'apexgp25-season';
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) { return null; } };
@@ -10,7 +10,7 @@ export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 // ------------------------------------------------------------------ championship
 export function loadSeason() { return load(KEY_SEASON); }
 export function newSeason(driver) {
-  const s = { round: 0, calendar: TRACKS.map((t) => t.id), pts: {}, team: {}, wins: {}, history: [], driver, done: false };
+  const s = { round: 0, calendar: [...CALENDAR], pts: {}, team: {}, wins: {}, history: [], driver, done: false };
   store(KEY_SEASON, s);
   return s;
 }
@@ -41,7 +41,7 @@ export function standings(s) {
 // ------------------------------------------------------------------ time-trial ghosts
 // samples every GHOST_DT seconds of lap time: x, z, yaw, distance into the lap
 export const GHOST_DT = 0.05;
-const ghostKey = (track, style) => `apexgp25-ghost-${track}-${style || 'modern'}`;
+const ghostKey = (track, style) => `apexgp25-ghost-${recordId(track)}-${style || 'modern'}`;
 function b64(f32) { const u8 = new Uint8Array(f32.buffer); let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
 function unb64(str) { const bin = atob(str); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Float32Array(u8.buffer); }
 export function loadGhost(track, style) {
@@ -88,7 +88,7 @@ export function saveCareer(c) { store(KEY_CAREER, c); }
 export function clearCareer() { try { localStorage.removeItem(KEY_CAREER); } catch (_) { /* ignore */ } }
 export function newCareer(name, number, team, replaces) {
   const c = { name, number, team, replaces, seasonNo: 1, upg: { engine: 0, aero: 0, chassis: 0 }, credits: 20, h2h: { q: [0, 0], r: [0, 0] }, rating: 50, offers: null, history: [] };
-  c.season = { round: 0, calendar: TRACKS.map((t) => t.id), pts: {}, team: {}, wins: {}, history: [], done: false };
+  c.season = { round: 0, calendar: [...CALENDAR], pts: {}, team: {}, wins: {}, history: [], done: false };
   saveCareer(c);
   return c;
 }
@@ -120,6 +120,6 @@ export function careerQuali(c, myPos, matePos) { if (matePos) { if (myPos < mate
 export function careerNextSeason(c, team, replaces) {
   if (team !== c.team) c.upg = { engine: Math.floor(c.upg.engine / 2), aero: Math.floor(c.upg.aero / 2), chassis: Math.floor(c.upg.chassis / 2) };
   c.team = team; c.replaces = replaces; c.seasonNo++; c.offers = null; c.h2h = { q: [0, 0], r: [0, 0] };
-  c.season = { round: 0, calendar: TRACKS.map((t) => t.id), pts: {}, team: {}, wins: {}, history: [], done: false };
+  c.season = { round: 0, calendar: [...CALENDAR], pts: {}, team: {}, wins: {}, history: [], done: false };
   saveCareer(c);
 }
