@@ -39,6 +39,10 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.
 
+## Show
+
+Vor jedem Rennen ein TV-Intro: Kameraflug über die Startaufstellung mit Einblendung von Großem Preis, Länge, Wetter, Pole und deinem Startplatz (Gas oder Tippen überspringt; im Multiplayer sehen alle das ganze Intro). Im Rennen TV-Einblendungen für die schnellste Runde (lila) und Überholmanöver an der Spitze oder mit menschlichen Fahrern, blinkende Rücklichter beim Energie-Laden, Emojis im Multiplayer steigen über dem Auto des Absenders auf, Konfetti bei der Siegerehrung.
+
 ## Multiplayer
 
 Rennen erstellen, Code oder Einladungslink teilen (auf dem Handy über das Teilen-Menü), Mitspieler melden sich „Bereit“. Der Gastgeber wählt Strecke (Liste aller 24), Regeln (Einfach / Realistisch), Kollisionen (an oder Geisterautos), KI-Gegner und Liga; alle fahren mit den Regeln des Gastgebers. Weitere Gastgeber-Optionen: Startaufstellung (zufällig, Spieler vorne, Spieler hinten, Liga umgekehrt), KI-Gegner bis +16 mit eigener KI-Stärke, „Alle gleich schnell“ statt echter Teamleistung, Fahrhilfen für alle begrenzen oder verbieten, jede Regel einzeln, private Rennen (nicht in der Liste) und 1 bis 20 Runden. Die Autos der anderen werden mit ihrem eigenen Zeitstempel zwischen echten Positionen interpoliert (flüssig auch bei schwankender Verbindung) und tragen ein Namensschild.

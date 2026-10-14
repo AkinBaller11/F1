@@ -532,6 +532,22 @@ function nameTag(name, team) {
   return sp;
 }
 
+// celebration: paper confetti over the whole screen (podium, top-3 finish)
+function confetti(n = 150) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div'); box.className = 'confetti'; document.body.append(box);
+  const cols = ['#e10600', '#ffd23f', '#19d65b', '#3ff6ff', '#ffffff', '#ff8000', '#9b5cff'];
+  for (let i = 0; i < n; i++) {
+    const q = document.createElement('i');
+    q.style.left = Math.random() * 100 + '%'; q.style.background = cols[i % cols.length];
+    q.style.animationDelay = Math.random() * 0.9 + 's'; q.style.animationDuration = 2.4 + Math.random() * 1.8 + 's';
+    q.style.setProperty('--dx', Math.random() * 180 - 90 + 'px'); q.style.setProperty('--r', Math.random() * 900 + 'deg');
+    box.append(q);
+  }
+  setTimeout(() => box.remove(), 5600);
+}
+const INTRO_LEN = 7.5; // seconds of TV opening before the grid / formation lap
+
 // broadcast-style grade after tone mapping: a touch more saturation and S-curve contrast, soft vignette
 const GRADE = {
   uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 } },
@@ -841,12 +857,15 @@ class Game {
     if (!solo && !mp && opts.formation !== false && this.mode === 'race') {
       this.state = 'formation'; this.formT = 0;
     }
+    // TV-style opening: a camera sweep over the grid with the race graphics, then the normal start
+    if (!solo && this.mode === 'race' && opts.intro !== false && !opts.school) { this.afterIntro = this.state; this.state = 'intro'; this.introT = 0; }
     document.body.classList.toggle('mode-tt', this.mode === 'tt');
     document.body.classList.toggle('mode-quali', this.mode === 'quali');
     this.lightsHold = 0.6 + rand() * 2.2;
     this.lap = { start: 0, best: Infinity, sectorStart: 0, sector: 0, sectorBest: [Infinity, Infinity, Infinity], states: ['', '', ''], invalid: false, lapNo: 0 };
     this.trackWarnings = 0; this.offWasOn = false;
     this.hud = new HUD($('#hud'), this.mode === 'tt' ? '∞' : this.laps, opts.sprintRace ? 'sprint' : this.mode);
+    this.hud.el['h-intro'].addEventListener('pointerdown', () => { this.introSkip = true; });
     this.radio.hud = this.hud;
     this.hud.setMap(this.track);
     this.hud.setDriver(this.playerEntry.name, myNum, myLook);
@@ -1031,6 +1050,38 @@ class Game {
     this.lineMesh.geometry.attributes.color.needsUpdate = true;
   }
 
+  // three TV shots: wide over the start line, a dolly down the grid, then in behind our car
+  introCamera() {
+    const tr = this.track, cam = this.camera, t = Math.min(1, this.introT / INTRO_LEN), p = this.player;
+    if (cam.parent !== this.scene) this.scene.add(cam);
+    this.cockpit.visible = false; this.playerModel.userData.helmet.visible = true;
+    const pole = tr.startS - 8, mine = p.s, gridLen = tr.wrapS(pole - mine);
+    const ease = (k) => k * k * (3 - 2 * k);
+    let s, lat, h, ls, ll, lh;
+    if (t < 0.32) { const k = ease(t / 0.32); s = tr.startS + 90 - k * 35; lat = 0; h = 19 - k * 9; ls = tr.startS - 60 - k * 40; ll = 0; lh = 0; } // above the track: never inside a grandstand
+    else if (t < 0.78) { const k = ease((t - 0.32) / 0.46); s = pole + 6 - k * (gridLen + 4); lat = 6.2; h = 1.25 + Math.sin(k * Math.PI) * 0.5; ls = s + 2; ll = 0; lh = 0.55; }
+    else { const k = ease((t - 0.78) / 0.22); s = mine - 9 + k * 2.5; lat = p.lat + 1.5 - k * 1.5; h = 2.6 - k * 0.7; ls = mine + 25; ll = p.lat; lh = 0.8; }
+    const [x, z] = tr.posAt(tr.wrapS(s), lat), [lx, lz] = tr.posAt(tr.wrapS(ls), ll);
+    cam.position.set(x, h, z); cam.lookAt(lx, lh, lz);
+    if (cam.fov !== 48) { cam.fov = 48; cam.updateProjectionMatrix(); }
+  }
+
+  introHTML() {
+    const W = { dynamic: 'Wechselhaft', wet: 'Regen', dry: 'Trocken', storm: 'Gewitter', fog: 'Nebel', local: 'Teilweise Regen' };
+    const tod = (TIMES.find((x) => x.id === this.opts.tod) || {}).name || '';
+    const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const pole = this.cars[0], me = this.cars.indexOf(this.playerEntry) + 1;
+    const km = this.def.km ? this.def.km.toFixed(3).replace('.', ',') + ' km' : (this.track.length / 1000).toFixed(2).replace('.', ',') + ' km';
+    const bar = (c) => hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body);
+    const humans = this.mp ? this.cars.map((c, i) => [c, i]).filter(([c]) => c.isPlayer || c.remote) : [];
+    return `<div class="in-card">
+      <div class="in-gp">${esc(this.def.gp || this.def.name)}</div>
+      <div class="in-trk">${esc(this.def.name)} · ${km} · ${this.laps} ${this.laps === 1 ? 'Runde' : 'Runden'}</div>
+      <div class="in-row"><span>WETTER</span><b>${esc(W[this.opts.weather] || '')}</b><span>ZEIT</span><b>${esc(tod)}</b><span>POLE</span><b><i style="background:${bar(pole)}"></i>${esc(pole.name)}</b></div>
+      ${humans.length > 1 ? `<div class="in-grid">${humans.map(([c, i]) => `<span><i style="background:${bar(c)}"></i>P${i + 1} ${esc(c.name)}</span>`).join('')}</div>` : this.spectator ? '' : `<div class="in-you">DU STARTEST VON <b>P${me}</b></div>`}
+    </div>${this.mp ? '' : '<div class="in-skip">Gas geben oder tippen zum Überspringen</div>'}`;
+  }
+
   applyCamera(quiet = false) {
     if (!CAMS[this.camMode]) this.camMode = 'cockpit';
     const m = this.camMode;
@@ -1133,6 +1184,52 @@ class Game {
     while (entry.lastCp < k && entry.lastCp < this.cpN - 1) { entry.lastCp++; entry.cp[entry.lastCp] = t; }
   }
 
+  // a short chat message / emoji rises above the sender's car for a few seconds
+  floatEmote(m) {
+    if (!m.text || m.text.length > 10) return;
+    const who = String(m.name).toUpperCase();
+    const c = m.me ? this.playerEntry : this.cars.find((e) => e.remote && e.name === who);
+    if (!c || !c.mesh) return;
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+    const g = cv.getContext('2d'); g.font = '90px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (/^[\p{Extended_Pictographic}\uFE0F]+$/u.test(m.text)) g.fillText(m.text, 128, 70);
+    else { g.font = 'bold 54px Arial'; g.fillStyle = 'rgba(10,12,20,.8)'; g.beginPath(); g.roundRect(8, 24, 240, 80, 14); g.fill(); g.fillStyle = '#fff'; g.fillText(m.text, 128, 66, 224); }
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    sp.scale.set(2.6, 1.3, 1); sp.position.set(0, 2.9, 0); sp.renderOrder = 11;
+    (c.isPlayer ? this.playerRoot : c.mesh).add(sp);
+    const t0 = performance.now();
+    const tick = () => {
+      const k = (performance.now() - t0) / 2800;
+      if (k >= 1 || !this.scene) { sp.removeFromParent(); tex.dispose(); sp.material.dispose(); return; }
+      sp.position.y = 2.9 + k * 1.6; sp.material.opacity = k < 0.75 ? 1 : (1 - k) / 0.25;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // TV ticker for position changes at the front and anything involving a human driver
+  overtakeTicker() {
+    if (this.state !== 'race' || this.raceTime < 8 || this.solo) return;
+    this.otT = (this.otT || 0) - 1 / 30;
+    const names = this.order.map((c) => c);
+    if (!this.lastOrder) { this.lastOrder = names; return; }
+    if (this.otT > 0) return;
+    for (let i = 0; i < Math.min(names.length, 10); i++) {
+      const c = names[i], before = this.lastOrder.indexOf(c);
+      if (before <= i || c.obj.pitCtl || c.finished) continue;
+      const passed = this.lastOrder[i];
+      if (!passed || passed.obj.pitCtl || passed.gone || passed.finished) continue;
+      const human = c.isPlayer || c.remote || passed.isPlayer || passed.remote;
+      if (i > 2 && !human) continue;
+      const col = (e) => hex(e.team.body === 0xf0f0f0 || e.team.body === 0x161616 ? e.team.accent : e.team.body);
+      this.hud.tv(`<span class="tv-tag">P${i + 1}</span><i style="background:${col(c)}"></i><b>${c.name}</b><span class="tv-x">überholt</span><i style="background:${col(passed)}"></i><b>${passed.name}</b>`, i === 0 ? 'lead' : '', 2.6);
+      this.otT = 2.8;
+      break;
+    }
+    this.lastOrder = names;
+  }
+
   gapTo(c) {
     const p = this.playerEntry;
     const ahead = c.obj.dist > p.obj.dist;
@@ -1170,6 +1267,16 @@ class Game {
 
     this.time += dt;
     // ---- start procedure
+    if (this.state === 'intro') {
+      this.introT += dt;
+      if (this.introT < 0.1) { this.hud.setIntro(this.introHTML()); document.body.classList.add('intro-on'); }
+      // single player can skip with the throttle or a tap; in multiplayer everyone watches the same length
+      const skip = !this.mp && this.introT > 0.8 && (inp.throttle > 0.6 || this.introSkip);
+      if (this.introT > INTRO_LEN || skip) {
+        this.state = this.afterIntro; this.stateT = 0;
+        this.hud.setIntro(null); this.applyCamera(true); document.body.classList.remove('intro-on');
+      }
+    }
     if (this.state === 'formation') this.updateFormation(dt, inp);
     if (this.state === 'grid') {
       this.stateT += dt;
@@ -1246,6 +1353,22 @@ class Game {
     for (const c of this.cars) {
       this.recordCheckpoints(c, t);
       const L = this.track.length;
+      // lap crossings for everyone: fastest lap of the race (TV graphic in purple)
+      if (racing && !c.gone && !c.spectator) {
+        const n = Math.floor(c.obj.dist / L);
+        if (c.lapN === undefined) c.lapN = n;
+        if (n > c.lapN) {
+          if (n >= 2 && c.lapAt !== undefined && !c.obj.pitCtl) {
+            const lt = t - c.lapAt;
+            if (lt > 20 && (!this.fastest || lt < this.fastest.t)) {
+              const first = !this.fastest; this.fastest = { t: lt, name: c.name, entry: c };
+              const human = c.isPlayer || c.remote;
+              if ((!first || this.laps > 2) && (human || t - (this.flShown || -99) > 6)) this.flShown = t, this.hud.tv(`<span class="tv-tag">SCHNELLSTE RUNDE</span><i style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></i><b>${c.name}</b><em>${fmtTime(lt)}</em>`, 'purple', 4);
+            }
+          }
+          c.lapN = n; c.lapAt = t;
+        }
+      }
       if (c.remote) continue;
       if (!c.finished && racing && c.obj.dist >= this.laps * L) {
         c.finished = true; c.finishTime = t;
@@ -1279,6 +1402,7 @@ class Game {
     this.offWasOn = p.offTrack;
 
     this.order = this.computeOrder();
+    this.overtakeTicker();
     const prevPos = this.playerPos;
     this.playerPos = this.order.indexOf(this.playerEntry) + 1;
     if (prevPos && this.raceTime > 6 && this.state === 'race' && !this.pitCtl) {
@@ -2534,7 +2658,9 @@ class Game {
     const wantWorld = !!v.world && !this.lookBack;
     if (!this.replayMode && !this.photo && !this.spectator && wantWorld && cam.parent !== this.scene) { this.scene.add(cam); this.chaseCam = null; }
     if (!this.replayMode && !this.photo && !this.spectator && !wantWorld && cam.parent !== this.playerBody) this.playerBody.add(cam);
-    if (this.replayMode) {
+    if (this.state === 'intro' && !this.replayMode) {
+      this.introCamera();
+    } else if (this.replayMode) {
       this.replayCamera(dt);
     } else if (this.spectator) {
       this.updateSpectator(dt);
@@ -2590,6 +2716,7 @@ class Game {
     // AI meshes
     const blink = (performance.now() / 250 | 0) % 2;
     const rainLights = this.weather.rain > 0.15 || this.weather.wetness > 0.5;
+    const fastBlink = (performance.now() / 110 | 0) % 2 === 0;
     this.applyWeather(dt);
     this.updateSparks(dt);
     for (const c of this.cars) {
@@ -2607,9 +2734,11 @@ class Game {
       setBrakeGlow(m, Math.max(0, Math.min(1, ((o.brakeT || 0) - 550) / 450)));
       if (!this.replayMode && Math.hypot(o.x - p.x, o.z - p.z) < 140) this.floorSparks(o, dt, Math.abs(o.lat || 0) > HALF_W - 0.4);
       m.userData.helmet.children[0].rotation.set(0, -(o.steerVis || 0) * 0.6, (o.rollVis || 0) * -3);
-      m.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
+      const harvest = o.v > 20 && (o._pv ?? o.v) - o.v > 0.05; o._pv = o.v; // slowing at speed = recharging
+      m.userData.rainLight.material.color.setHex((rainLights && blink) || (harvest && fastBlink) ? 0xff2020 : 0x330000);
     }
-    this.playerModel.userData.rainLight.material.color.setHex(rainLights && blink ? 0xff2020 : 0x330000);
+    const ph = p.v > 20 && (p.throttle < 0.05 || p.brake > 0.1);
+    this.playerModel.userData.rainLight.material.color.setHex((rainLights && blink) || (ph && fastBlink) ? 0xff2020 : 0x330000);
     if (this.ghostMesh) {
       const G = this.ghost, pose = G && this.lapStarted ? ghostPose(G, this.raceTime - this.lap.start, this.ghostTmp) : null;
       const near = pose && Math.hypot(pose.x - p.x, pose.z - p.z) < 3.2;
@@ -2741,6 +2870,7 @@ class Game {
     const ui = $('#podium-ui'); ui.hidden = false;
     $('#podium-list').innerHTML = rows.slice(0, 3).map((r, i) => `<li class="${r.c.isPlayer ? 'me' : ''}"><b>${i + 1}</b><span class="bar" style="background:${hex(r.c.team.body === 0xf0f0f0 || r.c.team.body === 0x161616 ? r.c.team.accent : r.c.team.body)}"></span>${r.c.name}<small>${r.c.team.name}</small></li>`).join('');
     audio.beep(784, 0.2); setTimeout(() => audio.beep(988, 0.2), 220); setTimeout(() => audio.beep(1175, 0.45), 440);
+    confetti();
   }
 
   endPodium() {
@@ -2820,7 +2950,7 @@ class Game {
     }
     showScreen('results');
     $('#hud').classList.remove('active');
-    document.body.classList.remove('ingame');
+    document.body.classList.remove('ingame', 'intro-on');
   }
 
   showQualiResults() {
@@ -2840,7 +2970,7 @@ class Game {
     $('#res-warn').textContent = this.trackWarnings;
     showScreen('results');
     $('#hud').classList.remove('active');
-    document.body.classList.remove('ingame');
+    document.body.classList.remove('ingame', 'intro-on');
   }
 
   // compile every shader up front (rain, cockpit, sparks, mirrors…) so nothing stalls mid-race the first time it appears
@@ -2859,6 +2989,7 @@ class Game {
   }
 
   dispose() {
+    document.body.classList.remove('intro-on');
     this.radio.stop();
     if (this.photo) { this.photo = null; document.body.classList.remove('photo', 'ph-cinema', 'ph-hidepanel'); renderer.domElement.style.filter = ''; $('#photo-ui').hidden = true; }
     if (this.podium) { this.podium.dispose(); this.podium = null; document.body.classList.remove('podium-on'); $('#podium-ui').hidden = true; }
@@ -3296,7 +3427,7 @@ function quitToMenu() {
   if (game) { game.dispose(); game = null; }
   $('#pause').classList.remove('active');
   $('#hud').classList.remove('active');
-  document.body.classList.remove('ingame');
+  document.body.classList.remove('ingame', 'intro-on');
   showScreen('menu');
 }
 
@@ -3575,7 +3706,7 @@ net.onStart = (start) => {
 function backToLobby() {
   if (game) { game.dispose(); game = null; }
   $('#hud').classList.remove('active');
-  document.body.classList.remove('ingame');
+  document.body.classList.remove('ingame', 'intro-on');
   net.backToLobby();
   showScreen('mp'); mpShow('mp-lobby'); renderLobby();
 }
@@ -3605,6 +3736,7 @@ net.onChat = (m) => {
   log.append(chatLine(m)); while (log.childElementCount > 40) log.firstChild.remove();
   log.scrollTop = log.scrollHeight;
   if (game && game.mp) {
+    game.floatEmote(m);
     const f = $('#chat-feed'), l = chatLine(m);
     f.append(l); while (f.childElementCount > 4) f.firstChild.remove();
     setTimeout(() => l.remove(), 6000);

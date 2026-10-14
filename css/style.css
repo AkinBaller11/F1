@@ -736,3 +736,34 @@ body.ph-hidepanel .ph-panel { opacity: 0; }
 body.spectating .dash, body.spectating .cstat, body.spectating #touch, body.spectating .pill, body.spectating .onboard, body.spectating .launch, body.spectating #droplets, body.spectating #visor { display: none !important; }
 .lp i.spec { background: #2e7dff; }
 #mp-spec.on { background: #2e7dff; }
+
+/* TV opening card */
+body.intro-on #hud .tower, body.intro-on #hud .posbox, body.intro-on #hud .dash, body.intro-on #hud .minimap, body.intro-on #hud .pill, body.intro-on #hud .onboard { opacity: 0; transition: opacity .4s; }
+#hud .intro { position: absolute; left: 50%; bottom: 12vh; transform: translate(-50%, 30px); opacity: 0; transition: opacity .5s, transform .5s; pointer-events: none; text-align: center; width: min(720px, calc(100vw - 32px)); }
+#hud .intro.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.in-card { background: linear-gradient(180deg, rgba(14,16,26,.92), rgba(8,9,15,.94)); border-top: 4px solid var(--red); padding: 16px 22px 14px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.in-gp { font: italic 900 clamp(22px, 3.4vw, 40px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.in-trk { margin-top: 6px; color: var(--muted); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+.in-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 6px 14px; margin-top: 12px; font-size: 14px; }
+.in-row span { color: var(--muted); font-size: 11px; letter-spacing: .16em; font-weight: 800; }
+.in-row b i, .in-grid i { display: inline-block; width: 4px; height: 1em; margin-right: 6px; vertical-align: -2px; }
+.in-you { margin-top: 12px; font-weight: 800; letter-spacing: .12em; font-size: 13px; color: #d6d9e4; }
+.in-you b { font: italic 900 24px/1 var(--display); color: var(--yellow); margin-left: 6px; }
+.in-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 12px; font-weight: 800; font-size: 13px; }
+.in-skip { margin-top: 10px; font-size: 11px; letter-spacing: .14em; color: rgba(255,255,255,.55); font-weight: 700; text-transform: uppercase; }
+
+/* TV lower third: fastest lap (purple), overtakes */
+#hud .tvbar { position: absolute; left: 50%; top: 13vh; transform: translate(-50%, -12px); opacity: 0; transition: opacity .35s, transform .35s; display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 0; background: rgba(10,12,20,.88); font-weight: 800; font-size: 15px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,.4); pointer-events: none; }
+#hud .tvbar.show { opacity: 1; transform: translate(-50%, 0); }
+.tvbar .tv-tag { align-self: stretch; display: flex; align-items: center; padding: 0 12px; background: var(--red); font: italic 900 14px/1 var(--display); letter-spacing: .04em; margin: -7px 4px -7px 0; }
+.tvbar.purple .tv-tag { background: #8a2be2; }
+.tvbar.lead .tv-tag { background: var(--yellow); color: #221; }
+.tvbar i { display: inline-block; width: 4px; height: 1.1em; }
+.tvbar em { font-style: normal; color: #d9b3ff; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.tvbar .tv-x { color: var(--muted); font-weight: 600; }
+@media (max-height: 520px) { #hud .intro { bottom: 6vh; } .in-card { padding: 10px 14px; } #hud .tvbar { top: 22vh; font-size: 13px; } }
+
+/* confetti */
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 80; overflow: hidden; }
+.confetti i { position: absolute; top: -16px; width: 8px; height: 14px; border-radius: 1px; animation: conf linear forwards; }
+@keyframes conf { to { transform: translate(var(--dx), 110vh) rotate(var(--r)); } }

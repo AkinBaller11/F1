@@ -50,6 +50,8 @@ export class HUD {
         <div class="pedals"><i id="h-thr"></i><i id="h-brk"></i></div>
       </div>
       <div class="msg" id="h-msg"></div>
+      <div class="intro" id="h-intro"></div>
+      <div class="tvbar" id="h-tv"></div>
       <div class="warn" id="h-warn"></div>
       <div class="flag" id="h-flag"></div>
       <div class="launch" id="h-launch"><span class="lbl">KUPPLUNG · DREHZAHL IM GRÜNEN BEREICH HALTEN</span><div class="bar"><i class="zone"></i><b id="h-lmark"></b></div></div>
@@ -74,7 +76,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersbar', 'h-ersmode', 'h-gear', 'h-speed', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'cs-temps', 'cs-t0', 'cs-t1', 'cs-t2', 'cs-t3', 'cs-br', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta', 'h-launch', 'h-lmark'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersbar', 'h-ersmode', 'h-gear', 'h-speed', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'cs-temps', 'cs-t0', 'cs-t1', 'cs-t2', 'cs-t3', 'cs-br', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta', 'h-launch', 'h-lmark', 'h-intro', 'h-tv'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -206,6 +208,19 @@ export class HUD {
     const show = rpm !== null && rpm !== undefined;
     this.cl('h-launch', 'launch' + (show ? ' show' : '') + (auto ? ' auto' : ''));
     if (show) this.st('h-lmark', 'left', Math.max(0, Math.min(100, ((rpm - 4000) / 8500) * 100)) + '%');
+  }
+
+  // race opening card (null hides it)
+  setIntro(html) {
+    const e = this.el['h-intro'];
+    if (!html) { e.classList.remove('show'); return; }
+    e.innerHTML = html; e.classList.add('show');
+  }
+  // TV lower third: fastest lap, overtakes
+  tv(html, cls = '', dur = 3) {
+    const e = this.el['h-tv'];
+    e.innerHTML = html; e.className = 'tvbar show ' + cls;
+    clearTimeout(this.tvT); this.tvT = setTimeout(() => e.classList.remove('show'), dur * 1000);
   }
 
   setFlag(kind, text) {
