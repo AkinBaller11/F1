@@ -15,6 +15,15 @@ export const TEAMS = [
   { id: 'sau', name: 'Kick Sauber', body: 0x161616, top: 0x161616, low: 0x0a0a0a, accent: 0x52e252, drivers: ['HULKENBERG', 'BORTOLETO'], numbers: [27, 5], pace: 0.958 },
   { id: 'has', name: 'Haas', body: 0xf0f0f0, top: 0xf0f0f0, low: 0x1a1a1a, accent: 0xe6002b, drivers: ['OCON', 'BEARMAN'], numbers: [31, 87], pace: 0.962 },
 ];
+// driver ratings like the official game: pace (± % of the car's speed), aggression in wheel-to-wheel, consistency
+export const DRIVER_RATING = {
+  VERSTAPPEN: [0.45, 0.9, 0.985], NORRIS: [0.3, 0.6, 0.97], LECLERC: [0.3, 0.7, 0.965], PIASTRI: [0.25, 0.55, 0.98],
+  HAMILTON: [0.2, 0.6, 0.975], RUSSELL: [0.2, 0.65, 0.975], ALONSO: [0.25, 0.85, 0.98], SAINZ: [0.15, 0.6, 0.975],
+  ALBON: [0.1, 0.5, 0.97], ANTONELLI: [0, 0.6, 0.95], TSUNODA: [0, 0.75, 0.955], GASLY: [0.05, 0.6, 0.965],
+  OCON: [-0.05, 0.75, 0.96], HULKENBERG: [-0.05, 0.5, 0.975], HADJAR: [-0.05, 0.65, 0.955], LAWSON: [-0.15, 0.8, 0.95],
+  BEARMAN: [-0.15, 0.65, 0.955], BORTOLETO: [-0.15, 0.55, 0.955], COLAPINTO: [-0.25, 0.7, 0.94], STROLL: [-0.3, 0.5, 0.95],
+};
+export const driverRating = (name) => DRIVER_RATING[name] || [0, 0.6, 0.96];
 
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const Z0 = -2.95, ZLEN = 5.95; // livery v-mapping range along the car

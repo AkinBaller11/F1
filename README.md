@@ -27,6 +27,8 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 **Menü:** Kacheln wie in den offiziellen F1-Spielen: Schnelles Rennen, Grand Prix (Format: nur Rennen, Qualifying + Rennen oder Sprint-Wochenende), Karriere, Meisterschaft, Zeitfahren mit Geist-Auto, Multiplayer; darunter Fahrschule, Erfolge, Bestenliste, Steuerung und Einstellungen.
 
+**KI-Fahrer:** Jeder Fahrer hat eine eigene Wertung für Tempo, Angriffslust und Konstanz (wie im offiziellen Spiel). Die KI nutzt DRS und Windschatten auf den Geraden, verliert in Kurven hinter einem anderen Auto Grip (schmutzige Luft), verteidigt mit einer Bewegung vor der Bremszone, macht bei blauen Flaggen Platz und leistet sich ab und zu einen Verbremser.
+
 **Fahrhilfen:** Profile Einfach / Normal / Profi, dazu Traktionskontrolle (Voll / Mittel / Aus: durchdrehende Räder, das Heck kommt), ABS (aus: blockierende Räder, längerer Bremsweg), Brems- und Lenkhilfe, Ideallinie, Automatik oder manuell schalten. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
 
 **Atmosphäre:** Funken aus dem Unterboden, glühende Bremsen, Gummispur auf der Ideallinie mit Gummikrümeln daneben, Reifen- und Bremstemperaturen, Einführungsrunde mit Kupplungsstart, Wetter auch als Gewitter, Nebel oder Regen nur auf einem Teil der Strecke. Fotomodus mit Tiefenunschärfe und Filtern.

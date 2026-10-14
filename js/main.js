@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
-import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar } from './models.js';
+import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -712,8 +712,10 @@ class Game {
         scene.add(mesh);
         entry = { isPlayer: false, remote: true, peer: it.peer, team: d.team, name, number: d.number, obj: rc, mesh };
       } else {
-        const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (0.993 + rand() * 0.007);
+        const R = driverRating(d.name);
+        const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (1 + R[0] / 100) * (0.995 + rand() * 0.005);
         const ai = new AICar(this.track, d.team, d.name, d.number, skill);
+        ai.agg = R[1]; ai.cons = R[2];
         ai.tyre = this.weather.wetness > 0.32 ? wetChoice(this.weather.wetness) : opts.laps >= 8 && rand() < 0.3 ? 'H' : rand() < 0.5 ? 'S' : 'M';
         ai.dist = dist0; ai.lat = lat; ai.latOff = lat - this.track.racingLat(gs);
         ai.net = it.kind === 'netai'; ai.slot = aiSlot++;
@@ -1852,7 +1854,7 @@ class Game {
     let ideal = 0; for (let i = 0; i < tr.N; i++) ideal += tr.ds / Math.max(1, tr.vProf[i]);
     // AI laps from their pace (calibrated against the AI's free-air lap: ideal / skill * 1.03, softs a bit quicker)
     this.qField = this.fieldDrivers.map((d) => {
-      const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (0.993 + Math.random() * 0.007);
+      const skill = diffF * (1 - (1 - d.team.pace) * 0.55) * (1 + driverRating(d.name)[0] / 100) * (0.995 + Math.random() * 0.005);
       return { name: d.name, team: d.team, number: d.number, isPlayer: false, obj: { tyre: 'S' }, qt: (ideal / skill) * 1.022 * (1 + (Math.random() - 0.5) * 0.008) };
     });
     this.player.tyre = this.weather.wetness > 0.32 ? wetChoice(this.weather.wetness) : 'S';
@@ -2070,7 +2072,7 @@ class Game {
     if (kind === 'SC') {
       if (!this.scMesh) { this.scMesh = buildSafetyCar(); this.scene.add(this.scMesh); }
       const tr = this.track;
-      const o = { remote: true, track: tr, dist: leader.obj.dist + 160, lat: 0, v: 30, x: 0, z: 0, yaw: 0, wheelRot: 0, pitCtl: null };
+      const o = { remote: true, isSC: true, track: tr, dist: leader.obj.dist + 160, lat: 0, v: 30, x: 0, z: 0, yaw: 0, wheelRot: 0, pitCtl: null };
       Object.defineProperty(o, 's', { get() { return tr.wrapS(this.dist + tr.startS); } });
       o.lat = tr.racingLat(o.s);
       this.scObj = o; this._objs = null;

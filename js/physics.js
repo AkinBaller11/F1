@@ -244,6 +244,9 @@ export class AICar {
     this.launch = 0.86 + Math.random() * 0.18; // good or bad getaway
     this.knock = 0; this.spinRate = 0; this.spinYaw = 0; this.spunT = 0; // contact response
     this.tyre = 'M'; this.wear = 0; this.dmg = { L: 0, R: 0, rear: 0 }; this.gripMul = 1; this.pitCtl = null; this.stops = 0;
+    // racecraft (set from the driver rating): aggression in attack / defence, consistency (fewer mistakes)
+    this.agg = 0.5; this.cons = 0.95;
+    this.defT = 0; this.blueT = 0; this.mistakeT = 0; this.mistakeCheck = 1 + Math.random(); this.drsOn = false; this.drsChk = false;
   }
   get s() { return this.track.wrapS(this.dist + this.track.startS); }
 
@@ -290,22 +293,75 @@ export class AICar {
       d -= Math.sign(d) * Math.min(Math.abs(d), dt * 2.5);
       this.spinYaw = Math.abs(d) < 0.01 ? 0 : d;
     }
-    const s = this.s;
+    const s = this.s, L = tr.length;
     const look = Math.max(this.v, 10) * 0.12;
     let target = tr.targetSpeed(s + look) * this.skill * Math.sqrt(this.gripMul) * (this.paceMul || 1);
-    // traffic awareness
-    let blocked = null, blockGap = 1e9;
+    if (!tr._vTop) { let m = 0; for (const x of tr.vProf) m = Math.max(m, x); tr._vTop = m; }
+    const vTop = tr._vTop;
+    const onStraight = tr.targetSpeed(s + 20) > 0.82 * vTop;
+    const brakeAhead = onStraight && tr.targetSpeed(s + 150) < 0.65 * vTop; // heavy braking zone coming up
+    // traffic awareness: car ahead in our lane, nearest car behind, a leader coming through to lap us
+    let blocked = null, blockGap = 1e9, aheadAny = 1e9, behind = null, behindGap = 1e9, lapper = null;
     for (const c of cars) {
-      if (c === this) continue;
-      let ds = c.dist - this.dist;
-      if (ds < -tr.length / 2) ds += tr.length; // lapping
+      if (c === this || c.gone) continue;
+      const raw = c.dist - this.dist;
+      let ds = raw;
+      if (ds < -L / 2) ds += L; // lapping
+      if (ds > L / 2) ds -= L;
+      if (ds < 0 && ds > -40) {
+        if (-ds < behindGap) { behind = c; behindGap = -ds; }
+        if (raw > L / 2 && ds > -35 && !c.pitCtl && !c.isSC) lapper = c; // a lap ahead of us and right behind: blue flag
+      }
       if (ds <= 0 || ds > 60) continue;
-      // a car half a lane over still counts: in braking zones the lines converge
-      if (Math.abs(c.lat - this.lat) < 3.4 && ds < blockGap) { blocked = c; blockGap = ds; }
+      if (ds < aheadAny) aheadAny = ds;
+      // a car half a lane over still counts: in braking zones the lines converge (a stopped car only blocks its own width)
+      if (Math.abs(c.lat - this.lat) < (c.v < 5 ? 2.4 : 3.4) && ds < blockGap) { blocked = c; blockGap = ds; }
+    }
+    // blue flag: move off the line and lift a little to let the leader through
+    if (lapper && !blocked) this.blueT = 1.6;
+    if (this.blueT > 0) {
+      this.blueT -= dt;
+      const side = lapper ? -Math.sign(lapper.lat - this.lat || tr.racingLat(s) || 1) : Math.sign(this.lat || 1);
+      this.latOff = side * (HALF_W - 1.4) - tr.racingLat(s);
+      this.laneTimer = Math.max(this.laneTimer, 0.5);
+      target *= 0.97;
+    }
+    // defending: one move to cover the inside before a braking zone, never across a car alongside
+    this.defT -= dt;
+    if (behind && !lapper && this.blueT <= 0 && brakeAhead && this.defT <= 0 && behindGap > 4.5 && behindGap < 16 && behind.v > this.v - 0.5 && this.laneTimer <= 0) {
+      this.defT = 9;
+      if (Math.random() < 0.35 + this.agg * 0.6) {
+        const dir = Math.sign(behind.lat - this.lat) || -Math.sign(tr.racingLat(s + 150)) || 1;
+        const nl = Math.max(-HALF_W + 1.2, Math.min(HALF_W - 1.2, this.lat + dir * 2.4));
+        this.latOff = nl - tr.racingLat(s);
+        this.laneTimer = 2.2;
+      }
+    }
+    // DRS: within a second of the car ahead at the start of a zone (dry, from lap 2)
+    const inDrs = tr.drsZones && tr.drsZones.some(([a, b]) => (a < b ? s > a && s < b : s > a || s < b));
+    if (inDrs && !tr.wet && this.dist > L) {
+      if (!this.drsChk) { this.drsChk = true; this.drsOn = aheadAny / Math.max(this.v, 10) < 1; }
+    } else { this.drsChk = false; this.drsOn = false; }
+    if (this.drsOn) target *= 1.035;
+    // the odd mistake: lock-up into a corner, runs wide and loses time
+    this.mistakeCheck -= dt;
+    if (this.mistakeCheck <= 0) {
+      this.mistakeCheck = 1;
+      if (brakeAhead && this.mistakeT <= 0 && Math.random() < (1 - this.cons) * 0.05) this.mistakeT = 2.2;
+    }
+    if (this.mistakeT > 0) {
+      this.mistakeT -= dt;
+      if (!onStraight) {
+        target *= 0.9;
+        if (this.laneTimer <= 0) { this.latOff -= Math.sign(tr.racingLat(s + 30) || 1) * dt * 2.5; this.laneTimer = 0.2; }
+      }
     }
     if (blocked) {
       const closing = this.v - blocked.v;
-      if (closing > -1 && this.laneTimer <= 0 && !this.noPass) {
+      // pass on a straight / into a braking zone, or when clearly faster; in corners sit behind
+      const goFor = (onStraight && closing > 0.9 - this.agg) || closing > 3.5 - this.agg || blocked.v < Math.min(10, target * 0.5); // always go round a stopped / crawling car
+      const crawling = blocked.v < Math.min(10, target * 0.5);
+      if (goFor && this.laneTimer <= 0 && (!this.noPass || crawling) && this.blueT <= 0) { // under yellow only past the stopped car
         // try to pass on the side with more room
         const room = (dir) => {
           const nl = blocked.lat + dir * 3.0;
@@ -325,13 +381,14 @@ export class AICar {
         }
       }
       // otherwise follow: never faster than what still lets us stop 7 m behind it (predictive gap)
-      if (Math.abs(blocked.lat - this.lat) < 3.4) {
+      if (Math.abs(blocked.lat - this.lat) < (blocked.v < 5 ? 2.4 : 3.4)) {
         const safe = Math.sqrt(Math.max(0, blocked.v * blocked.v + 2 * 22 * (blockGap - 7)));
         target = Math.min(target, safe);
         if (blockGap < 9) target = Math.min(target, blocked.v - (9 - blockGap) * 0.6);
       }
-      // slipstream
-      if (blockGap < 25) target *= 1.012;
+      // slipstream on the straights, dirty air (less grip) through the corners
+      if (onStraight && blockGap < 30) target *= 1.012 + (blockGap < 40 ? this.agg * 0.004 : 0);
+      else if (!onStraight && blockGap < 22) target *= 0.988;
     }
     if (this.scCap !== undefined) target = Math.min(target, this.scCap); // safety car / VSC / yellow flag
     this.laneTimer -= dt;
