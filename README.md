@@ -1,6 +1,6 @@
 # Apex GP 25
 
-Browser-Rennspiel im Stil von F1 26 mit allen 24 Strecken des Kalenders 2026 im echten Verlauf (plus die Fantasie-Strecke Neon City) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, 20 Autos mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
+Browser-Rennspiel im Stil von F1 26 mit allen 24 Strecken des Kalenders 2026 im echten Verlauf (plus die Fantasie-Strecke Neon City) und vier Tageszeiten (Morgen, Mittag, Abend, Nacht): Cockpit-Ansicht mit Halo, Spiegeln und Lenkrad-Display, 22 Autos (11 Teams) mit KI, Regen mit Gischt und Tropfen auf dem Visier, HUD wie im Spiel (Positionsturm, Sektoren, ERS, Gang, DRS).
 
 Läuft ohne Build-Schritt mit Three.js vom CDN:
 
@@ -32,6 +32,8 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 **Fahrhilfen:** Profile Einfach / Normal / Profi, dazu Traktionskontrolle (Voll / Mittel / Aus: durchdrehende Räder, das Heck kommt), ABS (aus: blockierende Räder, längerer Bremsweg), Brems- und Lenkhilfe, Ideallinie, Automatik oder manuell schalten. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
 
 **Atmosphäre:** Funken aus dem Unterboden, glühende Bremsen, Gummispur auf der Ideallinie mit Gummikrümeln daneben, Reifen- und Bremstemperaturen, Einführungsrunde mit Kupplungsstart, Wetter auch als Gewitter, Nebel oder Regen nur auf einem Teil der Strecke. Fotomodus mit Tiefenunschärfe und Filtern.
+
+**Auto:** Modell nach dem Reglement 2026, komplett im Code gebaut (keine externen 3D-Dateien): lange schmale Nase, Seitenkästen mit Schlitz-Einlass und tiefem Unterschnitt, schmale Motorabdeckung mit Airbox, Unterboden mit Leitblechen und Diffusor, Frontflügel mit vier Elementen und Tauchflügeln, Heckflügel mit beweglicher Klappe (aktive Aerodynamik) und LED-Regenlichtern an den Endplatten, Halo, verkleidete Aufhängung und Bremsbelüftungen. Lack mit Klarlack-Reflexen, Kohlefaser-Teile, Partner-Schriftzüge. Standard-Lackierung des Spielers: „Giallo“ in Schwarz-Gelb mit roten Akzenten (unter „Lackierung & Helm“ abschaltbar oder änderbar).
 
 **Mehr Modi:** Karriere (eigener Fahrer, Upgrades, Teamduell, Vertragsangebote), Sprint-Wochenende, Fahrschule mit Medaillen, 20 Erfolge, Lackierungs- und Helm-Editor (auch im Multiplayer sichtbar), Zuschauermodus und Liga im Multiplayer.
 

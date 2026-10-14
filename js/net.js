@@ -10,7 +10,7 @@ import { createPeerRoom } from './peer.js';
 export function cleanLivery(l) {
   if (!l || typeof l !== 'object') return null;
   const n = (v) => (Number.isFinite(+v) ? Math.max(0, Math.min(0xffffff, +v | 0)) : undefined);
-  const pat = ['plain', 'stripe', 'racing', 'split', 'chevron', 'fade', 'retro'].includes(l.pattern) ? l.pattern : 'stripe';
+  const pat = ['giallo', 'plain', 'stripe', 'racing', 'split', 'chevron', 'fade', 'retro'].includes(l.pattern) ? l.pattern : 'stripe';
   return { body: n(l.body), top: n(l.top), low: n(l.low), accent: n(l.accent), hMain: n(l.hMain), hStripe: n(l.hStripe), pattern: pat, number: Math.max(0, Math.min(99, +l.number | 0)), name: clean(l.name, 18) };
 }
 export const clean = (s, n = 14) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, n);

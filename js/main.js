@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
-import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
+import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -54,7 +54,7 @@ const defaults = {
   // car setup
   setFw: 6, setRw: 6, setBias: 56, setDiff: 50,
   // own livery
-  livery: { on: false, name: 'Eigenes Team', body: 0x0d0f14, top: 0xffffff, low: 0x0d0f14, accent: 0x19d65b, pattern: 'chevron', number: 7, hMain: 0xffffff, hStripe: 0x19d65b },
+  livery: { on: true, ...GIALLO },
 };
 
 // settings screen definition: tab, key, label, options or range; `next` = applies from the next race
@@ -143,6 +143,8 @@ try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}
 if (!settings.lightIntro) { if (settings.profile === 'normal' && settings.steerAssist === false) settings.steerAssist = 'light'; settings.lightIntro = true; }
 // the simple play style became the default: easier to pick up, everything realistic is one tap away
 if (!settings.styleIntro) { Object.assign(settings, STYLES.simple, { playStyle: 'simple', styleIntro: true }); }
+// the black-yellow 2026 car becomes the player's look once (switch back to team colours in the livery screen)
+if (!settings.gialloIntro) { if (!settings.livery || !settings.livery.on) settings.livery = { on: true, ...GIALLO }; settings.gialloIntro = true; }
 if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
 document.body.classList.toggle('touch', IS_TOUCH);
 
@@ -3355,8 +3357,9 @@ function bindPhotoUI() {
 }
 
 // ------------------------------------------------------------------ livery & helmet editor
-const LIV_PAT_NAMES = { plain: 'Uni', stripe: 'Mittelstreifen', racing: 'Doppelstreifen', split: 'Zweifarbig', chevron: 'Pfeile', fade: 'Verlauf', retro: 'Retro' };
+const LIV_PAT_NAMES = { giallo: 'Giallo', plain: 'Uni', stripe: 'Mittelstreifen', racing: 'Doppelstreifen', split: 'Zweifarbig', chevron: 'Pfeile', fade: 'Verlauf', retro: 'Retro' };
 const LIV_PRESETS = [
+  { label: 'Giallo', v: { ...GIALLO } },
   { label: 'Gulf', v: { body: 0x7fb8e6, top: 0x7fb8e6, low: 0x1b1d22, accent: 0xff7a00, pattern: 'stripe', hMain: 0x7fb8e6, hStripe: 0xff7a00 } },
   { label: 'Midnight', v: { body: 0x0d0f14, top: 0x2a2f3a, low: 0x050608, accent: 0xffd200, pattern: 'fade', hMain: 0x0d0f14, hStripe: 0xffd200 } },
   { label: 'Martini', v: { body: 0xf2f2f2, top: 0xf2f2f2, low: 0x14213d, accent: 0xd0021b, pattern: 'racing', hMain: 0xf2f2f2, hStripe: 0x14213d } },
