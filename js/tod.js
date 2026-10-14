@@ -27,7 +27,7 @@ export const TOD = {
 function rand(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
 // equirectangular sky: gradient, clouds lit by the time of day, stars at night, optional overcast
-export function skyTexture(t, overcast = false) {
+export function skyTexture(t, overcast = false, cloudsOnly = false) {
   const c = document.createElement('canvas'); c.width = 2048; c.height = 1024;
   const g = c.getContext('2d');
   const grd = g.createLinearGradient(0, 0, 0, 512);
@@ -40,10 +40,12 @@ export function skyTexture(t, overcast = false) {
   } else {
     grd.addColorStop(0, t.sky[0]); grd.addColorStop(0.62, t.sky[1]); grd.addColorStop(1, t.sky[2]);
   }
-  g.fillStyle = grd; g.fillRect(0, 0, 2048, 512);
-  g.fillStyle = overcast ? '#555a5e' : t.sky[2]; g.fillRect(0, 512, 2048, 512);
+  if (!cloudsOnly) { // clouds only: transparent layer over the physical sky
+    g.fillStyle = grd; g.fillRect(0, 0, 2048, 512);
+    g.fillStyle = overcast ? '#555a5e' : t.sky[2]; g.fillRect(0, 512, 2048, 512);
+  }
   const r = rand(overcast ? 99 : 7);
-  if (t.stars && !overcast) {
+  if (t.stars && !overcast && !cloudsOnly) {
     for (let i = 0; i < 1400 * t.stars; i++) {
       const y = r() * 470, a = (0.3 + r() * 0.7) * (1 - y / 520);
       g.fillStyle = `rgba(255,255,255,${a})`;

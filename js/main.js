@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
-import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod } from './models.js';
+import { TEAMS, customTeam, LIVERY_PATTERNS, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -17,13 +17,14 @@ import { loadCareer, newCareer, saveCareer, clearCareer, careerPerf, careerRace,
 import { loadSeason, newSeason, saveSeason, addRoundResult, addSprintResult, standings, loadGhost, saveGhost, ghostPose, ghostTimeAt, GHOST_DT, POINTS } from './modes.js';
 import * as TX from './textures.js';
 import { TRACKS, TIMES, trackById } from './tracks.js';
-import { terrainAt, terrainEnable, dispose as disposeTerrain } from './terrain.js';
+import { terrainAt, terrainEnable, terrainScenePass, dispose as disposeTerrain } from './terrain.js';
 import { TOD, skyTexture, sunDir, sunSprite } from './tod.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
@@ -676,6 +677,21 @@ class Game {
     const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
     const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 48, 24), new THREE.MeshBasicMaterial({ map: skyTexture(tod, true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
     sky.material.userData.noTerrain = true; skyWet.material.userData.noTerrain = true;
+    // daytime: physically based sky (Rayleigh / Mie scattering, sun disc, haze at the horizon) under a cloud layer
+    const physSky = (k) => {
+      const sk = new Sky(); sk.scale.setScalar(k);
+      const u = sk.material.uniforms, low = tod.sunEl < 20;
+      u.turbidity.value = low ? 7 : 4; u.rayleigh.value = low ? 2.2 : 1.1; u.mieCoefficient.value = 0.004; u.mieDirectionalG.value = 0.8;
+      u.sunPosition.value.copy(this.sunDir);
+      // dimmed to our exposure; the sun disc is clamped so half-float targets (bloom) never see Inf / NaN
+      sk.material.fragmentShader = sk.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'vec3 skyC = clamp( retColor * 0.62, 0.0, 24.0 ); if ( skyC.r != skyC.r || skyC.g != skyC.g || skyC.b != skyC.b ) skyC = vec3( 0.0 ); gl_FragColor = vec4( skyC, 1.0 );');
+      return sk;
+    };
+    this.physSky = tod.lamps < 0.5 && tod.sunEl > 3 && opts.quality !== 'low';
+    if (this.physSky) {
+      sky.add(physSky(5200));
+      sky.material.map = skyTexture(tod, false, true); sky.material.transparent = true; sky.material.depthWrite = false;
+    }
     sky.add(skyWet);
     scene.add(sky); this.sky = sky; this.skyWet = skyWet;
     this.sunSprite = sunSprite(tod);
@@ -685,7 +701,7 @@ class Game {
     }
     const pm = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
-    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
+    envScene.add(this.physSky ? physSky(18) : new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
     const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: tod.lamps > 0.5 ? 0x141a14 : 0x51703f }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; envScene.add(ground);
     scene.environment = pm.fromScene(envScene, 0.04).texture;
@@ -714,7 +730,7 @@ class Game {
       const pr = renderer.getPixelRatio();
       const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: opts.quality === 'ultra' ? 8 : 4 });
       const c = new EffectComposer(renderer, rt);
-      this.renderPass = new RenderPass(scene, null);
+      this.renderPass = terrainScenePass(new RenderPass(scene, null));
       c.addPass(this.renderPass);
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.22, 0.45, tod.lamps > 0.5 ? 0.62 : 0.96);
       c.addPass(this.bloom);
@@ -774,7 +790,7 @@ class Game {
     } else {
       const others = this.fieldDrivers.slice();
       others.sort((a, b) => (b.team.pace + Math.random() * 0.02) - (a.team.pace + Math.random() * 0.02));
-      const gridSlot = opts.grid === 'random' ? (Math.random() * 20) | 0 : Math.min(19, opts.grid - 1);
+      const gridSlot = opts.grid === 'random' ? (Math.random() * (this.fieldDrivers.length + 1)) | 0 : Math.min(this.fieldDrivers.length, opts.grid - 1);
       lineup = others.map((d) => ({ kind: 'ai', d }));
       lineup.splice(gridSlot, 0, { kind: 'player', d: pd });
       // weekend: the qualifying result sets the grid
@@ -1204,6 +1220,13 @@ class Game {
   recordCheckpoints(entry, t) {
     const k = Math.floor((entry.obj.dist + 1000) / 50);
     while (entry.lastCp < k && entry.lastCp < this.cpN - 1) { entry.lastCp++; entry.cp[entry.lastCp] = t; }
+  }
+
+  moveFlap(mesh, open, dt) {
+    const f = mesh && mesh.userData.flap;
+    if (!f) return;
+    const want = -(open ? FLAP_OPEN : FLAP_CLOSED);
+    f.rotation.x += (want - f.rotation.x) * Math.min(1, dt * (open ? 6 : 12)); // closes faster than it opens
   }
 
   // a short chat message / emoji rises above the sender's car for a few seconds
@@ -1977,15 +2000,15 @@ class Game {
     const P = this.photo;
     if (!this.photoComposer) {
       const c = new EffectComposer(renderer);
-      c.addPass(new RenderPass(this.scene, this.camera));
+      c.addPass(terrainScenePass(new RenderPass(this.scene, this.camera)));
       this.bokeh = new BokehPass(this.scene, this.camera, { focus: P.dist, aperture: 0.004, maxblur: 0.012 });
-      c.addPass(this.bokeh); c.addPass(new OutputPass());
+      c.addPass(terrainScenePass(this.bokeh)); c.addPass(new OutputPass()); // bokeh renders the scene's depth too
       this.photoComposer = c;
     }
     const u = this.bokeh.uniforms;
     u.focus.value = P.dist; u.aperture.value = (P.dof / 100) * 0.012; u.maxblur.value = 0.004 + (P.dof / 100) * 0.016;
     this.photoComposer.setSize(innerWidth, innerHeight); this.photoComposer.setPixelRatio(renderer.getPixelRatio());
-    this.photoComposer.render();
+    terrainEnable(false); this.photoComposer.render();
   }
 
   // ---------------------------------------------------------- replay
@@ -2741,6 +2764,8 @@ class Game {
     hd.rotation.set(-H.pitch * 1.6, -p.steer * 0.32, H.roll * 1.4);
     // wheels
     const maxSteer = 0.42 / (1 + Math.abs(p.v) / 16);
+    // 2026 active aero: flat flap on the straights (and with DRS), closed into the braking zone
+    this.moveFlap(this.playerModel, p.drsOpen || (p.v > 50 && p.throttle > 0.9 && p.brake < 0.05 && Math.abs(p.steer) < 0.12), dt);
     for (const set of [this.playerModel.userData.wheels, this.cockpit.userData.wheels]) {
       for (const w of set) {
         w.wheel.rotation.x = -p.wheelRot;
@@ -2771,6 +2796,7 @@ class Game {
       if (far) continue;
       const dCam = Math.hypot(o.x - camP.x, o.z - camP.z);
       setCarLod(m, dCam < 75 || !!this.photo, dCam < 55 || !!this.photo); // details and shadow-map casting only up close
+      if (dCam < 160) this.moveFlap(m, o.drsOn || (o.v > 50 && this.track.targetSpeed((o.s || 0) + 45) > (this.track._vTop || 90) * 0.82 && (o._pv ?? o.v) <= o.v + 0.02), dt);
       m.position.set(o.x, -Math.min(0.025, o.v * o.v * 0.0000035), o.z);
       o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
       m.rotation.set(0, o.yaw, o.rollVis);
@@ -2829,7 +2855,7 @@ class Game {
       this.cockpit.visible = true; this.playerModel.visible = true;
     }
     if (this.photo && this.photo.dof > 0) this.renderPhotoDof();
-    else if (this.composer) this.composer.render(); else renderer.render(this.scene, cam);
+    else if (this.composer) { terrainEnable(false); this.composer.render(); } else renderer.render(this.scene, cam);
     undoLift();
     if (this.photo && this.photo.snap) { const cb = this.photo.snap; this.photo.snap = null; cb(renderer.domElement); }
 
@@ -3745,7 +3771,7 @@ function mpStart() {
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   shuffle(humans);
   const taken = new Set(humans.map((h) => h.drv));
-  const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 20 - humans.length));
+  const ai = DRIVERS.filter((d) => !taken.has(d.name)).sort((a, b) => b.team.pace - a.team.pace).slice(0, Math.min(+settings.mpAI || 0, 22 - humans.length));
   // grid: random mix, players in front / at the back (a chase through the field), or reversed league table
   const hs = humans.map((h) => ({ h: h.peer, n: h.name, d: h.drv, l: h.liv || null })), as = ai.map((d) => ({ a: d.name }));
   let slots;

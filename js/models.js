@@ -1,4 +1,4 @@
-// Detailed procedural 2025-spec F1 car: lofted bodywork with painted liveries,
+// Detailed procedural 2026-spec F1 car: lofted bodywork with painted liveries,
 // real wing profiles, wheels with covers, suspension, floor and diffuser.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -6,22 +6,25 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 export const TEAMS = [
   { id: 'mcl', name: 'McLaren', body: 0xff8000, top: 0xff8000, low: 0x161616, accent: 0x47c7fc, drivers: ['NORRIS', 'PIASTRI'], numbers: [4, 81], pace: 1.0 },
   { id: 'fer', name: 'Ferrari', body: 0xd40000, top: 0xf2f2f2, low: 0xd40000, accent: 0xffd200, drivers: ['LECLERC', 'HAMILTON'], numbers: [16, 44], pace: 0.985 },
-  { id: 'rbr', name: 'Red Bull Racing', body: 0x1b2a5e, top: 0x1b2a5e, low: 0x0e1633, accent: 0xd0021b, drivers: ['VERSTAPPEN', 'TSUNODA'], numbers: [1, 22], pace: 0.99 },
+  { id: 'rbr', name: 'Red Bull Racing', body: 0x1b2a5e, top: 0x1b2a5e, low: 0x0e1633, accent: 0xd0021b, drivers: ['VERSTAPPEN', 'HADJAR'], numbers: [1, 6], pace: 0.99 },
   { id: 'mer', name: 'Mercedes', body: 0xb9bec2, top: 0x16191c, low: 0x16191c, accent: 0x00d2be, drivers: ['RUSSELL', 'ANTONELLI'], numbers: [63, 12], pace: 0.99 },
   { id: 'ast', name: 'Aston Martin', body: 0x00594f, top: 0x00594f, low: 0x0b2f2a, accent: 0xcedc00, drivers: ['ALONSO', 'STROLL'], numbers: [14, 18], pace: 0.965 },
   { id: 'alp', name: 'Alpine', body: 0x0a1e5a, top: 0xff87bc, low: 0x0a1e5a, accent: 0xff87bc, drivers: ['GASLY', 'COLAPINTO'], numbers: [10, 43], pace: 0.96 },
   { id: 'wil', name: 'Williams', body: 0x0a2a6b, top: 0x0a2a6b, low: 0x06173d, accent: 0x00a0de, drivers: ['ALBON', 'SAINZ'], numbers: [23, 55], pace: 0.97 },
-  { id: 'rb', name: 'Racing Bulls', body: 0xf0f0f0, top: 0x1634cc, low: 0x1634cc, accent: 0xd0021b, drivers: ['HADJAR', 'LAWSON'], numbers: [6, 30], pace: 0.968 },
-  { id: 'sau', name: 'Kick Sauber', body: 0x161616, top: 0x161616, low: 0x0a0a0a, accent: 0x52e252, drivers: ['HULKENBERG', 'BORTOLETO'], numbers: [27, 5], pace: 0.958 },
+  { id: 'rb', name: 'Racing Bulls', body: 0xf0f0f0, top: 0x1634cc, low: 0x1634cc, accent: 0xd0021b, drivers: ['LAWSON', 'LINDBLAD'], numbers: [30, 41], pace: 0.968 },
+  // 2026: Audi takes over Sauber (id kept so saved careers and records stay valid), Cadillac is the 11th team
+  { id: 'sau', name: 'Audi', body: 0xb4b8bc, top: 0x1c1d20, low: 0x1c1d20, accent: 0xe4002b, drivers: ['HULKENBERG', 'BORTOLETO'], numbers: [27, 5], pace: 0.96 },
+  { id: 'cad', name: 'Cadillac', body: 0x121316, top: 0xf2f2f2, low: 0x121316, accent: 0xc9a227, drivers: ['PEREZ', 'BOTTAS'], numbers: [11, 77], pace: 0.952 },
   { id: 'has', name: 'Haas', body: 0xf0f0f0, top: 0xf0f0f0, low: 0x1a1a1a, accent: 0xe6002b, drivers: ['OCON', 'BEARMAN'], numbers: [31, 87], pace: 0.962 },
 ];
 // driver ratings like the official game: pace (± % of the car's speed), aggression in wheel-to-wheel, consistency
 export const DRIVER_RATING = {
   VERSTAPPEN: [0.45, 0.9, 0.985], NORRIS: [0.3, 0.6, 0.97], LECLERC: [0.3, 0.7, 0.965], PIASTRI: [0.25, 0.55, 0.98],
   HAMILTON: [0.2, 0.6, 0.975], RUSSELL: [0.2, 0.65, 0.975], ALONSO: [0.25, 0.85, 0.98], SAINZ: [0.15, 0.6, 0.975],
-  ALBON: [0.1, 0.5, 0.97], ANTONELLI: [0, 0.6, 0.95], TSUNODA: [0, 0.75, 0.955], GASLY: [0.05, 0.6, 0.965],
+  ALBON: [0.1, 0.5, 0.97], ANTONELLI: [0.05, 0.6, 0.955], PEREZ: [0.05, 0.6, 0.96], GASLY: [0.05, 0.6, 0.965],
   OCON: [-0.05, 0.75, 0.96], HULKENBERG: [-0.05, 0.5, 0.975], HADJAR: [-0.05, 0.65, 0.955], LAWSON: [-0.15, 0.8, 0.95],
   BEARMAN: [-0.15, 0.65, 0.955], BORTOLETO: [-0.15, 0.55, 0.955], COLAPINTO: [-0.25, 0.7, 0.94], STROLL: [-0.3, 0.5, 0.95],
+  BOTTAS: [0.05, 0.45, 0.975], LINDBLAD: [-0.2, 0.7, 0.945],
 };
 export const driverRating = (name) => DRIVER_RATING[name] || [0, 0.6, 0.96];
 
@@ -249,7 +252,9 @@ const POD_C = [
   { z: 1.7, cx: 0.3, cy: 0.24, w: 0.05, ht: 0.03, hb: 0.05, n: 3 },
 ];
 export const SPECS = {
-  modern: { wheels: { front: { x: 0.8, z: -1.75, w: 0.305 }, rear: { x: 0.78, z: 1.85, w: 0.405 }, r: 0.36, rim: 0.235 }, mirror: { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 } },
+  // 2026 rules: 100 mm narrower (1.90 m), 200 mm shorter wheelbase (3.40 m), narrower tyres (front -25 mm,
+  // rear -30 mm); the body is modelled at 2025 size and scaled, the wheels sit at the 2026 positions
+  modern: { wheels: { front: { x: 0.76, z: -1.645, w: 0.28 }, rear: { x: 0.741, z: 1.739, w: 0.375 }, r: 0.36, rim: 0.235 }, mirror: { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 }, bodyScale: [0.95, 1, 0.94] },
   classic: { wheels: { front: { x: 0.82, z: -1.7, w: 0.31 }, rear: { x: 0.79, z: 1.72, w: 0.43 }, r: 0.33, rim: 0.2 }, mirror: { x: 0.52, y: 0.66, z: -0.42, w: 0.15, h: 0.06 } },
 };
 
@@ -379,10 +384,10 @@ function sharedGeometry() {
     fwp[s > 0 ? 'R' : 'L'].carbon.push(plate([[-2.98, 0.04], [-2.98, 0.24], [-2.6, 0.32], [-2.36, 0.3], [-2.36, 0.12], [-2.6, 0.04]], 0.014).translate(s * 0.985, 0, 0));
     carbon.push(plate([[-2.7, 0.1], [-2.55, 0.23], [-2.45, 0.23], [-2.6, 0.1]], 0.012).translate(s * 0.09, 0, 0));
   }
-  // rear wing: mainplane + DRS flap, endplates, beam wing, swan-neck pylons
+  // rear wing: mainplane + moving top flap (2026 active aero, its own mesh), endplates, swan-neck pylons;
+  // the 2026 cars have no beam wing
   carbon.push(wing(0.3, 0.1, 0.07, 1.0, 0.12).translate(-0.5, 0.8, 2.42));
-  accent.push(wing(0.2, 0.1, 0.06, 0.98, 0.65).translate(-0.49, 0.9, 2.66));
-  carbon.push(wing(0.16, 0.12, 0.05, 0.8, 0.2).translate(-0.4, 0.34, 2.45));
+  const flap = wing(0.2, 0.1, 0.06, 0.98, 0).translate(-0.49, 0, 0);
   for (const s of [1, -1]) {
     livery.push(solid(plate([[2.28, 0.32], [2.3, 0.9], [2.42, 1.02], [2.92, 1.0], [2.9, 0.62], [2.62, 0.5], [2.55, 0.32]], 0.016).translate(s * 0.51, 0, 0), 0.25, 0.95));
     carbon.push(strut([s * 0.06, 0.45, 2.45], [s * 0.06, 0.95, 2.62], 0.06, 0.02));
@@ -412,6 +417,7 @@ function sharedGeometry() {
     livery.push(solid(at(h, s * MIRROR.x, MIRROR.y, MIRROR.z + 0.002), 0.2, 0.3));
   }
   SHARED = geoSet(livery, carbon, accent, black, fwp);
+  SHARED.flap = flap;
   return SHARED;
 }
 
@@ -838,6 +844,8 @@ function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, comp
   return wheel;
 }
 
+export const FLAP_CLOSED = 0.65, FLAP_OPEN = 0.1; // rear flap angle (rad): cornering mode / straight-line mode
+
 // ------------------------------------------------------------------ car assembly
 export function buildCar(team0, wet, number = 0, opts = {}) {
   const classic = opts.style === 'classic';
@@ -889,7 +897,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
       decal(decalTex(String(number), '#fff', numFont), 0.22, 0.11, sd * (c.w + 0.006), c.cy + 0.06, 1.25, sd * Math.PI / 2);
     }
   }
-  const sponsors = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ORACLE·X', mer: 'PETRA', ast: 'ARAMCOR', alp: 'BWT·A', wil: 'ATLAS', rb: 'VISA·C', sau: 'STAKEX', has: 'MONEYG' };
+  const sponsors = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ORACLE·X', mer: 'PETRA', ast: 'ARAMCOR', alp: 'BWT·A', wil: 'ATLAS', rb: 'VISA·C', sau: 'TITAN·R', cad: 'NOVA·US', has: 'MONEYG' };
   const spName = sponsors[team.id] || 'KRONOS';
   const sp = decalTex(spName, light ? '#111' : '#fff');
   for (const sd of [1, -1]) {
@@ -925,6 +933,18 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   rl.position.set(0, 0.33, 2.8); car.add(rl);
   car.userData.rainLight = rl;
 
+  // moving rear flap (closed = downforce, open = flat on the straights)
+  if (geo.flap) {
+    const pivot = new THREE.Group(); pivot.position.set(0, 0.9, 2.66); pivot.rotation.x = -FLAP_CLOSED;
+    const fm = new THREE.Mesh(geo.flap, acc); fm.castShadow = true; pivot.add(fm); car.add(pivot);
+    car.userData.flap = pivot;
+  }
+  // 2026 proportions: everything but the wheels goes into a scaled body
+  if (spec.bodyScale) {
+    const body = new THREE.Group(); body.scale.set(...spec.bodyScale);
+    for (const ch of [...car.children]) body.add(ch);
+    car.add(body); car.userData.body = body;
+  }
   // wheels
   const wheels = [];
   const seed = (number || 1) + team.id.length;

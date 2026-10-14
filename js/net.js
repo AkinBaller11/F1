@@ -47,7 +47,7 @@ export class Net {
   openRaces() {
     return this.lobbyPeers
       .filter((p) => !p.sameTab && p.presence && /^\d{4}$/.test(String(p.presence.host || '')))
-      .map((p) => ({ code: String(p.presence.host), name: clean(p.presence.hn) || 'Gastgeber', n: Math.min(20, +p.presence.n || 1), racing: p.presence.st === 'racing' }));
+      .map((p) => ({ code: String(p.presence.host), name: clean(p.presence.hn) || 'Gastgeber', n: Math.min(22, +p.presence.n || 1), racing: p.presence.st === 'racing' }));
   }
 
   get myPeer() { const me = (this.race ? this.race.peers() : this.room ? this.room.peers() : []).find((p) => p.sameTab); return me ? me.peer : null; }

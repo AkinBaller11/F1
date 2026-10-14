@@ -59,10 +59,16 @@ THREE.Frustum.prototype.intersectsSprite = function (sprite) {
 };
 
 export function terrainEnable(on) { U.terrainOn.value = on && cpu ? 1 : 0; }
+// post-processing passes draw full-screen quads with ordinary materials: only the scene pass may be lifted
+export function terrainScenePass(pass) {
+  const render = pass.render.bind(pass);
+  pass.render = (...a) => { const was = U.terrainOn.value; U.terrainOn.value = cpu ? 1 : 0; render(...a); U.terrainOn.value = was; };
+  return pass;
+}
 
 // height at a world position (bilinear, same as the GPU)
 export function terrainAt(x, z) {
-  if (!cpu || !U.terrainOn.value) return 0;
+  if (!cpu) return 0;
   const { data, res, ox, oz, size } = cpu;
   const u = Math.min(1, Math.max(0, (x - ox) / size + 0.5)) * res - 0.5, v = Math.min(1, Math.max(0, (z - oz) / size + 0.5)) * res - 0.5;
   const x0 = Math.max(0, Math.min(res - 1, Math.floor(u))), y0 = Math.max(0, Math.min(res - 1, Math.floor(v)));
