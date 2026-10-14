@@ -53,6 +53,9 @@ export class Audio {
     this.rumble = noise('lowpass', 180, 1);
     this.rainLevel = 0;
     this.crowd = noise('bandpass', 1200, 0.4);
+    // tyre squeal: lock-ups and wheelspin
+    this.squeal = noise('bandpass', 1900, 7);
+    this.squeal.g.disconnect(); this.squeal.g.connect(this.fxBus);
   }
   resume() { this.ctx && this.ctx.state === 'suspended' && this.ctx.resume(); }
   setMuted(m) { this.muted = m; this.applyMaster(); }
@@ -87,6 +90,9 @@ export class Audio {
     this.wind.f.frequency.setTargetAtTime(400 + v * 12, t, 0.1);
     this.rain.g.gain.setTargetAtTime(this.rainLevel * (inCockpit ? 1 : 0.6), t, 0.3);
     this.rumble.g.gain.setTargetAtTime(car.bump * Math.min(1, v / 20) * 0.35, t, 0.03);
+    const sq = Math.max(car.lockup || 0, (car.wheelspin || 0) * 0.8) * Math.min(1, v / 10);
+    this.squeal.g.gain.setTargetAtTime(sq * 0.5, t, 0.04);
+    this.squeal.f.frequency.setTargetAtTime(1500 + v * 6, t, 0.1);
     // nearby cars -> crowd/air rush
     let near = 0;
     for (const o of others) { const d = Math.hypot(o.x - car.x, o.z - car.z); if (d < 40) near += (1 - d / 40) * Math.min(1, o.v / 50); }
@@ -97,7 +103,7 @@ export class Audio {
   quiet(crowd = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    for (const g of [this.engGain.gain, this.whineGain.gain, this.wind.g.gain, this.rumble.g.gain]) g.setTargetAtTime(0, t, 0.15);
+    for (const g of [this.engGain.gain, this.whineGain.gain, this.wind.g.gain, this.rumble.g.gain, this.squeal.g.gain]) g.setTargetAtTime(0, t, 0.15);
     this.crowd.g.gain.setTargetAtTime(crowd, t, 0.4);
   }
 

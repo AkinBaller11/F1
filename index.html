@@ -100,13 +100,22 @@
     <div class="mark"><i></i><i></i><i></i></div>
     <div><h1>APEX GP <em>25</em></h1><p id="brand-sub">Barcelona · Rennwochenende</p></div>
   </header>
-  <nav class="main-nav">
-    <button data-action="start" class="primary"><span class="k">Schnelles Rennen</span><span class="d">Sofort losfahren mit deinen Einstellungen</span></button>
-    <button data-action="modes"><span class="k">Spielmodi</span><span class="d">Rennwochenende, Meisterschaft, Zeitfahren, Bestenliste</span></button>
-    <button data-action="setup"><span class="k">Rennen einrichten</span><span class="d">Strecke, Tageszeit, Runden, Wetter, Fahrer, Setup</span></button>
-    <button data-action="mp"><span class="k">Multiplayer</span><span class="d">Online gegen Freunde fahren</span></button>
-    <button data-action="controls"><span class="k">Steuerung</span><span class="d">Profile, Fahrhilfen, Tasten belegen</span></button>
-    <button data-action="settings"><span class="k">Einstellungen</span><span class="d">Grafik, Kamera, Anzeige, Audio, Touch</span></button>
+  <nav class="hub" aria-label="Hauptmenü">
+    <div class="tiles">
+      <button data-action="start" class="tile primary"><i class="ti">▶</i><span class="k">Schnelles Rennen</span><span class="d" id="quick-sub">Sofort losfahren</span></button>
+      <button data-action="setup" class="tile"><i class="ti">GP</i><span class="k">Grand Prix</span><span class="d">Strecke, Fahrer, Format</span></button>
+      <button data-action="career" class="tile"><i class="ti">★</i><span class="k">Karriere</span><span class="d">Eigener Fahrer &amp; Team</span></button>
+      <button data-action="season-open" class="tile"><i class="ti">🏆</i><span class="k">Meisterschaft</span><span class="d" id="season-sub">Alle Strecken, WM-Punkte</span></button>
+      <button data-action="tt" class="tile"><i class="ti">⏱</i><span class="k">Zeitfahren</span><span class="d" id="tt-sub">Gegen dein Geist-Auto</span></button>
+      <button data-action="mp" class="tile"><i class="ti">⇄</i><span class="k">Multiplayer</span><span class="d">Online mit Freunden</span></button>
+    </div>
+    <div class="sub-nav">
+      <button data-action="school">🎓 Fahrschule</button>
+      <button data-action="trophies">🏅 Erfolge</button>
+      <button data-action="board">≡ Bestenliste</button>
+      <button data-action="controls">🎮 Steuerung &amp; Fahrhilfen</button>
+      <button data-action="settings">⚙ Einstellungen</button>
+    </div>
   </nav>
   <aside class="selected">
     <div class="lbl">DEIN FAHRER</div>
@@ -119,7 +128,7 @@
 <!-- race setup -->
 <section class="screen panel-screen" id="setup">
   <div class="panel">
-    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>RENNEN EINRICHTEN</h2><button data-action="start" class="go">START ›</button></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>GRAND PRIX</h2><button data-action="gp-start" class="go">START ›</button></div>
     <div class="setup-grid">
       <div class="col">
         <h3>FAHRZEUG</h3>
@@ -139,6 +148,7 @@
         <div class="opt" data-key="track" data-vals='["barcelona","monza","city"]' data-labels='["Barcelona","Monza","Neon City"]'><span>Strecke</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="tod" data-vals='["morning","noon","evening","night"]' data-labels='["Morgen","Mittag","Abend","Nacht"]'><span>Tageszeit</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>RENNEN</h3>
+        <div class="opt" data-key="gpFormat" data-vals='["race","quali","sprint"]' data-labels='["Nur Rennen","Qualifying + Rennen","Sprint-Wochenende"]'><span>Format</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="laps" data-vals="[3,5,8,12]" data-labels='["3 Runden","5 Runden","8 Runden","12 Runden"]'><span>Renndistanz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="weather" data-vals='["dynamic","wet","dry","storm","fog","local"]' data-labels='["Wechselhaft","Regen","Trocken","Gewitter","Nebel","Teilweise Regen"]'><span>Wetter</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="grid" data-vals='[1,3,5,8,10,15,20,"random"]' data-labels='["P1 (Pole)","P3","P5","P8","P10","P15","P20","Zufällig"]'><span>Startplatz</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -159,6 +169,8 @@
         <div class="opt" data-key="launchAssist" data-vals='[true,false]' data-labels='["An","Aus"]'><span>Startautomatik</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="gearbox" data-vals='["auto","manual"]' data-labels='["Automatik","Manuell (Q/E)"]'><span>Getriebe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tc" data-vals='["full","medium","off"]' data-labels='["Voll","Mittel","Aus"]'><span>Traktionskontrolle</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="abs" data-vals='[true,false]' data-labels='["An","Aus"]'><span>ABS</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals="[false,true]" data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="steerAssist" data-vals='[false,"light",true]' data-labels='["Aus","Leicht","Stark"]'><span>Lenkhilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="line" data-vals='["corners","full","off"]' data-labels='["Nur Kurven","Voll","Aus"]'><span>Ideallinie</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -182,12 +194,14 @@
     <div class="profiles" id="profiles">
       <button class="prof" data-profile="easy"><b>Einfach</b><span>Auto-Gas, Lenk- und Bremshilfe, volle Ideallinie. Du lenkst nur noch grob und bremst.</span></button>
       <button class="prof" data-profile="normal"><b>Normal</b><span>Bremshilfe, leichte Lenkhilfe und Ideallinie in Kurven. Gas und Lenken machst du selbst.</span></button>
-      <button class="prof" data-profile="pro"><b>Profi</b><span>Keine Hilfen, manuelles Schalten, keine Ideallinie. Wie im echten Auto.</span></button>
+      <button class="prof" data-profile="pro"><b>Profi</b><span>Keine Hilfen, ohne Traktionskontrolle und ABS, manuelles Schalten, keine Ideallinie. Wie im echten Auto.</span></button>
     </div>
     <div class="ctrl-cols">
       <div class="col">
         <h3>FAHRHILFEN</h3>
         <div class="opt" data-key="autoGas" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Auto-Gas</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="tc" data-vals='["full","medium","off"]' data-labels='["Voll","Mittel","Aus"]'><span>Traktionskontrolle</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
+        <div class="opt" data-key="abs" data-vals='[true,false]' data-labels='["An","Aus"]'><span>ABS</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="brakeAssist" data-vals='[false,true]' data-labels='["Aus","An"]'><span>Bremshilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="steerAssist" data-vals='[false,"light",true]' data-labels='["Aus","Leicht","Stark"]'><span>Lenkhilfe</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
         <div class="opt" data-key="autoDrs" data-vals='[true,false]' data-labels='["Automatisch","Manuell (F)"]'><span>DRS</span><button class="l">‹</button><span class="val"></span><button class="r">›</button></div>
@@ -315,28 +329,11 @@
   </div>
 </section>
 
-<!-- game modes -->
-<section class="screen panel-screen" id="modes">
-  <div class="panel">
-    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>SPIELMODI</h2><span></span></div>
-    <div class="mode-grid">
-      <button class="mode-card" data-action="career"><i class="mi">★</i><b>Karriere</b><span>Eigener Fahrer, kleines Team, Auto weiterentwickeln, Teamkollegen schlagen, Angebote von Top-Teams.</span></button>
-      <button class="mode-card" data-action="weekend"><i class="mi">Q</i><b>Rennwochenende</b><span>Qualifying über 3 Runden entscheidet deinen Startplatz, danach das Rennen.</span></button>
-      <button class="mode-card" data-action="sprint-weekend"><i class="mi">S</i><b>Sprint-Wochenende</b><span>Qualifying, kurzes Sprintrennen mit Punkten für die Top 8, dann der Grand Prix.</span></button>
-      <button class="mode-card" data-action="season-open"><i class="mi">🏆</i><b>Meisterschaft</b><span id="season-sub">Alle Strecken nacheinander, WM-Punkte und Tabelle.</span></button>
-      <button class="mode-card" data-action="tt"><i class="mi">⏱</i><b>Zeitfahren</b><span id="tt-sub">Allein auf der Strecke gegen dein Geist-Auto.</span></button>
-      <button class="mode-card" data-action="school"><i class="mi">🎓</i><b>Fahrschule</b><span>Fünf Lektionen: Bremsen, Ideallinie, Kurven, Überholen, Reifen schonen. Mit Medaillen.</span></button>
-      <button class="mode-card" data-action="trophies"><i class="mi">🏅</i><b>Erfolge</b><span>20 Erfolge zum Freischalten.</span></button>
-      <button class="mode-card" data-action="board"><i class="mi">≡</i><b>Bestenliste</b><span>Die schnellsten Runden aller Spieler pro Strecke.</span></button>
-    </div>
-    <p class="set-note">Strecke, Tageszeit, Runden und Wetter stellst du unter „Rennen einrichten“ ein.</p>
-  </div>
-</section>
 
 <!-- championship -->
 <section class="screen panel-screen" id="season">
   <div class="panel">
-    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>MEISTERSCHAFT</h2><button class="back reset" id="season-reset">NEUE SAISON</button></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>MEISTERSCHAFT</h2><button class="back reset" id="season-reset">NEUE SAISON</button></div>
     <div class="champion" id="season-champ" hidden></div>
     <div class="season-cols">
       <div>
@@ -354,7 +351,7 @@
 <!-- career -->
 <section class="screen panel-screen" id="career">
   <div class="panel">
-    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>KARRIERE</h2><span></span></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>KARRIERE</h2><span></span></div>
     <div id="career-body"></div>
   </div>
 </section>
@@ -362,7 +359,7 @@
 <!-- achievements -->
 <section class="screen panel-screen" id="trophies">
   <div class="panel">
-    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>ERFOLGE <small id="trophy-count"></small></h2><span></span></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>ERFOLGE <small id="trophy-count"></small></h2><span></span></div>
     <div class="trophy-grid" id="trophy-grid"></div>
   </div>
 </section>
@@ -370,7 +367,7 @@
 <!-- driving school -->
 <section class="screen panel-screen" id="school">
   <div class="panel">
-    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>FAHRSCHULE</h2><span></span></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>FAHRSCHULE</h2><span></span></div>
     <p class="set-note" id="school-track"></p>
     <div class="mode-grid" id="school-grid"></div>
   </div>
@@ -379,7 +376,7 @@
 <!-- leaderboard -->
 <section class="screen panel-screen" id="board">
   <div class="panel">
-    <div class="panel-head"><button data-action="modes" class="back">‹ ZURÜCK</button><h2>BESTENLISTE</h2><span></span></div>
+    <div class="panel-head"><button data-action="menu" class="back">‹ ZURÜCK</button><h2>BESTENLISTE</h2><span></span></div>
     <div class="board-tabs" id="board-tabs"></div>
     <p class="set-note" id="board-note"></p>
     <div class="tablewrap"><table class="res"><thead><tr><th>POS</th><th>FAHRER</th><th>AUTO</th><th>ZEIT</th><th>DATUM</th></tr></thead><tbody id="board-body"></tbody></table></div>

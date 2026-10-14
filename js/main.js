@@ -34,7 +34,7 @@ TEAMS.forEach((t) => t.drivers.forEach((d, i) => DRIVERS.push({ team: t, name: d
 
 const defaults = {
   driver: 'HAMILTON', track: 'barcelona', tod: 'noon', laps: 5, weather: 'dynamic', difficulty: 75, grid: 8, camera: 'cockpit', quality: 'high',
-  profile: 'normal', gearbox: 'auto', brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
+  profile: 'normal', gearbox: 'auto', tc: 'full', abs: true, brakeAssist: true, autoGas: false, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', steerSens: 100, binds: {},
   touchSteer: 'wheel', wheelSize: 'm', touchSide: 'right', mpName: '', mpAI: 4, carStyle: 'modern', retro: false,
   // graphics
   renderScale: 100, shadows: true, bloom: 'auto', trees: 'auto', fpsLimit: 0,
@@ -47,7 +47,7 @@ const defaults = {
   // touch
   touchOpacity: 85, vibrate: true,
   // race rules
-  tyreWear: 0, damage: false, penalties: false, safetyCar: true, startTyre: 'auto', radio: 'voice', seasonQuali: true, seasonSprint: false, tyreTemp: false, formation: false, mpLeague: false, launchAssist: true, playStyle: 'simple',
+  tyreWear: 0, damage: false, penalties: false, safetyCar: true, startTyre: 'auto', radio: 'voice', seasonQuali: true, seasonSprint: false, tyreTemp: false, formation: false, mpLeague: false, launchAssist: true, playStyle: 'simple', gpFormat: 'race',
   // car setup
   setFw: 6, setRw: 6, setBias: 56, setDiff: 50,
   // own livery
@@ -120,9 +120,9 @@ const SETTINGS = [
 ];
 // assist profiles: one tap sets everything
 const PROFILES = {
-  easy: { autoGas: true, brakeAssist: true, steerAssist: true, autoDrs: true, autoErs: true, line: 'full', gearbox: 'auto' },
-  normal: { autoGas: false, brakeAssist: true, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', gearbox: 'auto' },
-  pro: { autoGas: false, brakeAssist: false, steerAssist: false, autoDrs: false, autoErs: false, line: 'off', gearbox: 'manual' },
+  easy: { autoGas: true, brakeAssist: true, steerAssist: true, autoDrs: true, autoErs: true, line: 'full', gearbox: 'auto', tc: 'full', abs: true },
+  normal: { autoGas: false, brakeAssist: true, steerAssist: 'light', autoDrs: true, autoErs: true, line: 'corners', gearbox: 'auto', tc: 'full', abs: true },
+  pro: { autoGas: false, brakeAssist: false, steerAssist: false, autoDrs: false, autoErs: false, line: 'off', gearbox: 'manual', tc: 'off', abs: false },
 };
 const PROFILE_KEYS = Object.keys(PROFILES.easy);
 // play styles: one tap sets the race rules
@@ -376,7 +376,8 @@ function renderKeymap() {
 function updateLivery() {
   const d = DRIVERS.find((x) => x.name === settings.driver) || DRIVERS[0];
   const t = trackById(settings.track);
-  $('#brand-sub').textContent = `${t.name} · ${(TIMES.find((x) => x.id === settings.tod) || TIMES[1]).name} · Rennwochenende`;
+  $('#brand-sub').textContent = `${t.name} · ${(TIMES.find((x) => x.id === settings.tod) || TIMES[1]).name} · ${settings.laps} Runden`;
+  renderModes();
   drawTrackPreview();
   $('#sel-driver').textContent = d.name;
   $('#sel-team').textContent = d.team.name;
@@ -386,6 +387,7 @@ function updateLivery() {
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
+  if (id === 'menu') renderModes();
 }
 
 // spinning wheels: sharp when slow, smeared, then fully spun (m/s thresholds with a little hysteresis-free spacing)
@@ -495,7 +497,7 @@ const CAMS = {
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
   rear: { label: 'HECK', pos: [0, 1.12, 2.95], pitch: -0.07, yaw: Math.PI, fov: 66, shake: 0.6 },
-  chase: { label: 'VERFOLGER', world: true, dist: 6.3, height: 1.85, look: 0.9, fov: 62, shake: 0.25 },
+  chase: { label: 'VERFOLGER', world: true, dist: 6.6, height: 1.95, look: 1.3, fov: 64, shake: 0.25 }, // car low in the frame, plenty of road ahead (like the official games)
   far: { label: 'VERFOLGER WEIT', world: true, dist: 10.5, height: 3.3, look: 0.6, fov: 56, shake: 0.15 },
   heli: { label: 'HELIKOPTER', world: true, heli: true, fov: 45 },
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
@@ -641,7 +643,7 @@ class Game {
     const CD = opts.customDriver, cTeam = CD && TEAMS.find((t) => t.id === CD.team);
     const pd = cTeam ? { team: cTeam, name: CD.name, number: CD.number } : DRIVERS.find((d) => d.name === opts.driver) || DRIVERS[0];
     this.fieldDrivers = DRIVERS.filter((d) => d !== pd && d.name !== pd.name && !(CD && d.name === CD.replaces));
-    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist, steerAssist: opts.steerAssist, autoDrs: opts.autoDrs, autoErs: opts.autoErs });
+    this.player = new PlayerCar(this.track, { manual: opts.gearbox === 'manual', brakeAssist: opts.brakeAssist, steerAssist: opts.steerAssist, autoDrs: opts.autoDrs, autoErs: opts.autoErs, tc: opts.tc, abs: opts.abs });
     this.player.onShift = (down) => !down && audio.shift();
     this.player.setup = carSetup(opts);
     if (opts.career && cTeam) {
@@ -2850,10 +2852,12 @@ function updatePausePit() {
 }
 
 // ------------------------------------------------------------------ game modes
+// subtitles of the main-menu tiles
 function renderModes() {
   const S = loadSeason();
-  $('#season-sub').textContent = S && !S.done ? `Runde ${S.round + 1} von ${S.calendar.length}: ${trackById(S.calendar[S.round]).name}` : S && S.done ? 'Saison beendet. Schau dir die Tabelle an oder starte neu.' : 'Alle Strecken nacheinander, WM-Punkte und Tabelle.';
-  $('#tt-sub').textContent = `Allein auf ${trackById(settings.track).name} gegen dein Geist-Auto.`;
+  $('#season-sub').textContent = S && !S.done ? `Runde ${S.round + 1}/${S.calendar.length}: ${trackById(S.calendar[S.round]).name}` : S && S.done ? 'Saison beendet' : 'Alle Strecken, WM-Punkte';
+  $('#tt-sub').textContent = `${trackById(settings.track).name} gegen dein Geist-Auto`;
+  $('#quick-sub').textContent = `${trackById(settings.track).name} · ${settings.laps} Runden`;
 }
 
 function renderSeason() {
@@ -3204,7 +3208,7 @@ function renderSchool() {
     b.addEventListener('click', () => startRace(null, { mode: 'school', lesson: l.id, weather: 'dry', formation: false, tyreTemp: false }));
     box.append(b);
   });
-  $('#school-track').textContent = `Strecke: ${trackById(settings.track).name} (unter „Rennen einrichten“ änderbar)`;
+  $('#school-track').textContent = `Strecke: ${trackById(settings.track).name} (unter „Grand Prix“ änderbar)`;
 }
 
 function quitToMenu() {
@@ -3241,7 +3245,11 @@ document.addEventListener('click', (e) => {
   if (act === 'quit') quitToMenu();
   if (act === 'pause-box' && game) { game.toggleBox(); updatePausePit(); }
   if (act === 'quali-end' && game && game.mode === 'quali') { game.togglePause(false); game.onPlayerFinish(); game.stateT = 5; }
-  if (act === 'modes') { renderModes(); showScreen('modes'); }
+  if (act === 'gp-start') {
+    if (settings.gpFormat === 'quali') startRace(null, { mode: 'quali', weekend: true });
+    else if (settings.gpFormat === 'sprint') startRace(null, { mode: 'quali', weekend: true, sprint: true });
+    else startRace();
+  }
   if (act === 'weekend') startRace(null, { mode: 'quali', weekend: true });
   if (act === 'tt') startRace(null, { mode: 'tt', weather: 'dry' });
   if (act === 'weekend-race' && game) {

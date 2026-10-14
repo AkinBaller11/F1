@@ -89,7 +89,7 @@ export class PlayerCar {
     if (this.opts.brakeAssist && raceOn) {
       const safe = this.opts.steerAssist === true ? 0.92 : this.opts.steerAssist ? 0.97 : 1; // assisted modes keep a margin to the limit
       const ahead = safe * Math.sqrt(this.gripMul) * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
-      if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(1, (this.v - ahead) / 4));
+      if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(this.opts.abs === false ? 0.85 : 1, (this.v - ahead) / 4));
     }
     let thrEff = thr;
     if (this.opts.steerAssist === true && this.assistErr > 0.06) thrEff = thr * Math.max(0.2, 1 - (this.assistErr - 0.06) * 6);
@@ -133,10 +133,22 @@ export class PlayerCar {
     // only a manual driver lugging a tall gear loses pull; launches in 1st are traction-limited, not rpm-limited
     if (this.opts.manual && this.gear >= 2) eng *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
     if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
+    // traction control: full = never spins (old behaviour); medium / off let too much throttle in low gears
+    // spin the rears: less drive, and with steering the rear steps out
+    this.wheelspin = 0;
+    const tc = this.opts.tc || 'full';
+    if (tc !== 'full' && raceOn && eng > 0 && this.throttle > 0.3 && this.gear <= 4) {
+      const demand = this.throttle * power / (CAR.mass * Math.max(v, 4)), grip = mu * (12 + 0.002 * v * v);
+      const ex = demand / grip - 1;
+      if (ex > 0) this.wheelspin = Math.min(1, ex * (tc === 'off' ? 0.5 : 0.15));
+      eng *= 1 - 0.22 * this.wheelspin;
+    }
     let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
     const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2) * (this.brakeMul ?? 1); // off-balance brakes lock a wheel earlier; brake temperature
-    if (this.v > 0.3) acc -= brk * bd;
+    // without ABS a stamp on the brakes locks the fronts: less stopping power, the car won't turn, tyres flat-spot
+    this.lockup = this.opts.abs === false && brk > 0.9 && this.v > 8 ? Math.min(1, (brk - 0.9) * 10) : 0;
+    if (this.v > 0.3) acc -= brk * bd * (1 - 0.15 * this.lockup);
     // reverse when stationary and holding brake
     if (this.v <= 0.3 && brk > 0.5 && thr < 0.05) acc = -3;
     if (this.v < 0 && thr > 0.1) acc = 6;
@@ -153,7 +165,7 @@ export class PlayerCar {
     let latMax = mu * (CAR.gripBase + CAR.downforce * S.df * v * v) * 1.06; // a touch more forgiving than the AI's limit
     latMax *= 1 - (S.diff - 0.5) * 0.12 * this.throttle;
     const longUse = Math.min(0.85, (brk * bd + this.throttle * eng * 0.4) / (latMax + 1e-3));
-    const latAvail = latMax * Math.sqrt(1 - longUse * longUse);
+    const latAvail = latMax * Math.sqrt(1 - longUse * longUse) * (1 - 0.6 * this.lockup);
     const maxYaw = latAvail / Math.max(Math.abs(this.v), 2);
     let yawRate = wantYaw * (1 + (0.56 - S.bias) * brk * 1.6) * (1 + (S.bal || 0)); // rearward bias rotates the car on the brakes; wing balance sets turn-in
     this.slip *= Math.exp(-dt * 3);
@@ -163,6 +175,9 @@ export class PlayerCar {
       this.v -= Math.min(excess, 1.5) * 2.6 * dt * Math.sign(this.v); // scrubbing (understeer)
       this.slip = Math.min(1, this.slip + excess * dt * 3);
     }
+    if (this.lockup) this.slip = Math.min(1, this.slip + this.lockup * dt * 2);
+    // wheelspin with lock applied: the rear steps out in the direction of the corner
+    if (this.wheelspin > 0.05 && v > 3) { yawRate += Math.sign(this.steer) * Math.min(1, Math.abs(this.steer) * 2) * this.wheelspin * 0.55 * Math.min(1, v / 12); this.slip = Math.min(1, this.slip + this.wheelspin * dt * 2); }
     // power oversteer in the wet / off-track wobble
     if (tr.wet && thr > 0.8 && this.gear <= 3 && v > 8 && v < 40) yawRate += Math.sign(this.steer) * 0.06 * thr;
     if (this.surface === 'grass' || this.surface === 'gravel') yawRate += (Math.random() - 0.5) * 0.25 * Math.min(1, v / 20);

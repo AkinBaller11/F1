@@ -25,7 +25,9 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 **Rennen:** Reifen Soft/Medium/Hard/Intermediate/Regen mit Verschleiß, Boxenstopps mit Boxengasse und Reifenwechsel, KI mit eigener Strategie, Schäden (Frontflügel bricht ab, Trümmerteile), 5-Sekunden-Strafen, gelbe Flaggen, Safety Car und virtuelles Safety Car, Boxenfunk mit Sprachausgabe, Siegerehrung und Replay mit TV-, Verfolger-, Heli- und Onboard-Kamera.
 
-**Spielmodi:** Rennwochenende (Qualifying + Rennen), Meisterschaft über alle Strecken, Zeitfahren mit Geist-Auto und Bestenliste. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
+**Menü:** Kacheln wie in den offiziellen F1-Spielen: Schnelles Rennen, Grand Prix (Format: nur Rennen, Qualifying + Rennen oder Sprint-Wochenende), Karriere, Meisterschaft, Zeitfahren mit Geist-Auto, Multiplayer; darunter Fahrschule, Erfolge, Bestenliste, Steuerung und Einstellungen.
+
+**Fahrhilfen:** Profile Einfach / Normal / Profi, dazu Traktionskontrolle (Voll / Mittel / Aus: durchdrehende Räder, das Heck kommt), ABS (aus: blockierende Räder, längerer Bremsweg), Brems- und Lenkhilfe, Ideallinie, Automatik oder manuell schalten. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
 
 **Atmosphäre:** Funken aus dem Unterboden, glühende Bremsen, Gummispur auf der Ideallinie mit Gummikrümeln daneben, Reifen- und Bremstemperaturen, Einführungsrunde mit Kupplungsstart, Wetter auch als Gewitter, Nebel oder Regen nur auf einem Teil der Strecke. Fotomodus mit Tiefenunschärfe und Filtern.
 

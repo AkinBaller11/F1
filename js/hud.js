@@ -41,14 +41,10 @@ export class HUD {
       </div>
       <div class="dash">
         <div class="revs" id="h-revs">${'<i></i>'.repeat(15)}</div>
-        <div class="dial ers">
-          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="trk"/><circle cx="50" cy="50" r="42" class="val" id="h-ersring"/></svg>
-          <div class="lbl">BAT</div><div class="num" id="h-ers">100%</div><div class="mode" id="h-ersmode">MITTEL</div>
-        </div>
-        <div class="gear" id="h-gear">N</div>
-        <div class="dial spd">
-          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" class="trk"/><circle cx="50" cy="50" r="42" class="val" id="h-rpmring"/></svg>
-          <div class="lbl" id="h-unit">KM/H</div><div class="num" id="h-speed">0</div><div class="rpm" id="h-rpm">4000</div>
+        <div class="dmain">
+          <div class="spd"><b id="h-speed">0</b><small id="h-unit">KM/H</small></div>
+          <div class="gear" id="h-gear">N</div>
+          <div class="ersbox"><div class="ers-l"><span>ERS</span><b id="h-ers">100%</b></div><div class="ersbar"><i id="h-ersbar"></i></div><span class="mode" id="h-ersmode">MITTEL</span></div>
         </div>
         <div class="flags"><span id="h-drs" class="drs">DRS</span><span id="h-ot" class="ot">OVERTAKE</span></div>
         <div class="pedals"><i id="h-thr"></i><i id="h-brk"></i></div>
@@ -78,12 +74,10 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'cs-temps', 'cs-t0', 'cs-t1', 'cs-t2', 'cs-t3', 'cs-br', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta', 'h-launch', 'h-lmark'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersbar', 'h-ersmode', 'h-gear', 'h-speed', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'cs-temps', 'cs-t0', 'cs-t1', 'cs-t2', 'cs-t3', 'cs-br', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta', 'h-launch', 'h-lmark'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
-    this.C = 2 * Math.PI * 42;
-    for (const r of ['h-ersring', 'h-rpmring']) this.el[r].style.strokeDasharray = `${this.C} ${this.C}`;
   }
 
   message(text, dur = 2.5, cls = '') {
@@ -131,10 +125,8 @@ export class HUD {
     this.t('h-gear', g <= 0 ? (car.v < -0.5 ? 'R' : 'N') : g);
     this.t('h-speed', Math.round(race.mph ? car.speedKmh * 0.621371 : car.speedKmh));
     this.t('h-unit', race.mph ? 'MPH' : 'KM/H');
-    this.t('h-rpm', Math.round(car.rpm));
     this.t('h-ers', Math.round(car.ers * 100) + '%');
-    this.st('h-ersring', 'strokeDashoffset', this.C * (1 - car.ers));
-    this.st('h-rpmring', 'strokeDashoffset', this.C * (1 - Math.min(1, car.speedKmh / 340)));
+    this.st('h-ersbar', 'width', car.ers * 100 + '%');
     this.t('h-ersmode', car.overtake ? 'OVERTAKE' : 'MITTEL');
     if (e['h-ot']._on !== car.overtake) { e['h-ot']._on = car.overtake; e['h-ot'].classList.toggle('on', car.overtake); }
     this.cl('h-drs', 'drs' + (car.drsOpen ? ' open' : car.drsAvailable ? ' avail' : ''));
@@ -291,9 +283,10 @@ export class HUD {
   renderRows(race) {
     const order = race.order;
     const pi = order.findIndex((c) => c.isPlayer);
-    let from = Math.max(0, pi - 2);
-    let to = Math.min(order.length, from + 5);
-    from = Math.max(0, to - 5);
+    const N = innerHeight > (document.body.classList.contains('touch') ? 900 : 600) ? 10 : 5; // phones keep the short tower, the minimap sits below it
+    let from = Math.max(0, pi - (N >> 1));
+    let to = Math.min(order.length, from + N);
+    from = Math.max(0, to - N);
     let html = '';
     for (let i = from; i < to; i++) {
       const c = order[i];
@@ -305,7 +298,7 @@ export class HUD {
         if (gt !== null) gap = (gt < 0 ? '-' : '+') + Math.abs(gt).toFixed(3);
         if (c.finished) gap = '<span class="fin">ZIEL</span>';
       }
-      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name}</span><span class="tyre" style="border-color:${TYRE_COL[c.obj.tyre] || '#888'}">${c.obj.tyre || '-'}</span><span class="gap">${gap}</span></div>`;
+      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name.slice(0, 3)}</span><span class="tyre" style="border-color:${TYRE_COL[c.obj.tyre] || '#888'}">${c.obj.tyre || '-'}</span><span class="gap">${gap}</span></div>`;
     }
     this.html('h-rows', html);
   }
