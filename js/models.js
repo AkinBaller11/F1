@@ -124,8 +124,9 @@ function airfoilShape(chord, thick, camber) {
   for (let i = N; i >= 0; i--) sh.lineTo(bot[i][0], bot[i][1]);
   return sh;
 }
-function wing(chord, thick, camber, span, aoa) {
-  const g = new THREE.ExtrudeGeometry(airfoilShape(chord, thick, camber), { depth: span, bevelEnabled: false, curveSegments: 4 });
+function wing(chord, thick, camber, span, aoa, steps = 1) {
+  // steps > 1 subdivides the span so the element can be swept and curved afterwards
+  const g = new THREE.ExtrudeGeometry(airfoilShape(chord, thick, camber), { depth: span, steps, bevelEnabled: false, curveSegments: 4 });
   g.rotateY(Math.PI / 2);      // chord -> +z, span -> +x
   g.rotateX(-aoa);             // trailing edge up
   return g;
@@ -150,17 +151,21 @@ function slab(pts, thick, y) {
   g.translate(0, y, 0);
   return g;
 }
-// streamlined strut between two points
-function strut(a, b, w = 0.05, h = 0.018) {
-  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
-  const len = A.distanceTo(B);
+// streamlined strut between two points: an aero profile whose chord lies along `chord` (the car's length by
+// default) and whose thin side faces across it, like a faired wishbone, pushrod or wing pylon
+const _sA = new THREE.Vector3(), _sB = new THREE.Vector3(), _sU = new THREE.Vector3(), _sC = new THREE.Vector3(), _sT = new THREE.Vector3(), _sM = new THREE.Matrix4();
+function strut(a, b, w = 0.05, h = 0.018, chord = [0, 0, 1]) {
+  _sA.set(...a); _sB.set(...b);
+  const len = _sA.distanceTo(_sB);
   const g = new THREE.CylinderGeometry(1, 1, len, 8, 1);
   g.scale(w / 2, 1, h / 2);
-  const m = new THREE.Matrix4();
-  const dir = B.clone().sub(A).normalize();
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-  m.compose(A.clone().add(B).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1));
-  g.applyMatrix4(m);
+  _sU.subVectors(_sB, _sA).normalize();
+  _sC.set(...chord).addScaledVector(_sU, -_sC.dot(_sU));
+  if (_sC.lengthSq() < 1e-6) _sC.set(1, 0, 0).addScaledVector(_sU, -_sU.x);
+  _sC.normalize();
+  _sT.crossVectors(_sC, _sU).normalize(); // right-handed basis: chord, axis, thickness
+  _sM.makeBasis(_sC, _sU, _sT).setPosition(_sA.add(_sB).multiplyScalar(0.5));
+  g.applyMatrix4(_sM);
   return g;
 }
 const at = (g, x, y, z) => { g.translate(x, y, z); return g; };
@@ -259,7 +264,8 @@ const POD_C = [
 export const SPECS = {
   // 2026 rules: 100 mm narrower (1.90 m), 200 mm shorter wheelbase (3.40 m), narrower tyres (front -25 mm,
   // rear -30 mm); the body is modelled at 2025 size and scaled, the wheels sit at the 2026 positions
-  modern: { wheels: { front: { x: 0.76, z: -1.645, w: 0.28 }, rear: { x: 0.741, z: 1.739, w: 0.375 }, r: 0.36, rim: 0.235 }, mirror: { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 }, bodyScale: [0.95, 1, 0.94] },
+  // tyres: 2026 Pirelli size, about 705 mm diameter on 18" rims
+  modern: { wheels: { front: { x: 0.76, z: -1.645, w: 0.28 }, rear: { x: 0.741, z: 1.739, w: 0.375 }, r: 0.3525, rim: 0.229 }, mirror: { x: 0.6, y: 0.725, z: -0.66, w: 0.17, h: 0.064 }, bodyScale: [0.95, 1, 0.94] },
   classic: { wheels: { front: { x: 0.82, z: -1.7, w: 0.31 }, rear: { x: 0.79, z: 1.72, w: 0.43 }, r: 0.33, rim: 0.2 }, mirror: { x: 0.52, y: 0.66, z: -0.42, w: 0.15, h: 0.06 } },
 };
 
@@ -349,6 +355,7 @@ function drum(r, w, x, y, z) {
   return at(g, x, y, z);
 }
 
+const FW_SWEEP = 0.12; // front wing tips sit this far behind the centre section (m)
 let SHARED = null;
 function sharedGeometry() {
   if (SHARED) return SHARED;
@@ -383,7 +390,13 @@ function sharedGeometry() {
     const pad = new THREE.CapsuleGeometry(0.04, 0.42, 4, 10); pad.rotateX(Math.PI / 2);
     black.push(at(pad, s * 0.235, 0.71, 0.03));
   }
-  black.push(at(new THREE.BoxGeometry(0.26, 0.11, 0.04), 0, 0.66, -0.42));
+  {
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.11, -0.05); sh.lineTo(0.11, -0.05); sh.quadraticCurveTo(0.15, 0, 0.11, 0.06); sh.lineTo(-0.11, 0.06); sh.quadraticCurveTo(-0.15, 0, -0.11, -0.05);
+    const sw = new THREE.ExtrudeGeometry(sh, { depth: 0.035, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2, curveSegments: 6 });
+    for (const s of [1, -1]) { const grip = new THREE.CapsuleGeometry(0.026, 0.09, 3, 8); grip.translate(s * 0.14, 0, 0); black.push(grip.rotateX(-0.55).translate(0, 0.66, -0.44)); }
+    black.push(sw.translate(0, 0, -0.0175).rotateX(-0.55).translate(0, 0.66, -0.44)); // where the cockpit view's animated wheel hides it
+  }
   // airbox intake above the driver's head + roll-hoop fairing
   const ab = new THREE.CircleGeometry(1, 32); ab.scale(0.1, 0.085, 1); ab.rotateY(Math.PI);
   black.push(at(ab, 0, 0.9, 0.195));
@@ -402,9 +415,10 @@ function sharedGeometry() {
     for (const x of [0.36, 0.45, 0.54]) carbon.push(bplate(curvy([[-1.28, 0.05], [-1.12, 0.16], [-0.86, 0.2], [-0.62, 0.17], [-0.7, 0.05]], 16), 0.008).translate(s * x, 0, 0));
   }
   // diffuser ramp + strakes, crash structure, single exhaust, gearbox fairing
+  // floor and diffuser are raw matte carbon (lacquer there would mirror the sky like a white plate)
   const diff = new THREE.PlaneGeometry(1.0, 0.55, 1, 1); diff.rotateX(Math.PI / 2 - 0.32);
-  carbon.push(at(diff, 0, 0.14, 2.15));
-  for (const x of [-0.46, -0.3, -0.12, 0.12, 0.3, 0.46]) carbon.push(plate([[1.88, 0.06], [2.4, 0.24], [2.42, 0.06]], 0.01).translate(x, 0, 0));
+  black.push(at(diff, 0, 0.14, 2.15));
+  for (const x of [-0.46, -0.3, -0.12, 0.12, 0.3, 0.46]) black.push(plate([[1.88, 0.06], [2.4, 0.24], [2.42, 0.06]], 0.01).translate(x, 0, 0));
   const crash = new THREE.CylinderGeometry(0.05, 0.08, 0.3, 4); crash.rotateY(Math.PI / 4); crash.rotateX(Math.PI / 2);
   carbon.push(at(crash, 0, 0.33, 2.58));
   const exh = new THREE.CylinderGeometry(0.05, 0.056, 0.22, 20, 1, true); exh.rotateX(Math.PI / 2);
@@ -419,18 +433,23 @@ function sharedGeometry() {
   const fwp = wingParts();
   fwEls.forEach((e, i) => {
     const inner = i === 0 ? 0 : 0.16;
-    const g = wing(e.c, 0.09, e.cam, 0.96 - inner, e.a);
+    const g = wing(e.c, 0.09, e.cam, 0.96 - inner, e.a, 8);
     g.translate(inner, e.y, e.z);
+    // plan view: the elements sweep back towards the tips; outboard of the nose they curl up into the endplate
     const p = g.attributes.position;
-    for (let k = 0; k < p.count; k++) { const x = p.getX(k); if (x > 0.62) p.setY(k, p.getY(k) + (x - 0.62) * 0.12); }
+    for (let k = 0; k < p.count; k++) {
+      const x = p.getX(k), t = x / 0.96;
+      p.setZ(k, p.getZ(k) + FW_SWEEP * t * t);
+      if (x > 0.5) p.setY(k, p.getY(k) + (x - 0.5) * (x - 0.5) * (0.3 + i * 0.05)); // top flap tip ends at the endplate edge (0.31 m)
+    }
     g.computeVertexNormals();
     const k = i === 3 ? 'accent' : 'carbon'; // team colour only on the top flap, carbon below (like the real cars)
     fwp.R[k].push(g); fwp.L[k].push(mirror(g));
   });
   for (const s of [1, -1]) {
     const side = fwp[s > 0 ? 'R' : 'L'];
-    side.carbon.push(bplate(curvy([[-2.97, 0.035], [-2.97, 0.13], [-2.86, 0.2], [-2.66, 0.22], [-2.48, 0.2], [-2.4, 0.14], [-2.42, 0.06], [-2.6, 0.035]]), 0.012).translate(s * 0.965, 0, 0));
-    const dive = wing(0.12, 0.08, 0.06, 0.12, 0.22); dive.translate(s > 0 ? 0.83 : -0.95, 0.2, -2.66); side.carbon.push(dive);
+    side.carbon.push(bplate(curvy([[-2.97, 0.035], [-2.97, 0.13], [-2.86, 0.24], [-2.66, 0.31], [-2.48, 0.3], [-2.4, 0.2], [-2.42, 0.06], [-2.6, 0.035]]), 0.012).translate(s * 0.965, 0, FW_SWEEP));
+    const dive = wing(0.12, 0.08, 0.06, 0.12, 0.22); dive.translate(s > 0 ? 0.83 : -0.95, 0.27, -2.66 + FW_SWEEP); side.carbon.push(dive);
     carbon.push(bplate(curvy([[-2.82, 0.08], [-2.66, 0.2], [-2.5, 0.22], [-2.58, 0.08]], 20), 0.01).translate(s * 0.075, 0, 0)); // nose pillars
   }
   // rear wing: mainplane + moving flap (2026 active aero, its own mesh), rounded endplates, twin pylons
@@ -462,9 +481,14 @@ function sharedGeometry() {
   // mirrors: stalk + aero housing (glass face per car)
   for (const s of [1, -1]) {
     carbon.push(strut([s * 0.4, 0.62, MIRROR.z + 0.08], [s * MIRROR.x, MIRROR.y - 0.03, MIRROR.z + 0.05], 0.035, 0.012));
-    const h = new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-    h.rotateX(-Math.PI / 2); h.scale(MIRROR.w / 2 + 0.012, MIRROR.h / 2 + 0.012, 0.09);
-    livery.push(solid(at(h, s * MIRROR.x, MIRROR.y, MIRROR.z + 0.002), 0.2, 0.3));
+    // aero housing: rounded nose, widening to the flat back that frames the glass
+    const W = MIRROR.w / 2 + 0.012, H = MIRROR.h / 2 + 0.012, Z = MIRROR.z;
+    livery.push(solid(loft([
+      { z: Z - 0.12, cx: MIRROR.x, cy: MIRROR.y - 0.004, w: 0.012, ht: 0.008, hb: 0.008, n: 2 },
+      { z: Z - 0.09, cx: MIRROR.x, cy: MIRROR.y - 0.002, w: W * 0.62, ht: H * 0.62, hb: H * 0.6, n: 3 },
+      { z: Z - 0.04, cx: MIRROR.x, cy: MIRROR.y, w: W * 0.94, ht: H * 0.95, hb: H * 0.92, n: 4 },
+      { z: Z + 0.002, cx: MIRROR.x, cy: MIRROR.y, w: W, ht: H, hb: H, n: 4.5 },
+    ], { seg: 28, sub: 4, capStart: true, capEnd: false, mirrorX: s < 0 }), 0.2, 0.3));
   }
   SHARED = geoSet(livery, carbon, accent, black, fwp);
   SHARED.flap = flap;
@@ -493,18 +517,32 @@ export function haloGeo(r, seg = 64) {
 const texCache = {};
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 
+// 2x2 twill carbon: tows of fibre alternating over two / under two, shifted one per row. Colour map with the
+// sheen of each tow (fibres catch the light along their length) plus a normal map of the woven relief.
 function carbonTex() {
   if (texCache.carbon) return texCache.carbon;
-  const [c, g] = canvas(64, 64);
-  g.fillStyle = '#121315'; g.fillRect(0, 0, 64, 64);
-  for (let y = 0; y < 64; y += 8) for (let x = 0; x < 64; x += 8) {
-    const gr = g.createLinearGradient(x, y, x + 8, y + 8);
-    const on = ((x + y) / 8) % 2;
-    gr.addColorStop(0, on ? '#2a2c30' : '#1a1b1e'); gr.addColorStop(1, on ? '#141518' : '#26282c');
-    g.fillStyle = gr; g.fillRect(x, y, 8, 8);
+  const N = 16, T = 16, S = N * T; // 16 x 16 tows of 16 px
+  const [c, g] = canvas(S, S), [nc, ng] = canvas(S, S);
+  const img = ng.createImageData(S, S);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const horiz = ((i - j) % 4 + 4) % 4 < 2;
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+      // across the tow the fibre bundle is rounded: brighter on the crown, darker at the edges
+      const a = horiz ? y : x, b = horiz ? x : y;
+      const u = (a + 0.5) / T * 2 - 1, crown = Math.sqrt(Math.max(0, 1 - u * u));
+      const v = 20 + crown * (horiz ? 26 : 16) + ((b * 7 + a * 3) % 5); // the two directions reflect differently
+      g.fillStyle = `rgb(${v},${v + 1},${v + 3})`; g.fillRect(i * T + x, j * T + y, 1, 1);
+      // normal: tilted across the tow by the slope of its rounded section
+      const slope = -u / Math.max(0.25, crown) * 0.35;
+      const nx = horiz ? 0 : slope, ny = horiz ? slope : 0, len = Math.hypot(nx, ny, 1);
+      const k = ((j * T + y) * S + i * T + x) * 4;
+      img.data[k] = (nx / len * 0.5 + 0.5) * 255; img.data[k + 1] = (-ny / len * 0.5 + 0.5) * 255; img.data[k + 2] = (1 / len * 0.5 + 0.5) * 255; img.data[k + 3] = 255;
+    }
   }
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(14, 14); t.colorSpace = THREE.SRGBColorSpace;
-  return (texCache.carbon = t);
+  ng.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 10); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; // ~6 mm tows where UVs are in metres
+  const n = new THREE.CanvasTexture(nc); n.wrapS = n.wrapT = THREE.RepeatWrapping; n.repeat.set(10, 10); n.anisotropy = 8;
+  return (texCache.carbon = { map: t, normal: n });
 }
 
 // Livery painted in loft UV space: canvas x = u around the section (0 bottom, .25/.75 sides, .5 top),
@@ -817,7 +855,7 @@ function tyreGeo(r, w, rimR = 0.235) {
   const hw = w / 2;
   // balloon sidewall, rounded shoulder, flat contact patch
   const prof = [[rimR, -hw * 0.92], [rimR + 0.02, -hw * 0.99], [r - 0.06, -hw * 1.03], [r - 0.025, -hw * 0.95], [r - 0.006, -hw * 0.8], [r, -hw * 0.5], [r, hw * 0.5], [r - 0.006, hw * 0.8], [r - 0.025, hw * 0.95], [r - 0.06, hw * 1.03], [rimR + 0.02, hw * 0.99], [rimR, hw * 0.92]];
-  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 56);
+  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 64);
   g.rotateZ(Math.PI / 2);
   return (tyreGeoCache[k] = g);
 }
@@ -837,7 +875,9 @@ function discGeo(rimR) {
 const mats = {};
 function sharedMats() {
   if (mats.carbon) return mats;
-  mats.carbon = new THREE.MeshPhysicalMaterial({ map: carbonTex(), color: 0x55585c, roughness: 0.42, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.3, side: THREE.DoubleSide });
+  // lacquered carbon: woven fibre under a glossy clear coat (the weave shows through, the coat reflects the sky)
+  const cb = carbonTex();
+  mats.carbon = new THREE.MeshPhysicalMaterial({ map: cb.map, normalMap: cb.normal, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.42, metalness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, side: THREE.DoubleSide });
   mats.black = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.8, side: THREE.DoubleSide });
   const slick = treadTex(false), wetT = treadTex(true);
   mats.rubber = new THREE.MeshStandardMaterial({ map: slick.map, roughnessMap: slick.rough, roughness: 1, metalness: 0 });
