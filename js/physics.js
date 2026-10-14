@@ -97,7 +97,7 @@ export class PlayerCar {
     this.throttle = thrEff; this.brake = brk;
 
     // --- ERS / DRS
-    let power = CAR.power;
+    let power = CAR.power * (this.powerMul ?? 1);
     this.overtake = (!!input.overtake || (this.opts.autoErs && this.ersAuto)) && this.ers > 0.01 && thr > 0.5;
     if (this.overtake) { power += CAR.ersPower; this.ers -= dt / 22; }
     else if (thr > 0.95 && this.v > 30 && this.ers > 0.02) { power += CAR.ersPower * 0.45; this.ers -= dt / 90; }
@@ -128,14 +128,14 @@ export class PlayerCar {
 
     // --- longitudinal
     const S0 = this.setup;
-    let eng = engineAccel(v, power, mu) * (1 + (S0.diff - 0.5) * 0.08 * Math.max(0, 1 - v / 50));
+    let eng = engineAccel(v, power, mu) * (1 + (S0.diff - 0.5) * 0.08 * Math.max(0, 1 - v / 50)) * (this.launchMul ?? 1);
     // low rpm in a tall gear (manual) -> weaker pull
     // only a manual driver lugging a tall gear loses pull; launches in 1st are traction-limited, not rpm-limited
     if (this.opts.manual && this.gear >= 2) eng *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
     if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
     let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
     if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
-    const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2); // off-balance brakes lock a wheel earlier
+    const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2) * (this.brakeMul ?? 1); // off-balance brakes lock a wheel earlier; brake temperature
     if (this.v > 0.3) acc -= brk * bd;
     // reverse when stationary and holding brake
     if (this.v <= 0.3 && brk > 0.5 && thr < 0.05) acc = -3;

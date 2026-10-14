@@ -6,6 +6,13 @@
 // presence carries their own car state.
 import { createPeerRoom } from './peer.js';
 
+// a shared livery is only colours, a pattern word and a number: drop anything else
+export function cleanLivery(l) {
+  if (!l || typeof l !== 'object') return null;
+  const n = (v) => (Number.isFinite(+v) ? Math.max(0, Math.min(0xffffff, +v | 0)) : undefined);
+  const pat = ['plain', 'stripe', 'racing', 'split', 'chevron', 'fade', 'retro'].includes(l.pattern) ? l.pattern : 'stripe';
+  return { body: n(l.body), top: n(l.top), low: n(l.low), accent: n(l.accent), hMain: n(l.hMain), hStripe: n(l.hStripe), pattern: pat, number: Math.max(0, Math.min(99, +l.number | 0)), name: clean(l.name, 18) };
+}
 export const clean = (s, n = 14) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/g, '').trim().slice(0, n);
 
 export class Net {
@@ -60,7 +67,7 @@ export class Net {
       this.readChat();
       this.emit();
     }, () => { this.race = null; this.emit(); });
-    await this.race.presence({ name: me.name, drv: me.drv, host: host || null, car: null, start: null, ai: null, fin: null });
+    await this.race.presence({ name: me.name, drv: me.drv, liv: me.liv || null, host: host || null, car: null, start: null, ai: null, fin: null });
     if (host) this.advertise();
   }
 
@@ -74,7 +81,7 @@ export class Net {
 
   players() {
     return this.racePeers.filter((p) => p.kind === 'viewer' && p.presence && p.presence.name !== undefined)
-      .map((p) => ({ peer: p.peer, name: clean(p.presence.name) || 'Fahrer', drv: clean(p.presence.drv, 16), host: !!p.presence.host, me: p.sameTab }));
+      .map((p) => ({ peer: p.peer, name: clean(p.presence.name) || 'Fahrer', drv: clean(p.presence.drv, 16), liv: cleanLivery(p.presence.liv), spec: !!p.presence.spec, host: !!p.presence.host, me: p.sameTab }));
   }
 
   // host: publish the start signal (grid + settings); returns it for the local start

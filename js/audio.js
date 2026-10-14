@@ -127,6 +127,19 @@ export class Audio {
     const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
     src.connect(f); f.connect(g); g.connect(this.fxBus); src.start(t);
   }
+  // thunder: long low rumble, louder and sharper when the strike is close
+  thunder(near = 0.5) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime, len = this.ctx.sampleRate * 4;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
+    let b = 0;
+    for (let i = 0; i < len; i++) { b = b * 0.985 + (Math.random() * 2 - 1) * 0.15; const env = Math.min(1, i / (this.ctx.sampleRate * (0.05 + (1 - near) * 0.3))) * Math.pow(1 - i / len, 1.6); d[i] = b * env * (1 + 0.6 * Math.sin(i / 4000)); }
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160 + near * 500;
+    const g = this.ctx.createGain(); g.gain.value = 0.9 * (0.4 + near * 0.6);
+    src.connect(f); f.connect(g); g.connect(this.ambBus || this.fxBus); src.start(t);
+  }
+
   // team radio: short band-passed static burst with a click
   radioClick() {
     if (!this.ctx || this.muted) return;

@@ -25,6 +25,10 @@ Steuerung: W/S Gas/Bremse, A/D lenken, Leertaste ERS Overtake, F DRS, C/V Kamera
 
 **Spielmodi:** Rennwochenende (Qualifying + Rennen), Meisterschaft über alle Strecken, Zeitfahren mit Geist-Auto und Bestenliste. Fahrzeug-Setup mit Flügeln, Bremsbalance und Differenzial.
 
+**Atmosphäre:** Funken aus dem Unterboden, glühende Bremsen, Gummispur auf der Ideallinie mit Gummikrümeln daneben, Reifen- und Bremstemperaturen, Einführungsrunde mit Kupplungsstart, Wetter auch als Gewitter, Nebel oder Regen nur auf einem Teil der Strecke. Fotomodus mit Tiefenunschärfe und Filtern.
+
+**Mehr Modi:** Karriere (eigener Fahrer, Upgrades, Teamduell, Vertragsangebote), Sprint-Wochenende, Fahrschule mit Medaillen, 20 Erfolge, Lackierungs- und Helm-Editor (auch im Multiplayer sichtbar), Zuschauermodus und Liga im Multiplayer.
+
 **Bestenliste online:** In der Claude-Artifact-Version teilen alle Spieler eine Bestenliste. Auf Vercel braucht sie einen Redis-Speicher: im Vercel-Projekt unter *Storage* (Marketplace) „Upstash for Redis“ verbinden, dann setzt Vercel `KV_REST_API_URL` und `KV_REST_API_TOKEN` automatisch und `api/board.js` nutzt sie. Ohne Speicher werden Bestzeiten nur auf dem Gerät gespeichert.
 
 Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.

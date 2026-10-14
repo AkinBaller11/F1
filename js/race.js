@@ -111,3 +111,11 @@ export function damageEffect(dm) {
 }
 
 export const clampLat = (lat) => Math.max(-HALF_W - 2.5, Math.min(PIT_LAT + 2, lat));
+
+// tyre temperature windows (°C) and the grip they give away outside of it
+export const TYRE_WINDOW = { S: [88, 108], M: [95, 115], H: [102, 125], I: [55, 85], W: [45, 75] };
+export function tempGrip(c, T) {
+  const W = TYRE_WINDOW[c] || TYRE_WINDOW.M;
+  const d = T < W[0] ? W[0] - T : T > W[1] ? T - W[1] : 0;
+  return Math.max(0.72, 1 - 0.00012 * d * d);
+}

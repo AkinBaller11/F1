@@ -12,7 +12,7 @@ export class Weather {
     this.mode = mode;
     this.buildSchedule(mode, raceSecs);
     this.rain = this.rainAt(0);
-    this.wetness = mode === 'wet' ? 1 : this.rain > 0.2 ? 0.75 : 0;
+    this.wetness = mode === 'wet' || mode === 'storm' ? 1 : this.rain > 0.2 ? 0.75 : 0;
 
     // rain streaks (always built, density follows intensity)
     const n = quality === 'low' ? 1800 : 4000;
@@ -54,9 +54,11 @@ export class Weather {
   // keyframes {t, rain}: piecewise constant phases with smooth ~40 s transitions
   buildSchedule(mode, raceSecs) {
     const k = [];
-    if (mode === 'dry') k.push({ t: 0, rain: 0 });
+    if (mode === 'dry' || mode === 'fog' || mode === 'local') k.push({ t: 0, rain: 0 });
     else if (mode === 'wet') {
       for (let t = 0; t < raceSecs + 600; t += 70) k.push({ t, rain: 0.6 + this.rand() * 0.4 });
+    } else if (mode === 'storm') {
+      for (let t = 0; t < raceSecs + 600; t += 60) k.push({ t, rain: 0.85 + this.rand() * 0.15 });
     } else {
       let t = 0, rain = this.rand() < 0.5 ? 0 : 0.45 + this.rand() * 0.4;
       k.push({ t, rain });

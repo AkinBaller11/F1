@@ -457,8 +457,22 @@ export const RETRO = {
 };
 export function teamLook(team, retro) { return retro && RETRO[team.id] ? { ...team, ...RETRO[team.id], retro: true } : team; }
 
+// player-designed livery: colours (0xRRGGBB), pattern, helmet colours
+export const LIVERY_PATTERNS = ['plain', 'stripe', 'racing', 'split', 'chevron', 'fade', 'retro'];
+export function customTeam(L, base) {
+  const num = (v, d) => (Number.isFinite(+v) ? Math.max(0, Math.min(0xffffff, +v | 0)) : d);
+  const body = num(L.body, 0xe10600);
+  return {
+    ...(base || {}), id: 'custom', name: String(L.name || 'Eigenes Team').slice(0, 18),
+    body, top: num(L.top, body), low: num(L.low, 0x161616), accent: num(L.accent, 0xffffff),
+    pattern: LIVERY_PATTERNS.includes(L.pattern) ? L.pattern : 'stripe',
+    helmet: { main: num(L.hMain, body), stripe: num(L.hStripe, num(L.accent, 0xffffff)) },
+  };
+}
+
+const customKeys = [];
 function liveryTex(team) {
-  const key = 'l' + team.id + (team.retro ? 'r' : '');
+  const key = team.id === 'custom' ? 'lc' + [team.body, team.top, team.low, team.accent, team.pattern].join('_') : 'l' + team.id + (team.retro ? 'r' : '');
   if (texCache[key]) return texCache[key];
   const W = 1024, H = 1024;
   const [c, g] = canvas(W, H);
@@ -468,7 +482,20 @@ function liveryTex(team) {
   const lower = (col) => { R(0, 0.17, 0, 1, col); R(0.83, 1, 0, 1, col); };
   const stripe = (u, w, v0, v1, col) => { R(u - w, u + w, v0, v1, col); R(1 - u - w, 1 - u + w, v0, v1, col); };
   const grad = (v0, v1, c0, c1, u0 = 0, u1 = 1) => { const gr = g.createLinearGradient(0, v0 * H, 0, v1 * H); gr.addColorStop(0, c0); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(u0 * W, v0 * H, (u1 - u0) * W, (v1 - v0) * H); };
-  if (team.retro) {
+  if (team.id === 'custom') {
+    const T = hex(team.top), L = hex(team.low);
+    switch (team.pattern) {
+      case 'plain': lower(L); break;
+      case 'stripe': R(0.455, 0.545, 0, 1, A); lower(L); break;
+      case 'racing': R(0.41, 0.46, 0, 1, A); R(0.54, 0.59, 0, 1, A); lower(L); break;
+      case 'split': R(0.17, 0.83, 0, 0.46, T); stripe(0.25, 0.01, 0.46, 0.95, A); lower(L); break;
+      case 'chevron':
+        for (const [v, col] of [[0.22, A], [0.32, T], [0.42, A]]) { g.fillStyle = col; g.beginPath(); g.moveTo(0.17 * W, (v - 0.12) * H); g.lineTo(0.5 * W, v * H); g.lineTo(0.83 * W, (v - 0.12) * H); g.lineTo(0.83 * W, (v - 0.07) * H); g.lineTo(0.5 * W, (v + 0.05) * H); g.lineTo(0.17 * W, (v - 0.07) * H); g.fill(); }
+        lower(L); break;
+      case 'fade': grad(0.05, 0.95, B, T); stripe(0.27, 0.008, 0.1, 0.9, A); lower(L); break;
+      case 'retro': R(0.28, 0.72, 0, 0.42, T); g.fillStyle = T; g.beginPath(); g.moveTo(0.28 * W, 0.42 * H); g.lineTo(0.5 * W, 0.6 * H); g.lineTo(0.72 * W, 0.42 * H); g.fill(); stripe(0.3, 0.008, 0.05, 0.95, A); lower(L); break;
+    }
+  } else if (team.retro) {
     const T = hex(team.top), L = hex(team.low);
     switch (team.id) {
       case 'mcl': R(0.28, 0.72, 0, 0.42, T); g.fillStyle = T; g.beginPath(); g.moveTo(0.28 * W, 0.42 * H); g.lineTo(0.5 * W, 0.6 * H); g.lineTo(0.72 * W, 0.42 * H); g.fill(); lower(L); break;
@@ -504,6 +531,7 @@ function liveryTex(team) {
   t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 16;
   t.wrapS = THREE.RepeatWrapping;
   t.flipY = false;
+  if (team.id === 'custom') { customKeys.push(key); while (customKeys.length > 6) delete texCache[customKeys.shift()]; } // editor drags would pile up otherwise
   return (texCache[key] = t);
 }
 
@@ -628,20 +656,23 @@ function rimTex(accent, lvl = 0) {
   if (texCache[key]) return texCache[key];
   const [c, g] = canvas(512, 512);
   g.translate(256, 256);
-  g.fillStyle = '#0d0e10'; g.beginPath(); g.arc(0, 0, 256, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#2a2d31'; g.beginPath(); g.arc(0, 0, 256, 0, Math.PI * 2); g.fill();
   const gr = g.createRadialGradient(0, 0, 40, 0, 0, 248);
   gr.addColorStop(0, '#e4e7ea'); gr.addColorStop(0.75, '#959aa0'); gr.addColorStop(1, '#3c4045');
-  const spokes = () => {
+  const spokes = (cut = true) => {
     g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 232, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#16181b';
+    // windows between the spokes are cut out: the brake disc shows through
+    g.save(); if (cut) g.globalCompositeOperation = 'destination-out';
+    g.fillStyle = cut ? '#000' : 'rgba(22,24,27,0.5)';
     for (let i = 0; i < 6; i++) {
       g.save(); g.rotate((i / 6) * Math.PI * 2);
       g.beginPath(); g.moveTo(28, -56); g.quadraticCurveTo(140, -116, 196, -56); g.lineTo(196, 56); g.quadraticCurveTo(140, 116, 28, 56); g.closePath(); g.fill();
       g.restore();
     }
+    g.restore();
   };
   if (lvl === 0) spokes();
-  else if (lvl === 1) { spokes(); smear(g, 7, 0.4, 0.3, spokes); }
+  else if (lvl === 1) { spokes(); smear(g, 7, 0.4, 0.3, () => spokes(false)); }
   else {
     // spun: spokes average to a darker grey disc
     const av = g.createRadialGradient(0, 0, 30, 0, 0, 232);
@@ -712,6 +743,12 @@ function barrelGeo(rimR, w) {
   const g = new THREE.CylinderGeometry(rimR + 0.002, rimR + 0.002, w * 1.0, 40, 1, true); g.rotateZ(Math.PI / 2);
   return (barrelGeoCache[k] = g);
 }
+const discGeoCache = {};
+function discGeo(rimR) {
+  if (discGeoCache[rimR]) return discGeoCache[rimR];
+  const d = new THREE.CylinderGeometry(rimR * 0.82, rimR * 0.82, 0.032, 32, 1, false); d.rotateZ(Math.PI / 2);
+  return (discGeoCache[rimR] = d);
+}
 const mats = {};
 function sharedMats() {
   if (mats.carbon) return mats;
@@ -743,6 +780,13 @@ export function setTyreLook(car, tyre) {
     U.tyre.material = tyre === 'I' || tyre === 'W' ? sharedMats().rubberWet : sharedMats().rubber;
   }
 }
+// brake glow 0..1 (hot discs light up the rims)
+export function setBrakeGlow(car, k) {
+  const M = car.userData.brakeMat, D = car.userData.discMat;
+  if (!M) return;
+  const v = k < 0.02 ? 0 : k * 2.2;
+  if (Math.abs(M.emissiveIntensity - v) > 0.02) { M.emissiveIntensity = v; D.emissiveIntensity = k < 0.02 ? 0 : k * k * 0.55; }
+}
 // motion blur of the spinning wheels: 0 sharp, 1 smeared, 2 spun
 export function setWheelBlur(car, lvl) {
   const U0 = car.userData;
@@ -763,10 +807,12 @@ function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, comp
   const wheel = new THREE.Group();
   const tyre = new THREE.Mesh(tyreGeo(r, w, rimR), code === 'I' || code === 'W' ? m.rubberWet : m.rubber); tyre.castShadow = true;
   wheel.add(tyre);
-  wheel.add(new THREE.Mesh(barrelGeo(rimR, w), m.barrel));
+  const barrel = new THREE.Mesh(barrelGeo(rimR, w), m.barrel); wheel.add(barrel);
+  // brake disc + caliper inside the rim (seen through open classic rims, glows when hot)
+  const disc = classic ? new THREE.Mesh(discGeo(rimR), m.barrel) : null; if (disc) wheel.add(disc); // hidden behind modern covers
   const outer = r - 0.004;
   const sideMat = new THREE.MeshStandardMaterial({ map: null, transparent: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 });
-  const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.45, metalness: classic ? 0.8 : 0.35 });
+  const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.45, metalness: classic ? 0.8 : 0.35, alphaTest: classic ? 0.5 : 0, side: classic ? THREE.DoubleSide : THREE.FrontSide });
   for (const s of [1, -1]) {
     // the overlay starts at the rim so the machined lip is part of the sidewall texture
     const ring = new THREE.Mesh(new THREE.RingGeometry(rimR - 0.004, outer, 64), sideMat);
@@ -776,7 +822,7 @@ function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, comp
     cover.rotation.y = s * Math.PI / 2; cover.position.x = s * (w / 2 * (classic ? 0.75 : 0.9));
     wheel.add(cover);
   }
-  wheel.userData = { side: sideMat, cover: coverMat, tyre, compound: code, accent, classic, f: (rimR - 0.004) / outer, lvl: 0 };
+  wheel.userData = { side: sideMat, cover: coverMat, tyre, barrel, disc, compound: code, accent, classic, f: (rimR - 0.004) / outer, lvl: 0 };
   sideMat.map = tyreTex(code, 0, wheel.userData.f);
   return wheel;
 }
@@ -877,22 +923,29 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
     }
   }
   car.userData.wheels = wheels;
+  // brakes glow per car: one material for the rim barrels and discs of this car
+  const brakeMat = sharedMats().barrel.clone(); brakeMat.emissive = new THREE.Color(0xff5a10); brakeMat.emissiveIntensity = 0;
+  const discMat = new THREE.MeshStandardMaterial({ color: 0x3a3c40, metalness: 0.7, roughness: 0.45, emissive: new THREE.Color(0xff4a08), emissiveIntensity: 0 });
+  for (const w of wheels) { w.wheel.userData.barrel.material = brakeMat; if (w.wheel.userData.disc) w.wheel.userData.disc.material = discMat; }
+  car.userData.brakeMat = brakeMat; car.userData.discMat = discMat;
   car.add(contactShadow());
   return car;
 }
 
 function helmetTex(team, number) {
-  const key = 'helm' + team.id + number;
+  const Hm = team.helmet;
+  const key = 'helm' + team.id + number + (Hm ? '_' + Hm.main + '_' + Hm.stripe : '');
   if (texCache[key]) return texCache[key];
   const [c, g] = canvas(512, 256);
   // equirectangular: x = around the head (front at the centre after the mesh is turned), y = top -> bottom
-  g.fillStyle = hex(team.top === 0xf2f2f2 || team.top === 0xf0f0f0 ? team.body : team.top); g.fillRect(0, 0, 512, 256);
-  g.fillStyle = hex(team.accent); g.fillRect(0, 0, 512, 46);
-  g.fillStyle = hex(team.body); g.fillRect(0, 150, 512, 106);
+  const main = Hm ? Hm.main : team.top === 0xf2f2f2 || team.top === 0xf0f0f0 ? team.body : team.top, acc = Hm ? Hm.stripe : team.accent;
+  g.fillStyle = hex(main); g.fillRect(0, 0, 512, 256);
+  g.fillStyle = hex(acc); g.fillRect(0, 0, 512, 46);
+  g.fillStyle = hex(Hm ? main : team.body); g.fillRect(0, 150, 512, 106);
   g.strokeStyle = '#ffffff'; g.lineWidth = 6;
   for (const y of [52, 144]) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
   // swooshes on the sides
-  g.fillStyle = hex(team.accent);
+  g.fillStyle = hex(acc);
   for (const x of [128, 384]) { g.beginPath(); g.moveTo(x - 70, 140); g.quadraticCurveTo(x, 70, x + 70, 140); g.lineTo(x + 70, 150); g.quadraticCurveTo(x, 90, x - 70, 150); g.fill(); }
   if (number) {
     g.fillStyle = '#ffffff'; g.font = 'italic 900 54px "Titillium Web", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';

@@ -15,7 +15,7 @@ export class HUD {
     this.laps = laps; this.mode = mode;
     root.innerHTML = `
       <div class="tower">
-        <div class="tower-head"><span class="logo"><i></i><i></i><i></i></span><span class="race">${mode === 'quali' ? 'QUALI' : mode === 'tt' ? 'ZEITFAHREN' : 'RACE'}</span></div>
+        <div class="tower-head"><span class="logo"><i></i><i></i><i></i></span><span class="race">${mode === 'quali' ? 'QUALI' : mode === 'tt' ? 'ZEITFAHREN' : mode === 'sprint' ? 'SPRINT' : 'RACE'}</span></div>
         <div class="tower-lap">RUNDE <b id="h-lap">1</b> / ${laps}</div>
         <div class="tower-rows" id="h-rows"></div>
       </div>
@@ -33,6 +33,8 @@ export class HUD {
             <path d="M18 9h8l2 14 6 4v18l-4 6h-16l-4-6V27l6-4z" fill="rgba(255,255,255,.22)"/>
             <rect id="cs-rw" x="10" y="55" width="24" height="6" rx="1.5"/>
           </svg>
+          <span class="temps" id="cs-temps"><i id="cs-t0"></i><i id="cs-t1"></i><i id="cs-t2"></i><i id="cs-t3"></i></span>
+          <span class="cs-br" id="cs-br" title="Bremsen">B</span>
           <span class="cs-box" id="cs-box">BOX</span>
           <span class="cs-pen" id="cs-pen"></span>
         </div>
@@ -54,6 +56,7 @@ export class HUD {
       <div class="msg" id="h-msg"></div>
       <div class="warn" id="h-warn"></div>
       <div class="flag" id="h-flag"></div>
+      <div class="launch" id="h-launch"><span class="lbl">KUPPLUNG · DREHZAHL IM GRÜNEN BEREICH HALTEN</span><div class="bar"><i class="zone"></i><b id="h-lmark"></b></div></div>
       <div class="radio" id="h-radio"><span class="rl">BOXENFUNK</span><span id="h-radiotxt"></span></div>
       <div class="startlights" id="h-lights">${'<div class="pod"><i></i><i></i></div>'.repeat(5)}</div>
       <div class="camhint" id="h-cam"></div>
@@ -75,7 +78,7 @@ export class HUD {
     `;
     this.$ = (id) => root.querySelector('#' + id);
     this.el = {};
-    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta'])
+    for (const id of ['h-lap', 'h-rows', 'h-pos', 'h-tot', 'h-time', 'h-best', 'h-ers', 'h-ersring', 'h-ersmode', 'h-gear', 'h-speed', 'h-rpm', 'h-rpmring', 'h-drs', 'h-ot', 'h-msg', 'h-warn', 'h-lights', 'h-s1', 'h-s2', 'h-s3', 'h-thr', 'h-brk', 'h-cam', 'h-revs', 'h-wx', 'h-map', 'h-unit', 'ob-speed', 'ob-unit', 'ob-gear', 'ob-rpm', 'ob-thr', 'ob-brk', 'ob-drs', 'ob-ers', 'ob-ersv', 'ob-pos', 'pl-gear', 'pl-speed', 'pl-unit', 'cs-ty', 'cs-wear', 'cs-fl', 'cs-fr', 'cs-rw', 'cs-box', 'cs-pen', 'cs-temps', 'cs-t0', 'cs-t1', 'cs-t2', 'cs-t3', 'cs-br', 'h-flag', 'h-radio', 'h-radiotxt', 'h-delta', 'h-launch', 'h-lmark'])
       this.el[id] = this.$(id);
     this.revs = [...this.el['h-revs'].children];
     this.msgTimer = 0; this.warnTimer = 0; this.lastRows = 0;
@@ -186,6 +189,16 @@ export class HUD {
     const col = (d) => (d < 0.12 ? '#2ad46a' : d < 0.5 ? '#f5c400' : '#e10600');
     this.st('cs-fl', 'fill', col(st.dmg.L)); this.st('cs-fr', 'fill', col(st.dmg.R)); this.st('cs-rw', 'fill', col(st.dmg.rear));
     this.cl('cs-box', st.box ? 'cs-box on' : 'cs-box');
+    // tyre temperatures FL FR / RL RR: blue cold, green in the window, yellow / red hot
+    this.st('cs-temps', 'display', st.temps ? '' : 'none');
+    this.st('cs-br', 'display', st.temps ? '' : 'none');
+    if (st.temps) {
+      const W = st.win || [90, 110];
+      const tc = (T) => (T < W[0] - 12 ? '#2e7dff' : T < W[0] - 3 ? '#38c6d9' : T <= W[1] + 3 ? '#2ad46a' : T <= W[1] + 12 ? '#f5c400' : '#e10600');
+      for (let i = 0; i < 4; i++) { const T = st.temps[i]; this.t('cs-t' + i, Math.round(T)); this.st('cs-t' + i, 'background', tc(T)); }
+      const B = st.brakeT || 0;
+      this.st('cs-br', 'background', B < 300 ? '#2e7dff' : B < 900 ? '#2ad46a' : B < 1050 ? '#f5c400' : '#e10600');
+    }
     this.t('cs-pen', st.pen ? `+${st.pen}s` : '');
   }
 
@@ -194,6 +207,13 @@ export class HUD {
     if (d === null || !isFinite(d)) { this.t('h-delta', ''); return; }
     this.t('h-delta', (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(2));
     this.cl('h-delta', 'delta ' + (d >= 0 ? 'up' : 'down'));
+  }
+
+  // launch revs gauge (4000-12500 rpm, green window 9500-11000); null hides it
+  setLaunch(rpm, auto = false) {
+    const show = rpm !== null && rpm !== undefined;
+    this.cl('h-launch', 'launch' + (show ? ' show' : '') + (auto ? ' auto' : ''));
+    if (show) this.st('h-lmark', 'left', Math.max(0, Math.min(100, ((rpm - 4000) / 8500) * 100)) + '%');
   }
 
   setFlag(kind, text) {
