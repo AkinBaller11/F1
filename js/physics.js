@@ -58,7 +58,7 @@ export class PlayerCar {
     this.offTrack = a > HALF_W + KERB_W + 0.6;
 
     // --- inputs
-    const thr = raceOn ? input.throttle : 0;
+    let thr = raceOn ? input.throttle : 0;
     let brk = input.brake;
     // steering smoothing (keyboard is digital -> ramp)
     let st = input.steer;
@@ -89,7 +89,7 @@ export class PlayerCar {
     if (this.opts.brakeAssist && raceOn) {
       const safe = this.opts.steerAssist === true ? 0.92 : this.opts.steerAssist ? 0.97 : 1; // assisted modes keep a margin to the limit
       const ahead = safe * Math.sqrt(this.gripMul) * Math.min(tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.2), tr.targetSpeed(this.s + Math.max(this.v, 5) * 0.5) * 1.04);
-      if (this.v > ahead + 0.5) brk = Math.max(brk, Math.min(this.opts.abs === false ? 0.85 : 1, (this.v - ahead) / 4));
+      if (this.v > ahead + 0.5) { const ab = Math.min(this.opts.abs === false ? 0.85 : 1, (this.v - ahead) / 4); if (ab > brk) { thr *= Math.max(0, 1 - ab * 3); brk = ab; } } // the assist lifts off while it brakes
     }
     let thrEff = thr;
     if (this.opts.steerAssist === true && this.assistErr > 0.06) thrEff = thr * Math.max(0.2, 1 - (this.assistErr - 0.06) * 6);

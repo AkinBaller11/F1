@@ -17,7 +17,7 @@ import { loadCareer, newCareer, saveCareer, clearCareer, careerPerf, careerRace,
 import { loadSeason, newSeason, saveSeason, addRoundResult, addSprintResult, standings, loadGhost, saveGhost, ghostPose, ghostTimeAt, GHOST_DT, POINTS } from './modes.js';
 import * as TX from './textures.js';
 import { TRACKS, TIMES, trackById } from './tracks.js';
-import { terrainAt, terrainEnable, terrainScenePass, dispose as disposeTerrain } from './terrain.js';
+import { terrainAt, terrainEnable, terrainScenePass, rigidOnTerrain, terrainReady, dispose as disposeTerrain } from './terrain.js';
 import { TOD, skyTexture, sunDir, sunSprite } from './tod.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -537,7 +537,7 @@ setInterval(fitTouchHud, 500);
 const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
-  tcam: { label: 'T-KAMERA', pos: [0, 1.24, 0.78], pitch: -0.085, fov: 58, shake: 1.0, lean: 0.8, lens: true },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.28, 0.62], pitch: -0.05, fov: 62, shake: 1.0, lean: 0.8, lens: true },
   sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
@@ -845,7 +845,7 @@ class Game {
         const mesh = buildCar(lv ? customTeam(lv, d.team) : d.team, wet, lv && lv.number ? lv.number : d.number, { second: d.team.drivers.indexOf(d.name) === 1, style: opts.carStyle, retro: opts.retro && !lv });
         scene.add(mesh);
         entry = { isPlayer: false, remote: true, peer: it.peer, team: d.team, name, number: d.number, obj: rc, mesh };
-        mesh.add(nameTag(name, d.team)); // other players get their name above the car
+        mesh.add(rigidOnTerrain(nameTag(name, d.team))); // other players get their name above the car
       } else {
         const R = driverRating(d.name);
         const skill = diffF * (opts.mpEqual ? 0.985 : (1 - (1 - d.team.pace) * 0.55) * (1 + R[0] / 100)) * (0.995 + rand() * 0.005); // equal cars: only the driver's luck differs
@@ -936,7 +936,7 @@ class Game {
     const L = (a, b, t = o) => a + (b - a) * t;
     const T = this.tod;
     this.skyWet.material.opacity = o;
-    this.scene.fog.density = L(T.fogD, (T.lamps > 0.5 ? 0.0035 : 0.0042) * (0.45 + 0.55 * r));
+    this.scene.fog.density = L(T.fogD, (T.lamps > 0.5 ? 0.0028 : 0.003) * (0.5 + 0.5 * r));
     this.scene.fog.color.copy(this.fogClear).lerp(this.fogWet, o);
     this.sun.intensity = T.sunInt * (1 - 0.62 * o);
     this.sun.color.copy(this.sunClear).lerp(TMP_C.setHex(0xdfe5ea), o * 0.7);
@@ -1128,21 +1128,34 @@ class Game {
     </div>${this.mp ? '' : '<div class="in-skip">Gas geben oder tippen zum Überspringen</div>'}`;
   }
 
-  // the world is lifted by the height field in the shaders, so the camera follows: raise it by the ground
-  // height under it, and tilt the car-mounted cameras with the slope (returns the undo for after the frame)
+  // rigid placement on the road: height and pitch of the road at the car's own track position (where the physics
+  // drives); the height field beside the road may already slope away towards another section of the lap
+  roadPose(x, z, yaw, s, out) {
+    const tr = this.track;
+    if (!terrainReady()) { out.y = 0; out.pitch = 0; return out; }
+    if (s == null || !isFinite(s)) { tr.locate(x, z, out.hint ?? -1, out); s = out.s; out.hint = out.i; }
+    const f = tr.frame(s, out.f || (out.f = {}));
+    out.y = tr.hAt(s);
+    out.pitch = Math.atan(tr.gradeAt(s)) * (-Math.sin(yaw) * f.tx - Math.cos(yaw) * f.tz);
+    return out;
+  }
+
+  // the world is lifted by the height field in the shaders, so free cameras follow: raise them by the ground
+  // height under them (returns the undo for after the frame)
   liftCamera(cam) {
     if (!cam) return () => {};
     cam.updateMatrixWorld();
+    // on-board cameras ride inside the player's car, which already sits on the road with its pitch
+    for (let o = cam.parent; o; o = o.parent) if (o === this.playerRoot) return () => {};
     const wp = TMP_V1.setFromMatrixPosition(cam.matrixWorld);
-    const h = terrainAt(wp.x, wp.z);
-    let tilt = 0;
-    if (cam.parent && cam.parent !== this.scene && !this.replayMode && this.state !== 'intro') {
-      const p = this.player, fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
-      tilt = Math.atan((terrainAt(p.x + fx * 3, p.z + fz * 3) - terrainAt(p.x - fx * 3, p.z - fz * 3)) / 6) * (cam === this.rearCam ? -1 : 1);
-    }
-    if (!h && !tilt) return () => {};
-    cam.position.y += h; cam.rotation.x += tilt; cam.updateMatrixWorld();
-    return () => { cam.position.y -= h; cam.rotation.x -= tilt; cam.updateMatrixWorld(); };
+    const v = CAMS[this.camMode] || {};
+    // chase cameras trail the car along the road: take the road height behind it, not the ground under the lens
+    // (which can be the slope down to another section)
+    const trail = !this.replayMode && !this.photo && !this.spectator && v.world && v.dist && cam.parent === this.scene && this.state !== 'intro';
+    const h = trail && terrainReady() ? this.track.hAt(this.player.s - v.dist) : terrainAt(wp.x, wp.z);
+    if (!h) return () => {};
+    cam.position.y += h; cam.updateMatrixWorld();
+    return () => { cam.position.y -= h; cam.updateMatrixWorld(); };
   }
 
   applyCamera(quiet = false) {
@@ -1267,7 +1280,7 @@ class Game {
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
     sp.scale.set(2.6, 1.3, 1); sp.position.set(0, 2.9, 0); sp.renderOrder = 11;
-    (c.isPlayer ? this.playerRoot : c.mesh).add(sp);
+    (c.isPlayer ? this.playerRoot : c.mesh).add(rigidOnTerrain(sp)); // the car already sits on the road
     const t0 = performance.now();
     const tick = () => {
       const k = (performance.now() - t0) / 2800;
@@ -2713,8 +2726,9 @@ class Game {
     }
     const p = this.player, cam = this.camera;
     // player transform with a little pitch/roll from g-forces
-    this.playerRoot.position.set(p.x, 0, p.z);
-    this.playerRoot.rotation.y = p.yaw;
+    const P0 = this.roadPose(p.x, p.z, p.yaw, p.s, this._pPose || (this._pPose = {}));
+    this.playerRoot.position.set(p.x, P0.y, p.z);
+    this.playerRoot.rotation.order = 'YXZ'; this.playerRoot.rotation.set(P0.pitch, p.yaw, 0);
     const longG = (p.v - (this.prevV ?? p.v)) / Math.max(dt, 1e-3);
     this.prevV = p.v;
     const clamp = (x, a) => Math.max(-a, Math.min(a, x));
@@ -2822,9 +2836,10 @@ class Game {
       const dCam = Math.hypot(o.x - camP.x, o.z - camP.z);
       setCarLod(m, dCam < 75 || !!this.photo, dCam < 55 || !!this.photo); // details and shadow-map casting only up close
       if (dCam < 160) this.moveFlap(m, o.drsOn || (o.v > 50 && this.track.targetSpeed((o.s || 0) + 45) > (this.track._vTop || 90) * 0.82 && (o._pv ?? o.v) <= o.v + 0.02), dt);
-      m.position.set(o.x, -Math.min(0.025, o.v * o.v * 0.0000035), o.z);
+      const RP = this.roadPose(o.x, o.z, o.yaw, this.replayMode && !c.isPlayer ? null : o.s, o._pose || (o._pose = {})); // replays only move x/z
+      m.position.set(o.x, RP.y - Math.min(0.025, o.v * o.v * 0.0000035), o.z);
       o.rollVis = (o.rollVis || 0) + (Math.max(-0.028, Math.min(0.028, (o.steerVis || 0) * o.v * 0.0016)) - (o.rollVis || 0)) * Math.min(1, dt * 5);
-      m.rotation.set(0, o.yaw, o.rollVis);
+      m.rotation.set(RP.pitch, o.yaw, o.rollVis);
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
       setWheelBlur(m, wheelBlur(o.v));
       setBrakeGlow(m, Math.max(0, Math.min(1, ((o.brakeT || 0) - 550) / 450)));
@@ -2839,11 +2854,12 @@ class Game {
       const G = this.ghost, pose = G && this.lapStarted ? ghostPose(G, this.raceTime - this.lap.start, this.ghostTmp) : null;
       const near = pose && Math.hypot(pose.x - p.x, pose.z - p.z) < 3.2;
       this.ghostMesh.visible = !!pose && !near;
-      if (pose) { this.ghostMesh.position.set(pose.x, 0, pose.z); this.ghostMesh.rotation.y = pose.yaw; }
+      if (pose) { const RP = this.roadPose(pose.x, pose.z, pose.yaw, null, this._gPose || (this._gPose = {})); this.ghostMesh.position.set(pose.x, RP.y, pose.z); this.ghostMesh.rotation.set(RP.pitch, pose.yaw, 0); }
     }
     if (this.scMesh && this.scMesh.visible && this.scObj) {
       const o = this.scObj, m = this.scMesh, U = m.userData;
-      m.position.set(o.x, 0, o.z); m.rotation.y = o.yaw;
+      const RP = this.roadPose(o.x, o.z, o.yaw, o.s, o._pose || (o._pose = {}));
+      m.position.set(o.x, RP.y, o.z); m.rotation.set(RP.pitch, o.yaw, 0);
       for (const w of U.wheels) w.wheel.rotation.x = -o.wheelRot;
       const ph = (performance.now() / 180 | 0) % 2;
       U.lamps.amber[0].material.color.setHex(this.sc && this.sc.ph === 'in' ? 0x331d00 : ph ? 0xff9a00 : 0x331d00);

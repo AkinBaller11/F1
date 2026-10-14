@@ -773,3 +773,10 @@ body.touch.ingame .flag { top: calc(68px + env(safe-area-inset-top, 0px)); z-ind
 body.touch.ingame .warn { top: calc(98px + env(safe-area-inset-top, 0px)); }
 body.touch.ingame #hud .tvbar { top: max(128px, 13vh); }
 body.touch.ingame .msg { top: max(170px, 26%); }
+/* small phones (iPhone SE & co.): the round top bar must stay clear of the position tower and the timing box */
+@media (max-width: 760px) {
+  #touch .tc-top { gap: 6px; }
+  #touch .tc-top button { width: 42px; height: 42px; padding: 9px; }
+  body.touch.ingame .flag { top: calc(56px + env(safe-area-inset-top, 0px)); }
+  body.touch.ingame .warn { top: calc(84px + env(safe-area-inset-top, 0px)); }
+}

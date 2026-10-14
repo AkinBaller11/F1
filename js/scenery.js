@@ -156,6 +156,7 @@ export function buildScenery(tr) {
   const lampsOn = tod.lamps || 0;
   const q = tr.quality;
   const N = tr.N;
+  TX.setGpBanner(tr.def && tr.def.name);
   const df = distanceField(tr);
   tr.nightMats = [];
   const R = rng(tr.def.id.length * 977 + N);
@@ -239,8 +240,7 @@ export function buildScenery(tr) {
       const d = df.at(x, z);
       const mown = 1 - smooth(40, 160, d);
       let r = 0.72 + n * 0.32, g = 0.76 + n * 0.22, b = 0.62 + n * 0.16;
-      const stripe = mown * (Math.floor((x + z) / 9) % 2 ? 0.06 : -0.02);
-      r += mown * 0.04 + stripe; g += mown * 0.08 + stripe; b += stripe * 0.5;
+      r += mown * 0.04; g += mown * 0.06; // mown verges a touch fresher (the stripes are in the texture)
       if (desert) { r = 0.95 + n * 0.2; g = 0.92 + n * 0.18; b = 0.88 + n * 0.14; }
       if (h > 120) { const k = smooth(120, 300, h); r = r * (1 - k) + 0.9 * k; g = g * (1 - k) + 0.86 * k; b = b * (1 - k) + 0.8 * k; } // rocky tops
       const sa = seaAt(x, z); if (sa > -60) { const k = smooth(-60, -20, sa); r = r * (1 - k) + 0.96 * k; g = g * (1 - k) + 0.88 * k; b = b * (1 - k) + 0.68 * k; } // beach

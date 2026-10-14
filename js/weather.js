@@ -170,7 +170,7 @@ export class Weather {
     const spawn = (3 + speed * 0.06) * dt * 10 * this.rain;
     let k = spawn | 0; if (Math.random() < spawn - k) k++;
     for (let i = 0; i < k && this.drops.length < 140; i++) {
-      this.drops.push({ x: Math.random() * W, y: Math.random() * H * 0.85, r: 2 + Math.random() * 6 * (W / 1400), life: 0.6 + Math.random() * 1.6, t: 0 });
+      this.drops.push({ x: Math.random() * W, y: Math.random() * H * 0.85, r: (1.2 + Math.random() * 2.6) * Math.max(0.7, Math.min(1.4, W / 1200)), life: 0.6 + Math.random() * 1.6, t: 0 });
     }
     const cx = W / 2, cy = H * 0.45;
     for (let i = this.drops.length - 1; i >= 0; i--) {
@@ -180,7 +180,7 @@ export class Weather {
       const push = speed * 0.04;
       d.x += (d.x - cx) / W * push * 60 * dt;
       d.y += ((d.y - cy) / H * push * 40 - (speed > 20 ? 30 : -8)) * dt;
-      const a = Math.min(1, (d.life - d.t) * 2) * 0.55;
+      const a = Math.min(1, (d.life - d.t) * 2) * 0.4;
       const grd = g.createRadialGradient(d.x - d.r * 0.3, d.y - d.r * 0.3, 0, d.x, d.y, d.r);
       grd.addColorStop(0, `rgba(255,255,255,${a * 0.8})`);
       grd.addColorStop(0.5, `rgba(200,210,220,${a * 0.25})`);

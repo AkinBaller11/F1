@@ -2,6 +2,7 @@
 // real wing profiles, wheels with covers, suspension, floor and diffuser.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { rigidOnTerrain } from './terrain.js';
 
 export const TEAMS = [
   { id: 'mcl', name: 'McLaren', body: 0xff8000, top: 0xff8000, low: 0x161616, accent: 0x47c7fc, drivers: ['NORRIS', 'PIASTRI'], numbers: [4, 81], pace: 1.0 },
@@ -1049,7 +1050,8 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   car.userData.brakeMat = brakeMat; car.userData.discMat = discMat;
   car.add(contactShadow());
   collectLod(car);
-  return car;
+  car.rotation.order = 'YXZ'; // heading, then the road's pitch
+  return rigidOnTerrain(car);
 }
 
 function helmetTex(team, number) {
@@ -1164,7 +1166,7 @@ export function buildCockpit(team) {
   g.userData.steering = sw;
   g.userData.display = { canvas: dispCanvas, tex: dispTex, rev: revCanvas, revTex };
   g.userData.wheels = [];
-  return g;
+  return rigidOnTerrain(g);
 }
 
 // ------------------------------------------------------------------ safety car (silver GT coupé with a roof light bar)
@@ -1218,5 +1220,6 @@ export function buildSafetyCar() {
   }
   car.add(contactShadow());
   collectLod(car);
-  return car;
+  car.rotation.order = 'YXZ';
+  return rigidOnTerrain(car);
 }

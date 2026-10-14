@@ -59,7 +59,7 @@ export class Track {
     this.buildRacingLine();
     this.buildSpeedProfile();
     this.buildLimits();
-    buildTerrain(this); // real elevation (no-op on flat circuits)
+    buildTerrain(this, 7000, 1024, HALF_W); // real elevation (no-op on flat circuits)
     this.hilly = this.hs.some((h) => h > 0.5);
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -76,8 +76,8 @@ export class Track {
     this.mu = 1 - 0.28 * w;
     const L = (a, b) => a + (b - a) * w;
     const r = this.roadMat;
-    r.roughness = L(0.85, 0.22); r.metalness = L(0, 0.18);
-    r.color.setRGB(L(1, 0.72), L(1, 0.75), L(1, 0.79));
+    r.roughness = L(0.85, 0.3); r.metalness = 0;
+    r.color.setRGB(L(1, 0.52), L(1, 0.54), L(1, 0.58));
     if (r.normalMap) r.normalScale.set(L(0.45, 0.15), L(0.45, 0.15)); // water fills the grain
     this.kerbMat.roughness = L(0.7, 0.25);
     this.roMat.roughness = L(0.9, 0.35);

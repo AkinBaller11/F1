@@ -35,6 +35,22 @@ THREE.Material.prototype.onBeforeCompile = function (shader) {
   Object.assign(shader.uniforms, U);
   shader.vertexShader = GLSL + vs.replace('#include <project_vertex>', PROJECT).replace('#include <worldpos_vertex>', WORLDPOS).replace(SPRITE_FROM, SPRITE_TO);
 };
+// lifted and flat materials must never share a compiled program (three keys programs on this string)
+THREE.Material.prototype.customProgramCacheKey = function () { return this.userData && this.userData.noTerrain ? 'terrain-flat' : 'terrain-lift'; };
+
+// cars are placed rigidly on the road by the game (height + pitch of their own track position) instead of being
+// bent vertex by vertex over the height field: their materials skip the lift, shadows use a flat depth material
+const RIGID_DEPTH = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+RIGID_DEPTH.userData.noTerrain = true;
+export function rigidOnTerrain(root) {
+  root.traverse((o) => {
+    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of ms) if (!m.userData.noTerrain) { m.userData.noTerrain = true; m.needsUpdate = true; }
+    if (o.isMesh) o.customDepthMaterial = RIGID_DEPTH;
+  });
+  return root;
+}
+export const terrainReady = () => !!cpu;
 
 // frustum culling happens on the CPU with the unlifted positions: lift the bounding spheres too,
 // or everything small (cars, signs) would vanish on a hill
@@ -79,12 +95,15 @@ export function terrainAt(x, z) {
 
 // build the field from the road heights: nearest road sample right next to the track (so the road is
 // level across its width), blurred further out so the land rolls smoothly between the track's sections
-export function buildTerrain(tr, size = 7000, res = 1024) {
+export function buildTerrain(tr, size = 7000, res = 1024, hw = 7) {
   dispose();
   let any = false; for (let i = 0; i < tr.N; i++) if (tr.hs[i] > 0.05) { any = true; break; }
   if (!any) return; // flat circuit: no field, no cost
   let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
   for (let i = 0; i < tr.N; i++) { minX = Math.min(minX, tr.px[i]); maxX = Math.max(maxX, tr.px[i]); minZ = Math.min(minZ, tr.pz[i]); maxZ = Math.max(maxZ, tr.pz[i]); }
+  // cover the circuit plus a wide margin, not a fixed 7 km: compact circuits (Monaco, Baku) get metre-scale
+  // texels so the two legs of a hairpin don't bleed into each other (outside, the edge values carry on)
+  size = Math.min(size, Math.max(2600, Math.max(maxX - minX, maxZ - minZ) + 2400));
   const ox = (minX + maxX) / 2, oz = (minZ + maxZ) / 2, cell = size / res;
   const n = res * res, near = new Int32Array(n).fill(-1), dist = new Float32Array(n).fill(1e9);
   const cx = (k) => ox - size / 2 + ((k % res) + 0.5) * cell, cz = (k) => oz - size / 2 + (Math.floor(k / res) + 0.5) * cell;
@@ -111,8 +130,44 @@ export function buildTerrain(tr, size = 7000, res = 1024) {
       if (c < res - 1) relax(k, k + 1); if (r < res - 1) { relax(k, k + res); if (c < res - 1) relax(k, k + res + 1); if (c > 0) relax(k, k + res - 1); }
     }
   }
+  // second-nearest road section (a different part of the lap, e.g. the other leg of a hairpin): between two
+  // sections at different heights the field must ramp from one road edge to the other, not step halfway
+  const N = tr.N, ds = (() => { let L = 0; for (let i = 0; i < N; i++) { const j = (i + 1) % N; L += Math.hypot(tr.px[j] - tr.px[i], tr.pz[j] - tr.pz[i]); } return L / N; })();
+  const SEP = Math.max(20, Math.ceil(60 / ds));
+  const apart = (a, b) => { const d = Math.abs(a - b); return Math.min(d, N - d) > SEP; };
+  const near2 = new Int32Array(n).fill(-1), dist2 = new Float32Array(n).fill(1e9);
+  const relax2 = (k, kk) => {
+    const own = near[k]; if (own < 0) return;
+    for (const i of [near[kk], near2[kk]]) {
+      if (i < 0 || !apart(i, own)) continue;
+      const d = Math.hypot(cx(k) - tr.px[i], cz(k) - tr.pz[i]);
+      if (d < dist2[k]) { dist2[k] = d; near2[k] = i; }
+    }
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let r = 0; r < res; r++) for (let c = 0; c < res; c++) {
+      const k = r * res + c;
+      if (c > 0) relax2(k, k - 1); if (r > 0) { relax2(k, k - res); if (c > 0) relax2(k, k - res - 1); if (c < res - 1) relax2(k, k - res + 1); }
+    }
+    for (let r = res - 1; r >= 0; r--) for (let c = res - 1; c >= 0; c--) {
+      const k = r * res + c;
+      if (c < res - 1) relax2(k, k + 1); if (r < res - 1) { relax2(k, k + res); if (c < res - 1) relax2(k, k + res + 1); if (c > 0) relax2(k, k + res - 1); }
+    }
+  }
   const sharp = new Float32Array(n);
-  for (let k = 0; k < n; k++) sharp[k] = near[k] >= 0 ? tr.hs[near[k]] : 0;
+  for (let k = 0; k < n; k++) {
+    const i1 = near[k]; if (i1 < 0) continue;
+    let h = tr.hs[i1];
+    const i2 = near2[k];
+    if (i2 >= 0 && Math.abs(tr.hs[i2] - h) > 0.2) {
+      // on the road (inside the half width) the height is exact; off it, a linear embankment towards the
+      // other section's road edge, fading out once that section is far away
+      const e1 = Math.max(0, dist[k] - hw), e2 = Math.max(0, dist2[k] - hw);
+      const fade = 1 - Math.min(1, Math.max(0, (dist2[k] - 30) / 30));
+      if (e1 > 0 && fade > 0) h += (tr.hs[i2] - h) * (e1 / (e1 + e2)) * fade;
+    }
+    sharp[k] = h;
+  }
   // separable box blur (twice) for the land between the sections
   const blur = (src, rad) => {
     const tmp = new Float32Array(n), out = new Float32Array(n), w = 2 * rad + 1;
@@ -120,7 +175,8 @@ export function buildTerrain(tr, size = 7000, res = 1024) {
     for (let c = 0; c < res; c++) { let acc = 0; for (let r = -rad; r <= rad; r++) acc += tmp[Math.min(res - 1, Math.max(0, r)) * res + c]; for (let r = 0; r < res; r++) { out[r * res + c] = acc / w; acc += tmp[Math.min(res - 1, r + rad + 1) * res + c] - tmp[Math.max(0, r - rad) * res + c]; } }
     return out;
   };
-  const soft = blur(blur(sharp, 6), 6);
+  const br = Math.max(2, Math.round(41 / cell)); // ~41 m, whatever the texel size
+  const soft = blur(blur(sharp, br), br);
   const data = new Float32Array(n), half = new Uint16Array(n);
   for (let k = 0; k < n; k++) {
     const t = Math.min(1, Math.max(0, (dist[k] - 28) / 110)), w = t * t * (3 - 2 * t);

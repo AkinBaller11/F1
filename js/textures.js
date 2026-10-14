@@ -92,8 +92,10 @@ export function kerb() {
 export function grass(sand = false) {
   const [c, g] = canvas(512, 512);
   const r = rand(3);
-  g.fillStyle = sand ? '#c4a26a' : '#45692f';
+  g.fillStyle = sand ? '#c4a26a' : '#48693a';
   g.fillRect(0, 0, 512, 512);
+  // mowing bands: the ground mesh is far too coarse to carry them in its vertex colours
+  if (!sand) { g.fillStyle = 'rgba(255,255,230,0.075)'; g.fillRect(0, 0, 256, 512); g.fillStyle = 'rgba(0,25,0,0.05)'; g.fillRect(256, 0, 256, 512); }
   // soft mottling + fine blades, low contrast for a clean lawn
   for (let i = 0; i < 160; i++) {
     const x = r() * 512, y = r() * 512, rad = 20 + r() * 60;
@@ -151,10 +153,12 @@ const SPONSORS = [
   ['#3d2a1a', '#e8d5a8', 'MAISON VÉRITÉ'],
   ['#0f2a5c', '#ffffff', 'OCEANIC'],
   ['#ffffff', '#111111', 'KRONOS'],
-  ['#00205b', '#ffffff', 'ESPAÑA GP'],
+  ['#00205b', '#ffffff', 'GRAND PRIX'], // replaced by the circuit's own name (setGpBanner)
   ['#23272b', '#9be22d', 'PULSE'],
 ];
 
+// one board per circuit carries its own name (e.g. SILVERSTONE GP), not a fixed one
+export function setGpBanner(name) { SPONSORS[8][2] = name ? String(name).toUpperCase() + ' GP' : 'GRAND PRIX'; }
 export function banner(i) {
   const [bg, fg, text] = SPONSORS[((i % SPONSORS.length) + SPONSORS.length) % SPONSORS.length];
   const [c, g] = canvas(1024, 128);
