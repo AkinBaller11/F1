@@ -89,13 +89,13 @@ export function kerb() {
   return tex(c, 1, 1);
 }
 
-export function grass(sand = false) {
+export function grass(sand = false, mown = false) {
   const [c, g] = canvas(512, 512);
   const r = rand(3);
   g.fillStyle = sand ? '#c4a26a' : '#48693a';
   g.fillRect(0, 0, 512, 512);
-  // mowing bands: the ground mesh is far too coarse to carry them in its vertex colours
-  if (!sand) { g.fillStyle = 'rgba(255,255,230,0.075)'; g.fillRect(0, 0, 256, 512); g.fillStyle = 'rgba(0,25,0,0.05)'; g.fillRect(256, 0, 256, 512); }
+  // mowing bands, only for the mown verges beside the track (the open countryside is not a lawn)
+  if (mown && !sand) { g.fillStyle = 'rgba(255,255,230,0.075)'; g.fillRect(0, 0, 256, 512); g.fillStyle = 'rgba(0,25,0,0.05)'; g.fillRect(256, 0, 256, 512); }
   // soft mottling + fine blades, low contrast for a clean lawn
   for (let i = 0; i < 160; i++) {
     const x = r() * 512, y = r() * 512, rad = 20 + r() * 60;

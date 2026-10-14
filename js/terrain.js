@@ -52,6 +52,42 @@ export function rigidOnTerrain(root) {
 }
 export const terrainReady = () => !!cpu;
 
+// structures beside the road (garages, grandstands, gantries, towers) stand level on a foundation at the lowest
+// ground under their footprint. Bent over the height field vertex by vertex they lean, step against their
+// neighbours and lift one side into the air where the field ramps between two sections of the lap.
+// A material that is also used by lifted surfaces (barriers, verges) gets a flat copy instead.
+const _box = new THREE.Box3();
+export function levelOnTerrain(root, placed) {
+  if (!cpu || !placed || !placed.length) return;
+  const own = new Set(placed), lifted = new Set(), flat = new Map();
+  const inPlaced = (o) => { for (let p = o; p; p = p.parent) if (own.has(p)) return true; return false; };
+  root.traverse((o) => { if (o.material && !inPlaced(o)) for (const m of [].concat(o.material)) lifted.add(m); });
+  const fix = (m) => {
+    if (lifted.has(m)) {
+      let c = flat.get(m);
+      if (!c) { c = m.clone(); c.userData.noTerrain = true; flat.set(m, c); }
+      return c;
+    }
+    if (!m.userData.noTerrain) { m.userData.noTerrain = true; m.needsUpdate = true; }
+    return m;
+  };
+  root.updateMatrixWorld(true);
+  for (const obj of placed) {
+    _box.setFromObject(obj);
+    if (_box.isEmpty()) continue;
+    let h = Infinity;
+    for (const fx of [0, 0.5, 1]) for (const fz of [0, 0.5, 1]) {
+      h = Math.min(h, terrainAt(_box.min.x + (_box.max.x - _box.min.x) * fx, _box.min.z + (_box.max.z - _box.min.z) * fz));
+    }
+    obj.position.y += h;
+    obj.traverse((o) => {
+      if (!o.material) return;
+      o.material = Array.isArray(o.material) ? o.material.map(fix) : fix(o.material);
+      if (o.isMesh) o.customDepthMaterial = RIGID_DEPTH;
+    });
+  }
+}
+
 // frustum culling happens on the CPU with the unlifted positions: lift the bounding spheres too,
 // or everything small (cars, signs) would vanish on a hill
 const _sphere = new THREE.Sphere();

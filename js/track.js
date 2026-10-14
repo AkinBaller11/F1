@@ -328,6 +328,11 @@ export class Track {
       if (near.R[i] < 1e9) right[i] = Math.min(right[i], Math.max(HALF_W + 1.6, near.R[i] / 2 - 1));
     }
     if (near.pairs.length) this.levelCrossings(near.pairs);
+    // verges (grass / pavement beside the road) end halfway to a neighbouring section, so they meet the other
+    // section's verge instead of reaching over its road
+    const half = (g) => Float32Array.from(g, (d) => Math.max(HALF_W + 1, Math.min(92, d / 2)));
+    const soft = (raw) => { const sm = smoothArr(raw, 6, 2); for (let i = 0; i < N; i++) sm[i] = Math.min(sm[i], raw[i]); return sm; }; // never past the half gap
+    this.vergeL = soft(half(near.L)); this.vergeR = soft(half(near.R));
     this.limL = smoothArr(left, 6, 2);
     this.limR = smoothArr(right, 6, 2);
     for (let i = 0; i < N; i++) if (near.cross[i]) { this.limL[i] = Math.max(this.limL[i], 24); this.limR[i] = Math.max(this.limR[i], 24); }
@@ -444,9 +449,10 @@ export class Track {
   }
 
   // ---------- geometry ----------
-  ribbon(latA, latB, y, mat, uScale, vLen, filter) {
-    // build a strip between two lateral offsets (arrays or numbers), optionally only where filter(i) true
-    const N = this.N;
+  ribbon(latA, latB, y, mat, uScale, vLen, filter, across = 1) {
+    // build a strip between two lateral offsets (arrays or numbers), optionally only where filter(i) true;
+    // `across` splits it into lanes so a wide strip can follow the height field between its edges
+    const N = this.N, K = Math.max(1, across | 0), row = K + 1;
     const pos = [], uv = [], idx = [];
     let run = false, base = 0;
     const getA = (i) => (typeof latA === 'function' ? latA(i) : latA);
@@ -457,11 +463,14 @@ export class Track {
       if (ok) {
         const a = getA(i), b = getB(i);
         const rx = -this.tz[i], rz = this.tx[i];
-        pos.push(this.px[i] + rx * a, y, this.pz[i] + rz * a, this.px[i] + rx * b, y, this.pz[i] + rz * b);
         const v = (c * this.ds) / vLen;
-        uv.push(0, v, uScale, v);
-        const vi = pos.length / 3 - 2;
-        if (run) idx.push(vi - 2, vi - 1, vi, vi - 1, vi + 1, vi);
+        for (let k = 0; k <= K; k++) {
+          const l = a + (b - a) * (k / K);
+          pos.push(this.px[i] + rx * l, y, this.pz[i] + rz * l);
+          uv.push(uScale * (k / K), v);
+        }
+        const vi = pos.length / 3 - row;
+        if (run) for (let k = 0; k < K; k++) { const p0 = vi - row + k, p1 = vi + k; idx.push(p0, p0 + 1, p1, p0 + 1, p1 + 1, p1); }
         run = true;
       } else run = false;
       base++;
@@ -563,6 +572,7 @@ export class Track {
     obj.position.set(x, y, z);
     obj.rotation.y = yaw + yawOff;
     this.group.add(obj);
+    (this.placed || (this.placed = [])).push(obj); // levelled on the terrain once the scenery is built
     return obj;
   }
 

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as TX from './textures.js';
-import { terrainAt } from './terrain.js';
+import { terrainAt, levelOnTerrain } from './terrain.js';
 import { HALF_W } from './track.js';
 
 // ------------------------------------------------------------------ helpers
@@ -258,10 +258,11 @@ export function buildScenery(tr) {
     tr.grassMat = mat;
     if (hilly) {
       // verge strips: road edge out to 75 m, sampled every 2 m like the road, so they follow every dip and crest
-      const vt = city ? pavementTex() : TX.grass(desert); vt.repeat.set(1, 1);
+      const vt = city ? pavementTex() : TX.grass(desert, true); vt.repeat.set(1, 1);
       const vm = new THREE.MeshStandardMaterial({ map: vt, roughness: 0.95, color: city ? 0xffffff : desert ? 0xf2ead8 : 0xd2dcc2 });
-      tr.ribbon(-92, -7, -0.04, vm, 7, 12);
-      tr.ribbon(7, 92, -0.04, vm, 7, 12);
+      // lanes (up to every 8.5 m) so the strip follows the height field; it stops halfway to a neighbouring section
+      tr.ribbon((i) => -tr.vergeL[i], -7, -0.04, vm, 7, 12, null, 10);
+      tr.ribbon(7, (i) => tr.vergeR[i], -0.04, vm, 7, 12, null, 10);
       tr.vergeMat = vm;
     }
   }
@@ -512,6 +513,7 @@ export function buildScenery(tr) {
   const mast = new THREE.Mesh(new THREE.BoxGeometry(0.8, 14, 0.8), darkMat); mast.position.y = 7; crane.add(mast);
   const sC = (tr.mainStraight[1] + 260) % tr.length;
   tr.place(crane, sC, tr.limR[tr.idx(sC)] + 30, 0, 0.5);
+  levelOnTerrain(G, tr.placed);
 }
 
 // ------------------------------------------------------------------ park / forest
