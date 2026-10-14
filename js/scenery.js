@@ -15,6 +15,15 @@ function vnoise(x, y) {
 }
 function fbm(x, y, o = 4) { let s = 0, a = 0.5, f = 1; for (let i = 0; i < o; i++) { s += a * vnoise(x * f, y * f); f *= 2; a *= 0.5; } return s; }
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// point inside the circuit's loop (even-odd ray test against the centre line)
+function insideLoop(tr, x, z) {
+  let inside = false;
+  for (let i = 0, j = tr.N - 1; i < tr.N; j = i, i += 1) {
+    const xi = tr.px[i], zi = tr.pz[i], xj = tr.px[j], zj = tr.pz[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 function ctex(c, rx = 1, ry = 1) { const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
@@ -166,12 +175,37 @@ export function buildScenery(tr) {
       if (d > 150 && d < 320 && (!best || Math.abs(d - 210) < Math.abs(best.d - 210))) best = { x, z, d };
     }
     if (best) lake = { x: best.x, z: best.z, r: Math.min(110, best.d - 70) };
+    // Albert Park: the circuit runs round a big lake -> take the deepest infield point and fill it
+    if (tr.def.bigLake) {
+      let deep = null;
+      for (let k = 0; k < 1500; k++) {
+        const x = df.cx + (R() - 0.5) * 1400, z = df.cz + (R() - 0.5) * 1400, d = df.at(x, z);
+        if (d < 700 && (!deep || d > deep.d) && insideLoop(tr, x, z)) deep = { x, z, d };
+      }
+      if (deep) lake = { x: deep.x, z: deep.z, r: deep.d - 45 };
+    }
   }
   const lakeAt = (x, z) => (lake ? Math.hypot(x - lake.x, z - lake.z) / lake.r : 9);
 
+  // ---------------- open water (harbours, sea fronts): everything beyond a shore line on one side of the circuit
+  let seaAt = () => -1e9; // metres past the shore (> 0 = water)
+  if (tr.def.sea) {
+    const a = (tr.def.sea.dir * Math.PI) / 180, ux = Math.sin(a), uz = -Math.cos(a); // compass -> world (x east, z south)
+    let far = -1e9; for (let i = 0; i < N; i += 3) far = Math.max(far, (tr.px[i] - df.cx) * ux + (tr.pz[i] - df.cz) * uz);
+    const shore = far + tr.def.sea.gap;
+    seaAt = (x, z) => (x - df.cx) * ux + (z - df.cz) * uz - shore;
+    tr.sea = { ux, uz, shore };
+  }
+  tr.seaAt = seaAt;
+
   // ---------------- terrain: flat near the track, rolling hills further out, mountains on the horizon
   const height = (x, z) => {
+    const sea = seaAt(x, z);
+    if (sea > -30) { const k = smooth(-30, 0, sea); return (city ? 0 : height0(x, z)) * (1 - k) - 3.2 * k; } // beach slopes into the water
     if (city) return 0;
+    return height0(x, z);
+  };
+  const height0 = (x, z) => {
     const d = df.at(x, z);
     let h = smooth(90, 520, d) * (fbm(x / 420, z / 420) * 55 - 8);
     const far = Math.hypot(x - df.cx, z - df.cz);
@@ -196,10 +230,12 @@ export function buildScenery(tr) {
       const n = fbm(x / 90, z / 90, 3);
       const d = df.at(x, z);
       const mown = 1 - smooth(40, 160, d);
-      let r = 0.75 + n * 0.3, g = 0.85 + n * 0.25, b = 0.7 + n * 0.2;
-      r += mown * 0.08; g += mown * 0.12;
+      let r = 0.72 + n * 0.32, g = 0.76 + n * 0.22, b = 0.62 + n * 0.16;
+      const stripe = mown * (Math.floor((x + z) / 9) % 2 ? 0.06 : -0.02);
+      r += mown * 0.04 + stripe; g += mown * 0.08 + stripe; b += stripe * 0.5;
       if (desert) { r = 0.95 + n * 0.2; g = 0.92 + n * 0.18; b = 0.88 + n * 0.14; }
       if (h > 120) { const k = smooth(120, 300, h); r = r * (1 - k) + 0.9 * k; g = g * (1 - k) + 0.86 * k; b = b * (1 - k) + 0.8 * k; } // rocky tops
+      const sa = seaAt(x, z); if (sa > -60) { const k = smooth(-60, -20, sa); r = r * (1 - k) + 0.96 * k; g = g * (1 - k) + 0.88 * k; b = b * (1 - k) + 0.68 * k; } // beach
       const l = lakeAt(x, z); if (l < 1.25) { const k = 1 - smooth(1.0, 1.25, l); r = r * (1 - k) + 0.95 * k; g = g * (1 - k) + 0.85 * k; b = b * (1 - k) + 0.6 * k; } // sandy shore
       col.set([r, g, b], i * 3);
     }
@@ -213,10 +249,39 @@ export function buildScenery(tr) {
     G.add(ground);
     tr.grassMat = mat;
   }
+  // water: dark blue-green, mirror-like with a fine ripple normal map
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x1d4656, roughness: 0.07, metalness: 0.65 });
+  if (q !== 'low') { waterMat.normalMap = TX.noiseNormal(256, 23, 1, 1.4); waterMat.normalMap.repeat.set(120, 120); waterMat.normalScale.set(0.25, 0.25); }
   if (lake) {
-    const water = new THREE.Mesh(new THREE.CircleGeometry(lake.r * 1.05, 64), new THREE.MeshStandardMaterial({ color: 0x24434f, roughness: 0.06, metalness: 0.7 }));
+    const water = new THREE.Mesh(new THREE.CircleGeometry(lake.r * 1.05, 96), waterMat);
     water.rotation.x = -Math.PI / 2; water.position.set(lake.x, -0.6, lake.z);
     G.add(water);
+  }
+  if (tr.sea) {
+    const S = tr.sea, W = 9000;
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(W, W), waterMat);
+    water.rotation.x = -Math.PI / 2;
+    water.rotation.z = Math.atan2(S.ux, -S.uz);
+    water.position.set(df.cx + S.ux * (S.shore + W / 2 - 15), -0.7, df.cz + S.uz * (S.shore + W / 2 - 15));
+    G.add(water);
+    if (tr.def.sea.boats) {
+      // moored yachts and a few bigger motor yachts along the shore
+      const hullMat = new THREE.MeshStandardMaterial({ color: 0xf4f5f6, roughness: 0.35 });
+      const deckMat = new THREE.MeshStandardMaterial({ color: 0x2a3440, roughness: 0.3, metalness: 0.3 });
+      const px = -S.uz, pz = S.ux; // along the shore
+      for (let k = 0; k < 46; k++) {
+        const along = (R() - 0.5) * 1600, out = 25 + R() * 260, big = R() < 0.25;
+        const L = big ? 30 + R() * 30 : 10 + R() * 12;
+        const boat = new THREE.Group();
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(L * 0.28, L * 0.12, L), hullMat); hull.position.y = L * 0.04; boat.add(hull);
+        const bow = new THREE.Mesh(new THREE.ConeGeometry(L * 0.14, L * 0.3, 4), hullMat); bow.rotation.x = -Math.PI / 2; bow.rotation.y = Math.PI / 4; bow.scale.set(1, 1, 0.6); bow.position.set(0, L * 0.04, -L * 0.62); boat.add(bow);
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(L * 0.2, L * (big ? 0.14 : 0.08), L * 0.4), deckMat); cab.position.set(0, L * (big ? 0.16 : 0.12), L * 0.08); boat.add(cab);
+        if (!big) { const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, L * 1.3, 5), hullMat); mast.position.set(0, L * 0.7, -L * 0.05); boat.add(mast); }
+        const x = df.cx + S.ux * (S.shore + out) + px * along, z = df.cz + S.uz * (S.shore + out) + pz * along;
+        boat.position.set(x, -0.55, z); boat.rotation.y = Math.atan2(S.ux, S.uz) + (R() - 0.5) * 0.5;
+        G.add(boat);
+      }
+    }
   }
 
   // ---------------- barriers: sponsor armco on straights, tecpro blocks outside corners, concrete in the city
@@ -233,7 +298,8 @@ export function buildScenery(tr) {
       const tecpro = !city && gcount > (b - a) * 0.4;
       const mat = tecpro ? tecMat : bannerMats[(seg * 3 + side * 5) % bannerMats.length];
       const lat = side ? (i) => tr.limR[i] : (i) => -tr.limL[i];
-      tr.wall(lat, tecpro ? 1.3 : city ? 1.1 : 1.2, 0, mat, tecpro ? 8 : 22, (i) => i >= a && i <= b, side === 1);
+      // (the pit straight's right side is the pit wall itself: no second barrier in the same place)
+      tr.wall(lat, tecpro ? 1.3 : city ? 1.1 : 1.2, 0, mat, tecpro ? 8 : 22, (i) => i >= a && i <= b && !(side === 1 && tr.inPitStraight(i * tr.ds)), side === 1);
     }
   }
   // catch fence
@@ -463,7 +529,7 @@ function buildNature(tr, df, height, lakeAt, R) {
     if (d < 30) continue;
     if (d < 70) { tr.locate(x, z, -1, loc); const lim = loc.lat > 0 ? tr.limR[loc.i] : tr.limL[loc.i]; if (Math.abs(loc.lat) < lim + 12 || tr.inPitStraight(loc.s)) continue; }
     if (d < 110 && tr.inPitStraight(tr.locate(x, z, -1, loc).s)) continue;
-    if (lakeAt(x, z) < 1.2) continue;
+    if (lakeAt(x, z) < 1.2 || tr.seaAt(x, z) > -25) continue;
     const h = height(x, z);
     if (h > 160) continue;
     const s = 0.75 + R() * 0.9;
@@ -540,12 +606,12 @@ function buildCity(tr, df, lampsOn, R) {
     for (let gz = -ext; gz <= ext; gz += cell) {
       const x = df.cx + gx + (R() - 0.5) * 10, z = df.cz + gz + (R() - 0.5) * 10;
       const d = df.at(x, z);
-      if (d < 34) continue;
+      if (d < 34 || tr.seaAt(x, z) > -30) continue;
       // keep the pit/grandstand side of the main straight open
       const loc = {}; if (d < 90) { tr.locate(x, z, -1, loc); if (tr.inPitStraight(loc.s)) continue; }
       const w = 26 + R() * 18, dd = 26 + R() * 18;
       const near = 1 - Math.min(1, d / 600);
-      const h = 14 + R() * 40 + R() * R() * 140 * (0.4 + near);
+      const h = Math.max(9, (14 + R() * 40 + R() * R() * 140 * (0.4 + near)) * (tr.def.cityH ?? 1)); // Monaco is mid-rise, Singapore towers
       lists[(R() * 4) | 0].push(box(x, z, w, dd, h, 0));
     }
   }
@@ -553,7 +619,8 @@ function buildCity(tr, df, lampsOn, R) {
   for (let k = 0; k < 90; k++) {
     const a = (k / 90) * Math.PI * 2 + R() * 0.05, r = 1700 + R() * 600;
     const x = df.cx + Math.cos(a) * r, z = df.cz + Math.sin(a) * r;
-    lists[(R() * 4) | 0].push(box(x, z, 60 + R() * 60, 60 + R() * 60, 60 + R() * 260, a));
+    if (tr.seaAt(x, z) > -30) continue;
+    lists[(R() * 4) | 0].push(box(x, z, 60 + R() * 60, 60 + R() * 60, (60 + R() * 260) * Math.max(0.35, tr.def.cityH ?? 1), a));
   }
   lists.forEach((l, i) => {
     if (!l.length) return;

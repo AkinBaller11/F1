@@ -325,10 +325,12 @@ function sharedGeometry() {
   livery.push(loft(MONO, { capEnd: false }));
   livery.push(loft(COVER, { capStart: true }));
   livery.push(loft(POD, { capStart: false }), loft(POD, { capStart: false, mirrorX: true }));
-  // sidepod inlets (dark mouths)
+  // sidepod inlets: a recessed dark duct behind a carbon lip, so the mouth reads as an opening, not a disc
   for (const s of [1, -1]) {
-    const inlet = new THREE.CircleGeometry(1, 24); inlet.scale(0.18, 0.14, 1); inlet.rotateY(Math.PI);
-    black.push(at(inlet, s * 0.6, 0.44, -0.618));
+    const inlet = new THREE.CircleGeometry(1, 24); inlet.scale(0.17, 0.13, 1); inlet.rotateY(Math.PI);
+    black.push(at(inlet, s * 0.6, 0.44, -0.55));
+    const lip = new THREE.RingGeometry(0.86, 1.0, 24); lip.scale(0.18, 0.14, 1); lip.rotateY(Math.PI);
+    carbon.push(at(lip, s * 0.6, 0.44, -0.62));
   }
   // cockpit opening (dark) and headrest pads
   black.push(loft([
@@ -348,7 +350,7 @@ function sharedGeometry() {
   carbon.push(haloGeo(0.03, 96));
   // floor with edge wings and fences
   const floorPts = [[-0.3, -1.25], [-0.6, -0.95], [-0.78, -0.55], [-0.8, 1.35], [-0.6, 1.62], [-0.55, 2.05], [-0.5, 2.38], [0.5, 2.38], [0.55, 2.05], [0.6, 1.62], [0.8, 1.35], [0.78, -0.55], [0.6, -0.95], [0.3, -1.25]];
-  carbon.push(slab(floorPts, 0.025, 0.055));
+  black.push(slab(floorPts, 0.025, 0.055)); // matte: a clear-coated floor would mirror the bright sky
   for (const s of [1, -1]) carbon.push(plate([[-0.9, 0.06], [-0.4, 0.13], [1.3, 0.13], [1.35, 0.06]], 0.012).translate(s * 0.79, 0, 0));
   for (const x of [0.32, 0.42, 0.52]) for (const s of [1, -1]) carbon.push(plate([[-1.2, 0.04], [-0.9, 0.065], [-0.5, 0.065], [-0.6, 0.04]], 0.01).translate(s * x, 0, 0));
   // diffuser ramp + strakes
@@ -370,7 +372,7 @@ function sharedGeometry() {
     const p = g.attributes.position;
     for (let k = 0; k < p.count; k++) { const x = p.getX(k); if (x > 0.62) p.setY(k, p.getY(k) + (x - 0.62) * 0.18); }
     g.computeVertexNormals();
-    const k = i >= 2 ? 'accent' : 'carbon';
+    const k = i === 3 ? 'accent' : 'carbon'; // team colour only on the top flap, carbon below (like the real cars)
     fwp.R[k].push(g); fwp.L[k].push(mirror(g));
   });
   for (const s of [1, -1]) {
@@ -761,7 +763,7 @@ function discGeo(rimR) {
 const mats = {};
 function sharedMats() {
   if (mats.carbon) return mats;
-  mats.carbon = new THREE.MeshPhysicalMaterial({ map: carbonTex(), color: 0x8a8a8a, roughness: 0.42, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.3, side: THREE.DoubleSide });
+  mats.carbon = new THREE.MeshPhysicalMaterial({ map: carbonTex(), color: 0x55585c, roughness: 0.42, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.3, side: THREE.DoubleSide });
   mats.black = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.8, side: THREE.DoubleSide });
   const slick = treadTex(false), wetT = treadTex(true);
   mats.rubber = new THREE.MeshStandardMaterial({ map: slick.map, roughnessMap: slick.rough, roughness: 1, metalness: 0 });
@@ -891,8 +893,10 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   const spName = sponsors[team.id] || 'KRONOS';
   const sp = decalTex(spName, light ? '#111' : '#fff');
   for (const sd of [1, -1]) {
-    const p = sectionAt(classic ? POD_C : POD, 0.15);
-    decal(sp, 0.62, 0.14, sd * (p.cx + p.w + 0.006), p.cy + 0.02, 0.15, sd * Math.PI / 2);
+    // flat decal on a curved pod: sit it where the pod is widest and keep it short so no letter sinks into the body
+    let pz = 0.15, p = sectionAt(classic ? POD_C : POD, pz);
+    for (let z = -0.3; z <= 0.6; z += 0.05) { const q = sectionAt(classic ? POD_C : POD, z); if (q.cx + q.w > p.cx + p.w) { p = q; pz = z; } }
+    decal(sp, 0.46, 0.105, sd * (p.cx + p.w + 0.012), p.cy + 0.02, pz, sd * Math.PI / 2);
     decal(decalTex(team.name.toUpperCase(), '#fff', { w: 512, h: 96, font: 'bold 60px Arial' }), 0.44, 0.08, sd * (classic ? 0.482 : 0.527), classic ? 0.9 : 0.86, classic ? 2.55 : 2.62, sd * Math.PI / 2);
   }
   if (!classic) decal(sp, 0.32, 0.08, 0, 0.705, -0.85, 0, -Math.PI / 2 + 0.1);
@@ -967,10 +971,19 @@ function helmetTex(team, number) {
 let shadowTex = null;
 function contactShadow() {
   if (!shadowTex) {
+    // ambient occlusion under the car: the floor's footprint (rounded box, dark in the middle, soft edges)
+    // plus a dark spot under each tyre where it meets the road
     const [c, g] = canvas(64, 128);
-    const gr = g.createRadialGradient(32, 64, 4, 32, 64, 62);
-    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, 64, 128);
+    const img = g.createImageData(64, 128);
+    const spot = (x, y, cx, cy, rx, ry) => { const d = Math.hypot((x - cx) / rx, (y - cy) / ry); return Math.max(0, 1 - d); };
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+      const nx = Math.abs((x + 0.5) / 32 - 1) / 0.78, ny = Math.abs((y + 0.5) / 64 - 1) / 0.92;
+      const d = Math.pow(Math.pow(nx, 4) + Math.pow(ny, 4), 0.25);
+      let a = Math.max(0, Math.min(1, (1.05 - d) / 0.5)); a = a * a * (3 - 2 * a) * 0.62;
+      for (const [cx, cy] of [[10, 27], [54, 27], [10, 104], [54, 104]]) a = Math.max(a, spot(x, y, cx, cy, 7, 13) * 0.8);
+      const k = (y * 64 + x) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 0; img.data[k + 3] = Math.round(a * 255);
+    }
+    g.putImageData(img, 0, 0);
     shadowTex = new THREE.CanvasTexture(c);
   }
   const p = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 6.0), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));

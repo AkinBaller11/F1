@@ -43,4 +43,6 @@ Inoffizielles Fan-Projekt, nicht mit der Formel 1 oder EA verbunden.
 
 Die echten Streckenverläufe stammen aus [f1-circuits](https://github.com/bacinger/f1-circuits) von Tomislav Bacinger (MIT-Lizenz). Die GPS-Linien werden alle 20 m neu abgetastet, leicht geglättet und auf die offizielle Rundenlänge skaliert. Start-Ziel liegt wie im Original, Nachtrennen (Bahrain, Dschidda, Singapur, Las Vegas, Katar) starten bei Nacht. Höhenunterschiede und die Umgebung sind nachempfunden; an Suzukas Kreuzung gibt es statt der Brücke eine ebene Kreuzung ohne Kollisionen zwischen den beiden Ästen.
 
+An der Küste liegen die Strecken am Wasser (Monaco und Baku mit Yachten, Dschidda, Singapur, Abu Dhabi, Zandvoort, Montreal), Melbourne um den Albert-Park-See; Stadtkurse haben je nach Ort Hochhäuser (Singapur, Las Vegas) oder mittelhohe Bebauung (Monaco, Baku).
+
 Formula 1, F1 und verwandte Marken gehören der Formula One Licensing B.V.; dies ist ein inoffizielles Fan-Projekt.

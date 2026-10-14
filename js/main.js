@@ -22,6 +22,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
@@ -517,6 +518,23 @@ const CAMS = {
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
 
+// broadcast-style grade after tone mapping: a touch more saturation and S-curve contrast, soft vignette
+const GRADE = {
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, curve, vig; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = mix(vec3(l), c.rgb, sat);
+      vec3 s = clamp(c.rgb, 0.0, 1.0);
+      c.rgb = mix(c.rgb, s * s * (3.0 - 2.0 * s), curve);
+      vec2 d = vUv - 0.5;
+      c.rgb *= 1.0 - vig * dot(d, d) * 1.5;
+      gl_FragColor = c;
+    }`,
+};
+
 // sun lens flare: soft hexagonal ghosts along the line through the screen centre
 function makeFlare(tod) {
   const disc = (size, inner, col) => {
@@ -641,6 +659,7 @@ class Game {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.22, 0.45, tod.lamps > 0.5 ? 0.62 : 0.96);
       c.addPass(this.bloom);
       c.addPass(new OutputPass());
+      c.addPass(new ShaderPass(GRADE));
       this.composer = c;
     }
 
