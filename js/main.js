@@ -508,6 +508,29 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+// touch with steering buttons: the centre-bottom HUD (onboard bar, dash, pill) sits in the gap between the
+// arrow buttons and the pedals, shrunk if that gap is narrow, so it never covers BREMSE or a steering arrow
+function fitTouchHud() {
+  const b = document.body, els = document.querySelectorAll('#hud .onboard, #hud .dash, #hud .pill');
+  for (const el of els) { el.style.left = ''; el.style.scale = ''; }
+  if (!b.classList.contains('touch') || !b.classList.contains('ingame') || !b.classList.contains('steer-buttons')) return;
+  const a = document.getElementById('tc-arrows'), p = document.querySelector('#touch .tside');
+  if (!a || !p || !a.getClientRects().length || !p.getClientRects().length) return;
+  const ra = a.getBoundingClientRect(), rp = p.getBoundingClientRect();
+  const [l, r] = ra.left < rp.left ? [ra.right, rp.left] : [rp.right, ra.left];
+  const gap = r - l - 16, cx = (l + r) / 2;
+  if (gap < 60) return;
+  for (const el of els) {
+    if (!el.getClientRects().length) continue;
+    const cs = getComputedStyle(el), base = parseFloat(cs.scale) || 1, m = /matrix\(([^,]+)/.exec(cs.transform), tb = m ? parseFloat(m[1]) : 1;
+    const s = Math.min(1, gap / (el.offsetWidth * base * tb));
+    el.style.left = cx + 'px';
+    if (s < 1) el.style.scale = String(base * s);
+  }
+}
+addEventListener('resize', fitTouchHud);
+setInterval(fitTouchHud, 500);
+
 // ------------------------------------------------------------------ cameras
 const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
