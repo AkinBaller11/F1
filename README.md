@@ -65,6 +65,34 @@ Höhenprofile: echte Höhen aus den offenen AWS Terrain Tiles (SRTM und national
 
 Formula 1, F1 und verwandte Marken gehören der Formula One Licensing B.V.; dies ist ein inoffizielles Fan-Projekt.
 
+## Fahrphysik
+
+Das Spielerauto ist ein Zweispurmodell mit Reifen, Aerodynamik und Federung (`js/physics.js`, Parameter in `js/vehicle.js`). Die KI und das Geschwindigkeitsprofil der Strecke nutzen dieselben Reifen-, Aero- und Massendaten als quasistationäre Grenzen (g-g-Diagramm), damit Spieler und KI nach denselben Regeln fahren.
+
+- **Zustand:** Längs- und Quergeschwindigkeit, Gierrate, Roll- und Nickwinkel des Aufbaus. Gerechnet wird mit 480 Hz: das Spiel ruft die Physik mit 120 Hz auf, jeder Aufruf hat 4 Unterschritte. Das Ergebnis hängt praktisch nicht vom Bildtakt ab.
+- **Reifen:** Seitenkraft über Schräglaufwinkel (vereinfachte Magic Formula, Maximum bei etwa 5°, voll rutschend etwa 80 %), mit Einlauflänge 0,45 m. Lastabhängiger Reibwert: 1,75 bei 3 kN, je kN mehr 0,05 weniger. Längs- und Seitenkraft teilen sich einen Reibkreis.
+- **Radlasten:** Gewicht, Abtrieb (40 % vorne) und Lastverlagerung über die Federn (Roll- und Nickfedern mit Dämpfung 0,7, 55 % der Rollsteifigkeit vorne). Dazu kommt die vertikale Krümmung der Fahrbahn: In Senken wird das Auto schwerer, auf Kuppen leichter.
+- **Antrieb:** Motorleistung an der Hinterachse. Die Traktion hängt von den Hinterradlasten und der Differenzialsperre ab. Die Sperre erzeugt ein untersteuerndes Giermoment unter Last.
+- **Bremsen:** Bremsbalance verteilt die Bremskraft auf die Achsen. Motorbremse und Rekuperation gehören zum Hinterachsanteil (Brake-by-Wire). Ohne ABS blockiert eine überlastete Achse: blockierte Vorderräder schieben geradeaus, blockierte Hinterräder drehen das Auto.
+- **Untergrund:** Haftungsfaktor und Rollwiderstand je Untergrund. Das Kiesbett verzögert mit etwa 0,5 × Radlast.
+- **Kontakte:** Mauern und Autos wirken als Kraftstoß auf einen Starrkörper (Stoßzahl 0,15, Wandreibung 0,3). Ein Treffer an der Nase dreht das Auto über das Trägheitsmoment.
+- **Fahrhilfen:** ABS und volle Traktionskontrolle halten die Längskraft jeder Achse so klein, dass die Seitenkraft der Kurve erhalten bleibt. Der Lenkbereich umfasst den Winkel der engsten bei dieser Geschwindigkeit fahrbaren Kurve plus den Spitzen-Schräglaufwinkel. Mit der Tastatur lenkt eine gedrückte Taste nur so weit, wie die aktuelle Drehung plus der Spitzen-Schräglauf braucht; mehr Einschlag würde die Vorderreifen nur über ihr Maximum treiben. Gamepad und Lenkrad haben den vollen Bereich.
+
+**Annahmen:**
+- 800 kg Masse, 3,40 m Radstand (Reglement 2026).
+- 45,5 % der Masse auf der Vorderachse, Schwerpunkthöhe 0,28 m, Gierträgheit 1000 kg·m².
+- Luftwiderstand CdA 1,35 m², Auftrieb ClA 5,2 m².
+- Leistung 600 kW plus ERS.
+- Rollgradient 0,25°/g, Nickgradient 0,12°/g.
+
+Die Reifendaten von Pirelli sind nicht öffentlich. Reibwert und Lastempfindlichkeit sind deshalb Schätzungen in der für Rennslicks üblichen Größenordnung. Jede Annahme ist in `js/vehicle.js` mit Herkunft kommentiert.
+
+**Reproduzierbare Fahrtests** (`tests/vehicle-tests.js`, im Browser auf einer ebenen Testfläche mit festem Zeitschritt): Beschleunigung, Bremsen mit und ohne ABS, Kreisfahrt, Lenkwinkelsprung bei drei Zeitschritten, Hochgeschwindigkeit, Bremsen in der Kurve, Kiesbett, Kuppe und Volleinschlag. Aufruf auf der geladenen Spielseite in der Browser-Konsole:
+
+```js
+const { runAll } = await import('/tests/vehicle-tests.js'); console.table(await runAll());
+```
+
 ## Öffentliche Bestenliste (Vercel)
 
 Ohne Datenspeicher bleiben die Zeiten nur auf dem jeweiligen Gerät. So wird die Bestenliste für alle sichtbar:

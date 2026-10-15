@@ -1709,7 +1709,7 @@ class Game {
       const lat = o.lat + (P.lat - o.lat) * Math.min(1, dt * 1.2);
       const s = tr.wrapS(o.s + d);
       const [x, z] = tr.posAt(s, lat), [x2, z2] = tr.posAt(tr.wrapS(s + 3), P.lat);
-      o.x = x; o.z = z; o.yaw = Math.atan2(-(x2 - x), -(z2 - z)); o.yawRate = 0; o.steer *= Math.exp(-dt * 4);
+      o.x = x; o.z = z; o.yaw = Math.atan2(-(x2 - x), -(z2 - z)); o.yawRate = 0; if (o.vy) o.vy = 0; o.steer *= Math.exp(-dt * 4);
       tr.locate(x, z, o.hint, o.loc); o.hint = o.loc.i; o.s = o.loc.s; o.lat = o.loc.lat;
       o.dist += d; o.wheelRot += d / CAR.tyreR; o.throttle = 0; o.brake = vT < o.v ? 0.3 : 0;
       o.gear = o.v < 1 ? 1 : 2;
@@ -1804,7 +1804,7 @@ class Game {
     const r = stepPit(tr, p, P, dt);
     const [x, z] = tr.posAt(r.s, r.lat);
     const [x2, z2] = tr.posAt(tr.wrapS(r.s + 3), pitLat(tr, P, P.d + 3));
-    p.x = x; p.z = z; p.yaw = Math.atan2(-(x2 - x), -(z2 - z)); p.yawRate = 0;
+    p.x = x; p.z = z; p.yaw = Math.atan2(-(x2 - x), -(z2 - z)); p.yawRate = 0; p.vy = 0;
     p.steer *= Math.exp(-dt * 6);
     const prevS = p.s;
     tr.locate(x, z, p.hint, p.loc);
@@ -1917,7 +1917,7 @@ class Game {
       const t0 = this.flying ? W[0] - 6 : isSlick(p.tyre) ? 72 : 50;
       p.tyreT = [t0, t0, t0, t0]; p.tyreFor = p.tyre;
     }
-    const v = Math.abs(p.v), ay = p.yawRate * p.v, ax = (p.v - (this.prevVt ?? p.v)) / dt;
+    const v = Math.abs(p.v), ay = p.ay ?? p.yawRate * p.v, ax = p.ax ?? (p.v - (this.prevVt ?? p.v)) / dt;
     this.prevVt = p.v;
     const moving = racing && !this.pitCtl;
     const weave = this.state === 'formation' || this.state === 'grid' ? 1.5 : 0; // weaving / burnouts on the formation lap, still hot on the grid
@@ -2606,7 +2606,7 @@ class Game {
       // a spinning AI car keeps sliding along its path, it doesn't drive where its nose points
       const my = o.yawB !== undefined ? o.yawB : o.yaw || 0;
       let vx = -Math.sin(my) * (o.v || 0), vz = -Math.cos(my) * (o.v || 0);
-      if (o === p) { vx += p.kx; vz += p.kz; }
+      if (o === p) { vx = p.wvx; vz = p.wvz; } // the player's car slides: its real velocity, not just the heading
       else if (o.knock && !o.remote) { const f = this.track.frame(o.s); vx += f.rx * o.knock; vz += f.rz * o.knock; }
       o._vx = vx; o._vz = vz;
     }
@@ -2704,9 +2704,7 @@ class Game {
     const cross = rx * iz - rz * ix; // >0: turns the car right (yaw down)
     const dYawRate = (cross / IM) * soft; // rad/s, positive = to the right
     if (o === this.player) {
-      o.v = Math.max(0, o.v + along);
-      o.kx += latx * 0.8; o.kz += latz * 0.8;
-      o.spin = Math.max(-4, Math.min(4, o.spin + dYawRate * 0.75));
+      o.applyImpulse(ix, iz, rx, rz); // rigid body with the car's own yaw inertia
     } else {
       o.v = Math.max(0, o.v + along * soft);
       const f = this.track.frame(o.s);
@@ -2773,15 +2771,10 @@ class Game {
     const longG = (p.v - (this.prevV ?? p.v)) / Math.max(dt, 1e-3);
     this.prevV = p.v;
     const clamp = (x, a) => Math.max(-a, Math.min(a, x));
-    // chassis: spring-damped pitch/roll, ride height drops with downforce, kerbs shake it
-    this.sus = this.sus || { p: 0, vp: 0, r: 0, vr: 0 };
-    const S2 = this.sus, kS = 90, dS = 15, h = Math.min(dt, 0.033);
-    const pT = clamp(-longG * 0.0011, 0.022), rT = clamp(p.yawRate * p.v * 0.0008, 0.028);
-    S2.vp += ((pT - S2.p) * kS - S2.vp * dS) * h; S2.p += S2.vp * h;
-    S2.vr += ((rT - S2.r) * kS - S2.vr * dS) * h; S2.r += S2.vr * h;
-    this.pitch = S2.p; this.roll = S2.r;
+    // chassis: roll, pitch and ride height straight from the suspension model in physics.js; kerbs shake it
+    this.pitch = clamp(p.pitch || 0, 0.05); this.roll = clamp(p.roll || 0, 0.05);
     const tNow = performance.now() / 1000;
-    const ride = -Math.min(0.025, p.v * p.v * 0.0000035) + p.bump * Math.sin(tNow * 42) * 0.006;
+    const ride = clamp(p.heave || 0, 0.04) + p.bump * Math.sin(tNow * 42) * 0.006;
     this.playerBody.rotation.set(this.pitch, 0, this.roll + p.bump * Math.sin(tNow * 31) * 0.004);
     this.playerBody.position.y = ride;
     const v = CAMS[this.camMode] || CAMS.cockpit;
@@ -2790,7 +2783,7 @@ class Game {
     const rx = () => (Math.random() - 0.5) * shake;
     // ego cams: head reacts to g-forces (lean out of corners, nod under braking), looks into the apex
     const hm = settings.headMove / 100, k = Math.min(1, dt * 7);
-    const latG = p.yawRate * p.v, lonG = (p.v - (this.prevV2 ?? p.v)) / Math.max(dt, 1e-3);
+    const latG = p.ay ?? p.yawRate * p.v, lonG = p.ax ?? (p.v - (this.prevV2 ?? p.v)) / Math.max(dt, 1e-3);
     this.prevV2 = p.v;
     const clampv = (x, a) => Math.max(-a, Math.min(a, x));
     this.head = this.head || { x: 0, z: 0, roll: 0, pitch: 0 };

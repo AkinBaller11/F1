@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import * as TX from './textures.js';
 import { buildScenery } from './scenery.js';
 import { buildTerrain } from './terrain.js';
+import { VEH, limits, driveLimit } from './vehicle.js';
 
 export const HALF_W = 7;      // default half track width (m); measured circuits carry their own per sample (Track.hw)
 export const KERB_W = 1.6;
@@ -29,20 +30,19 @@ function smoothArr(a, radius, passes = 1) {
   return src;
 }
 
-// Vehicle model constants shared with physics (so AI speed profile matches player car)
+// Vehicle model constants shared with physics; the tyres, aero and masses themselves live in vehicle.js and
+// give the limits below (the same model the player's car runs on)
 export const CAR = {
-  mass: 800, power: 600000, ersPower: 120000, cdA: 1.35, drsCdA: 1.0,
-  gripBase: 13.7, downforce: 0.0039, brakeBase: 15, brakeDf: 0.0055,
-  wheelBase: 3.4, vMaxClamp: 100, // 2026 wheelbase
-  tyreR: 0.3525, // rolling radius of the 2026 tyres (about 705 mm diameter): turns the wheels as fast as the car moves
+  mass: VEH.mass, power: VEH.power, ersPower: VEH.ersPower, cdA: VEH.CdA, drsCdA: VEH.drsCdA,
+  wheelBase: VEH.L, vMaxClamp: 100, // 2026 wheelbase
+  tyreR: VEH.tyreR, // rolling radius of the 2026 tyres (about 705 mm diameter): turns the wheels as fast as the car moves
 };
 
-export function lateralGrip(v, mu) { return mu * (CAR.gripBase + CAR.downforce * v * v); }
-export function brakeDecel(v, mu) { return mu * (CAR.brakeBase + CAR.brakeDf * v * v); }
+// steady-state limits of the car (m/s²) at grip level mu: cornering, braking with ABS, net forward drive
+export function lateralGrip(v, mu) { return limits(mu).lat(v); }
+export function brakeDecel(v, mu) { return limits(mu).brake(v); }
 export function driveAccel(v, power, cdA, mu) {
-  const traction = mu * (12 + 0.002 * v * v);
-  const a = Math.min(traction, power / (CAR.mass * Math.max(v, 4)));
-  return a - (0.5 * 1.2 * cdA * v * v) / CAR.mass - 0.15;
+  return power === VEH.power && cdA === VEH.CdA ? limits(mu).drive(v) : driveLimit(v, power, cdA, mu);
 }
 
 export class Track {
@@ -60,6 +60,7 @@ export class Track {
     this.buildRacingLine();
     this.buildSpeedProfile();
     this.buildLimits();
+    this.buildVertical();
     buildTerrain(this, 7000, 1024, HALF_W); // real elevation (no-op on flat circuits); uses this.hw per sample
     this.hilly = this.hs.some((h) => h > 0.5);
     this.group = new THREE.Group();
@@ -203,6 +204,15 @@ export class Track {
     return this.hs[i] + (this.hs[j] - this.hs[i]) * t;
   }
   gradeAt(s) { return (this.hAt(s + 6) - this.hAt(s - 6)) / 12; }
+  // vertical curvature of the road (1/m, > 0 = dip / compression, < 0 = crest) from a smoothed profile: the
+  // heights come from a 10-30 m elevation model stored in decimetres, so a short-base second difference
+  // would only show rounding steps (±0.6 g of fake load swing at 280 km/h)
+  buildVertical() {
+    const N = this.N, k = Math.max(1, Math.round(24 / this.ds)), c = new Float32Array(N), d2 = (k * this.ds) ** 2;
+    for (let i = 0; i < N; i++) c[i] = (this.hs[(i + k) % N] - 2 * this.hs[i] + this.hs[(i - k + N) % N]) / d2;
+    this.vCurv = smoothArr(c, Math.round(12 / this.ds), 2);
+  }
+  vCurvAt(s) { return this.vCurv ? this.vCurv[this.idx(s)] : 0; }
   // half road width (centre line to the white edge line) at distance s
   hwAt(s) {
     s = this.wrapS(s);
@@ -267,20 +277,30 @@ export class Track {
   buildSpeedProfile() {
     const N = this.N, mu = this.mu, ds = this.ds;
     const v = new Float32Array(N);
+    const LIM = limits(mu);
     for (let i = 0; i < N; i++) {
+      // corner speed: v² / R = lateral limit at that speed (downforce grows with v, so iterate upwards)
       const R = 1 / Math.max(Math.abs(this.kRace[i]), 1e-5);
-      const denom = 1 - R * mu * CAR.downforce;
-      v[i] = denom <= 0.02 ? CAR.vMaxClamp : Math.min(CAR.vMaxClamp, Math.sqrt((R * mu * CAR.gripBase) / denom));
+      let vc = Math.sqrt(R * LIM.lat(0));
+      for (let k = 0; k < 40 && vc < CAR.vMaxClamp; k++) vc = Math.sqrt(R * LIM.lat(vc));
+      v[i] = Math.min(CAR.vMaxClamp, vc);
     }
+    // slope along the lap: uphill helps braking and costs drive, downhill the other way
+    const grade = (i) => (this.hs[(i + 1) % N] - this.hs[(i - 1 + N) % N]) / (2 * ds);
+    // g-g diagram: the tyres' longitudinal force is what the friction circle leaves after the corner's side
+    // force (drag and rolling resistance act regardless)
+    const avail = (i, vi) => { const u = Math.min(1, (vi * vi * Math.abs(this.kRace[i])) / Math.max(LIM.lat(vi), 1)); return Math.max(0.15, Math.sqrt(1 - u * u)); };
     for (let pass = 0; pass < 3; pass++) {
       for (let c = 0; c < N; c++) { // braking: backward
         const i = (N - 1 - c), j = (i + 1) % N;
-        const lim = Math.sqrt(v[j] * v[j] + 2 * brakeDecel(v[j], mu) * 0.92 * ds);
-        if (v[i] > lim) v[i] = lim;
+        const dec = (LIM.brake(v[j]) - LIM.res(v[j])) * avail(j, v[j]) + LIM.res(v[j]);
+        const lim2 = Math.sqrt(v[j] * v[j] + 2 * Math.max(1, dec * 0.92 + 9.81 * grade(i)) * ds);
+        if (v[i] > lim2) v[i] = lim2;
       }
       for (let i = 0; i < N; i++) { // traction: forward
         const j = (i + 1) % N;
-        const a = Math.max(0.1, driveAccel(v[i], CAR.power, CAR.cdA, mu));
+        const pw = CAR.power / (CAR.mass * Math.max(v[i], 1));
+        const a = Math.max(0.1, Math.min(pw, LIM.gross(v[i]) * avail(i, v[i])) - LIM.res(v[i]) - 9.81 * grade(i));
         const lim = Math.sqrt(v[i] * v[i] + 2 * a * ds);
         if (v[j] > lim) v[j] = lim;
       }

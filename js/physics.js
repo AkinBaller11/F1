@@ -1,15 +1,28 @@
 // Player vehicle dynamics + AI drivers
-import { CAR, KERB_W, lateralGrip, brakeDecel } from './track.js';
+import { CAR, KERB_W, brakeDecel, driveAccel } from './track.js';
+import { VEH, AXLE, SUSP, tyrePeak, sideCurve, MF_SLIDE, ALPHA_PEAK, downforce, dragForce, limits } from './vehicle.js';
 
 export const GEAR_TOP = [0, 82, 122, 158, 194, 230, 266, 302, 345].map((k) => k / 3.6); // m/s at 12500 rpm
 export const RPM_MAX = 12500, RPM_IDLE = 4000;
 
-const DRAG = (v, cdA) => (0.5 * 1.2 * cdA * v * v) / CAR.mass;
-
-export function engineAccel(v, power, mu) {
-  const traction = mu * (12 + 0.002 * v * v);
-  return Math.min(traction, power / (CAR.mass * Math.max(v, 4)));
-}
+// surfaces: grip factor (dry / wet) and rolling resistance as a share of the wheel load (A = estimates):
+// painted kerbs are slicker than asphalt, run-off tarmac carries no rubber, a gravel bed decelerates a car
+// sinking into it by ~0.5 g, grass is slippery, more so in the wet
+const SURF = {
+  road: { mu: 1, wet: 1, crr: 0 },
+  kerb: { mu: 0.95, wet: 0.8, crr: 0.01 },
+  runoff: { mu: 0.85, wet: 0.85, crr: 0.005 },
+  gravel: { mu: 0.4, wet: 0.4, crr: 0.5 },
+  grass: { mu: 0.5, wet: 0.35, crr: 0.06 },
+};
+// road-wheel lock range: the angle for the tightest corner the car can take at this speed (L · a_lat / v²,
+// from the same tyre model) plus 1.2 x the tyres' peak slip angle, capped at full lock (31°, hairpins).
+// More lock than that only drives the front tyres past their peak, which digital (keyboard) input would do.
+export const steerLock = (v) => {
+  const va = Math.max(Math.abs(v), 1);
+  return Math.min(0.55, (VEH.L * limits(1).lat(va)) / (va * va) + 1.2 * ALPHA_PEAK);
+};
+const SUB = 4; // internal sub-steps per call (the game already calls at 120 Hz -> 480 Hz for tyres and springs)
 
 export class PlayerCar {
   constructor(track, opts) {
@@ -24,7 +37,12 @@ export class PlayerCar {
     this.surface = 'road'; this.offTrack = false; this.offTimer = 0;
     this.hint = -1; this.s = 0; this.lat = 0; this.dist = 0;
     this.impact = 0; this.bump = 0; this.wheelRot = 0; this.limiter = false;
-    this.kx = 0; this.kz = 0; this.spin = 0; // shove velocity (world m/s) and yaw kick (rad/s) from contact
+    this.kx = 0; this.kz = 0; this.spin = 0; // legacy shove inputs (world m/s, rad/s), folded into the velocities
+    // body-frame state: v forward speed, vy sideways speed (+ right), yawRate (+ right), relaxed slip angles,
+    // roll / pitch of the sprung mass (+ = rolled to the left in a right-hander / nose down) and their rates
+    this.vy = 0; this.aF = 0; this.aR = 0; this.ax = 0; this.ay = 0;
+    this.roll = 0; this.rollV = 0; this.pitch = 0; this.pitchV = 0; this.heave = 0;
+    this.load = [0, 0, 0, 0]; this.usage = [0, 0];
     // tyres / damage / setup feed in as multipliers (set by the race each frame)
     this.tyre = 'M'; this.wear = 0; this.dmg = { L: 0, R: 0, rear: 0 };
     this.gripMul = 1; this.dragMul = 1; this.pull = 0;
@@ -35,12 +53,26 @@ export class PlayerCar {
   placeAt(s, lat) {
     const [x, z, yaw] = this.track.posAt(s, lat);
     this.x = x; this.z = z; this.yaw = yaw; this.v = 0;
+    this.vy = 0; this.yawRate = 0; this.aF = this.aR = 0; this.roll = this.rollV = this.pitch = this.pitchV = 0;
     this.hint = -1;
     this.track.locate(x, z, -1, this.loc);
     this.hint = this.loc.i; this.s = this.loc.s; this.lat = this.loc.lat;
   }
 
-  get speedKmh() { return Math.abs(this.v) * 3.6; }
+  get speedKmh() { return Math.hypot(this.v, this.vy) * 3.6; }
+  // world velocity (x, z) of the centre of gravity
+  get wvx() { return -Math.sin(this.yaw) * this.v + Math.cos(this.yaw) * this.vy; }
+  get wvz() { return -Math.cos(this.yaw) * this.v - Math.sin(this.yaw) * this.vy; }
+  setWorldVel(vx, vz) {
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+    this.v = vx * fx + vz * fz; this.vy = vx * Math.cos(this.yaw) - vz * Math.sin(this.yaw); // forward, right-hand axis
+  }
+  // contact impulse from another car: (ix, iz) velocity change at the contact point offset (rx, rz)
+  applyImpulse(ix, iz, rx, rz) {
+    this.setWorldVel(this.wvx + ix, this.wvz + iz);
+    const cross = rx * iz - rz * ix; // >0 turns the car to the right
+    this.yawRate += (cross * VEH.mass) / VEH.Iz;
+  }
 
   update(dt, input, raceOn) {
     const tr = this.track;
@@ -50,12 +82,13 @@ export class PlayerCar {
     const W = tr.hw[i]; // measured half width of the road here
     const kerb = lat > 0 ? tr.kerbR[i] : tr.kerbL[i];
     const gravel = lat > 0 ? tr.gravelR[i] : tr.gravelL[i];
-    let mu = tr.mu * this.gripMul, extraDrag = 0;
     if (a < W) this.surface = 'road';
-    else if (kerb && a < W + KERB_W) { this.surface = 'kerb'; mu *= tr.wet ? 0.8 : 0.95; }
-    else if (kerb && a < W + 4.5) { this.surface = 'runoff'; mu *= 0.85; }
-    else if (gravel) { this.surface = 'gravel'; mu *= 0.4; extraDrag = Math.min(7, Math.abs(this.v) * 0.5) + this.v * 0.08; }
-    else { this.surface = 'grass'; mu *= tr.wet ? 0.35 : 0.5; extraDrag = Math.min(1.5, Math.abs(this.v) * 0.3) + this.v * 0.02; }
+    else if (kerb && a < W + KERB_W) this.surface = 'kerb';
+    else if (kerb && a < W + 4.5) this.surface = 'runoff';
+    else if (gravel) this.surface = 'gravel';
+    else this.surface = 'grass';
+    const SF = SURF[this.surface];
+    const mu = tr.mu * this.gripMul * (tr.wet ? SF.wet : SF.mu);
     this.offTrack = a > W + KERB_W + 0.6;
 
     // --- inputs
@@ -79,6 +112,14 @@ export class PlayerCar {
     }
     const analog = input.analog || this.assistAnalog;
     this.assistAnalog = false;
+    // keys are all-or-nothing: a held key may steer as far as the current rotation needs (r L / v) plus the
+    // tyres' peak slip angle, never beyond that peak where more lock only loses side force. Analog input
+    // (pad, wheel) keeps the full range.
+    if (!input.analog && Math.abs(this.v) > 8) {
+      const lock = steerLock(this.v), cap = (Math.abs(this.yawRate) * VEH.L) / Math.abs(this.v) + ALPHA_PEAK * 1.1;
+      const c = Math.min(1, cap / lock);
+      st = Math.max(-c, Math.min(c, st));
+    }
     // keyboard: quick at low speed, calmer at high speed so lines stay clean
     const vk = Math.abs(this.v);
     const rate = analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 2.2 + 2.2 / (1 + vk / 25));
@@ -127,81 +168,133 @@ export class PlayerCar {
     this.rpm += (Math.min(RPM_MAX + 150, targetRpm) - this.rpm) * Math.min(1, dt * 18);
     this.limiter = this.gear >= 1 && v >= gTop * 0.995;
 
-    // --- longitudinal
-    const S0 = this.setup;
-    let eng = engineAccel(v, power, mu) * (1 + (S0.diff - 0.5) * 0.08 * Math.max(0, 1 - v / 50)) * (this.launchMul ?? 1);
-    // low rpm in a tall gear (manual) -> weaker pull
-    // only a manual driver lugging a tall gear loses pull; launches in 1st are traction-limited, not rpm-limited
-    if (this.opts.manual && this.gear >= 2) eng *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
-    if (this.limiter || this.shiftTimer > 0 || this.gear < 1) eng = 0;
-    // traction control: full = never spins (old behaviour); medium / off let too much throttle in low gears
-    // spin the rears: less drive, and with steering the rear steps out
-    this.wheelspin = 0;
-    const tc = this.opts.tc || 'full';
-    if (tc !== 'full' && raceOn && eng > 0 && this.throttle > 0.3 && this.gear <= 4) {
-      const demand = this.throttle * power / (CAR.mass * Math.max(v, 4)), grip = mu * (12 + 0.002 * v * v);
-      const ex = demand / grip - 1;
-      if (ex > 0) this.wheelspin = Math.min(1, ex * (tc === 'off' ? 0.5 : 0.15));
-      eng *= 1 - 0.22 * this.wheelspin;
-    }
-    let acc = this.throttle * eng - DRAG(this.v, cdA) * Math.sign(this.v) - 0.15 * Math.sign(this.v) - extraDrag * Math.sign(this.v);
-    if (thr < 0.05 && this.v > 1) acc -= 1.2; // engine braking
-    // gravity along the slope (Eau Rouge, Austin turn 1): uphill slows, downhill pulls
-    if (tr.hs) { const i = this.hint >= 0 ? this.hint : 0, along = -Math.sin(this.yaw) * tr.tx[i] - Math.cos(this.yaw) * tr.tz[i]; acc -= 9.81 * tr.gradeAt(this.s) * along; }
-    const bd = brakeDecel(v, mu) * (1 - 2.2 * (S0.bias - 0.56) ** 2) * (this.brakeMul ?? 1); // off-balance brakes lock a wheel earlier; brake temperature
-    // without ABS a stamp on the brakes locks the fronts: less stopping power, the car won't turn, tyres flat-spot
-    this.lockup = this.opts.abs === false && brk > 0.9 && this.v > 8 ? Math.min(1, (brk - 0.9) * 10) : 0;
-    if (this.v > 0.3) acc -= brk * bd * (1 - 0.15 * this.lockup);
-    // reverse when stationary and holding brake
-    if (this.v <= 0.3 && brk > 0.5 && thr < 0.05) acc = -3;
-    if (this.v < 0 && thr > 0.1) acc = 6;
-    this.v += acc * dt;
-    if (this.v < -6) this.v = -6;
-    if (Math.abs(this.v) < 0.05 && thr < 0.05 && brk < 0.05) this.v = 0;
+    // --- drive and brake demands
+    const S = this.setup, u0 = this.v;
+    // engine: power-limited force at the rear wheels; a manual driver lugging a tall gear loses pull
+    let drive = (power / Math.max(Math.abs(u0), 1)) * (this.launchMul ?? 1);
+    if (this.opts.manual && this.gear >= 2) drive *= Math.max(0.45, Math.min(1, (this.rpm - 3000) / 6000));
+    if (this.limiter || this.shiftTimer > 0 || this.gear < 1) drive = 0;
+    drive *= this.throttle;
+    const brakeF = brk * VEH.brakeMax * (this.brakeMul ?? 1); // pedal -> total brake force, brake temperature
+    const engBrake = thr < 0.05 && u0 > 1 ? VEH.engineBrake : 0;
+    const reverse = u0 <= 0.3 && brk > 0.5 && thr < 0.05;
+    const dfMul = S.df, aeroFront = VEH.aeroFront + (S.bal || 0); // wing balance moves the centre of pressure
+    const lock = S.diff, tc = this.opts.tc || 'full', abs = this.opts.abs !== false;
+    // road shape: slope along the car's heading, vertical curvature (crest < 0: the car goes light, dip > 0)
+    const ti = this.hint >= 0 ? this.hint : 0;
+    const along = -Math.sin(this.yaw) * tr.tx[ti] - Math.cos(this.yaw) * tr.tz[ti];
+    const grade = tr.hs ? tr.gradeAt(this.s) * along : 0;
+    const curvV = tr.vCurvAt ? tr.vCurvAt(this.s) : 0;
+    // steering: road-wheel angle; full lock at walking pace, a narrow range at speed (input mapping, not physics)
+    const delta = this.steer * steerLock(u0);
+    const cosD = Math.cos(delta), sinD = Math.sin(delta);
+    const m = VEH.mass, a_ = AXLE.a, b_ = AXLE.b, L = VEH.L;
+    const pullK = this.pull ? this.pull / 0.035 : 0; // bent wing: extra drag on one side of the nose
 
-    // --- lateral
-    // steering lock: full lock in hairpins (about 6.5 m radius at 25 km/h, enough for Loews and the Montreal
-    // hairpin), the same calm range as before at high speed
-    const maxSteer = Math.min(0.55, 1.2 / (1 + Math.abs(this.v) / 5));
-    const wantYaw = (this.v / CAR.wheelBase) * Math.tan(this.steer * maxSteer);
-    // friction circle: braking / traction eat into lateral grip
-    const S = this.setup;
-    // setup: wings scale downforce, diff lock trades traction for rotation on throttle
-    let latMax = mu * (CAR.gripBase + CAR.downforce * S.df * v * v) * 1.06; // a touch more forgiving than the AI's limit
-    latMax *= 1 - (S.diff - 0.5) * 0.12 * this.throttle;
-    const longUse = Math.min(0.85, (brk * bd + this.throttle * eng * 0.4) / (latMax + 1e-3));
-    const latAvail = latMax * Math.sqrt(1 - longUse * longUse) * (1 - 0.6 * this.lockup);
-    const maxYaw = latAvail / Math.max(Math.abs(this.v), 2);
-    let yawRate = wantYaw * (1 + (0.56 - S.bias) * brk * 1.6) * (1 + (S.bal || 0)); // rearward bias rotates the car on the brakes; wing balance sets turn-in
-    this.slip *= Math.exp(-dt * 3);
-    if (Math.abs(wantYaw) > maxYaw) {
-      const excess = Math.abs(wantYaw) / maxYaw - 1;
-      yawRate = Math.sign(wantYaw) * maxYaw;
-      this.v -= Math.min(excess, 1.5) * 2.6 * dt * Math.sign(this.v); // scrubbing (understeer)
-      this.slip = Math.min(1, this.slip + excess * dt * 3);
-    }
-    if (this.lockup) this.slip = Math.min(1, this.slip + this.lockup * dt * 2);
-    // wheelspin with lock applied: the rear steps out in the direction of the corner
-    if (this.wheelspin > 0.05 && v > 3) { yawRate += Math.sign(this.steer) * Math.min(1, Math.abs(this.steer) * 2) * this.wheelspin * 0.55 * Math.min(1, v / 12); this.slip = Math.min(1, this.slip + this.wheelspin * dt * 2); }
-    // power oversteer in the wet / off-track wobble
-    if (tr.wet && thr > 0.8 && this.gear <= 3 && v > 8 && v < 40) yawRate += Math.sign(this.steer) * 0.06 * thr;
-    if (this.surface === 'grass' || this.surface === 'gravel') yawRate += (Math.random() - 0.5) * 0.25 * Math.min(1, v / 20);
-    if (this.pull) yawRate += this.pull * Math.min(1, v / 40); // bent wing pulls to one side
-    this.yawRate += (yawRate - this.yawRate) * Math.min(1, dt * 14);
-    this.yaw -= this.yawRate * dt;
+    const hs = dt / SUB;
+    let spin = 0, lockF = 0, lockR = 0, usF = 0, usR = 0;
+    for (let k = 0; k < SUB; k++) {
+      const u = this.v, w = this.vy, r = this.yawRate, au = Math.abs(u);
+      // ---- wheel loads: weight (+ road curvature), downforce, load transfer through the springs
+      const Fdf = Math.max(0, downforce(au, dfMul, this.drsOpen));
+      const Fm = Math.max(0, m * (VEH.g + u * u * curvV));
+      const dLong = (SUSP.Kp * this.pitch + SUSP.Cp * this.pitchV) / L;
+      const Mroll = SUSP.Kr * this.roll + SUSP.Cr * this.rollV;
+      const dF = (VEH.rollFront * Mroll) / VEH.tF, dR = ((1 - VEH.rollFront) * Mroll) / VEH.tR;
+      const fo = (Fm * b_ / L + Fdf * aeroFront + dLong) / 2, ro = (Fm * a_ / L + Fdf * (1 - aeroFront) - dLong) / 2;
+      const FL = Math.max(0, fo + dF), FR = Math.max(0, fo - dF), RL = Math.max(0, ro + dR), RR = Math.max(0, ro - dR);
+      this.load[0] = FL; this.load[1] = FR; this.load[2] = RL; this.load[3] = RR;
+      const capF = tyrePeak(FL, mu) + tyrePeak(FR, mu), pRL = tyrePeak(RL, mu), pRR = tyrePeak(RR, mu);
+      const capR = pRL + pRR, capRd = (1 - lock) * 2 * Math.min(pRL, pRR) + lock * capR;
 
-    this.x += -Math.sin(this.yaw) * this.v * dt;
-    this.z += -Math.cos(this.yaw) * this.v * dt;
-    // contact: sideways shove bleeds off through the tyres, a yaw kick can spin the car
+      // ---- slip angles with tyre relaxation (side force needs ~half a metre of rolling to build up)
+      const vfx = u * cosD + (w + a_ * r) * sinD, vfy = -u * sinD + (w + a_ * r) * cosD; // front wheel frame
+      const vrx = u, vry = w - b_ * r;
+      const relax = 1 - Math.exp(-Math.max(au, 1) * hs / VEH.relax);
+      this.aF += (Math.atan2(vfy, Math.max(Math.abs(vfx), 0.5)) - this.aF) * relax;
+      this.aR += (Math.atan2(vry, Math.max(Math.abs(vrx), 0.5)) - this.aR) * relax;
+
+      // ---- side force each axle would make at its slip angle (Magic-Formula curve, load-sensitive μ)
+      const FyFp = -capF * sideCurve(this.aF), FyRp = -capR * sideCurve(this.aR);
+      // ---- longitudinal tyre forces per axle (wheel frame, + forward)
+      const dir = Math.sign(u) || 0;
+      let FxF = -dir * S.bias * brakeF;
+      // brake-by-wire: the MGU-K harvest / engine drag is part of the rear's share, not on top of it
+      let FxR = reverse ? -3 * m : drive - dir * Math.max((1 - S.bias) * brakeF, engBrake); // reverse gear: gentle 3 m/s²
+      // driver aids: ABS / full TC hold each axle's longitudinal force inside what the friction circle leaves
+      // after the side force the corner needs, so the car stays steerable; without them an axle that is asked
+      // for more than its grip locks (brakes) or spins up (drive)
+      const room = (cap, fy) => Math.sqrt(Math.max(0, cap * cap - fy * fy));
+      lockF = 0; lockR = 0; spin = 0;
+      if (abs) { const l = room(capF, FyFp); if (-FxF * dir > l) FxF = -dir * l; } else if (Math.abs(FxF) > capF) lockF = 1;
+      if (FxR < 0 && !reverse) { if (abs) { const l = room(capR, FyRp); if (-FxR > l) FxR = -l; } else if (-FxR > capR) lockR = 1; }
+      if (FxR > 0) {
+        const l = tc === 'full' ? Math.min(capRd, room(capR, FyRp)) : capRd;
+        if (FxR > l) {
+          if (tc === 'full') FxR = l;
+          else { spin = Math.min(1, (FxR / l - 1) * (tc === 'off' ? 1.5 : 0.5)); FxR = l * (1 - (1 - MF_SLIDE) * spin); } // rears spin up
+        }
+      }
+      // ---- side forces: the slip-angle force, capped by the friction circle left after Fx;
+      // a locked axle slides: its whole (sliding) force points against its own velocity
+      const clampC = (fy, cap, fx) => { const l = room(cap, fx); return Math.max(-l, Math.min(l, fy)); };
+      let FyF, FyR;
+      if (lockF) { const vv = Math.hypot(vfx, vfy) || 1; FxF = -MF_SLIDE * capF * vfx / vv; FyF = -MF_SLIDE * capF * vfy / vv; }
+      else FyF = clampC(FyFp, capF, FxF);
+      if (lockR) { const vv = Math.hypot(vrx, vry) || 1; FxR = -MF_SLIDE * capR * vrx / vv; FyR = -MF_SLIDE * capR * vry / vv; }
+      else FyR = clampC(FyRp, capR, FxR);
+      usF = Math.hypot(FxF, FyF) / Math.max(capF, 1); usR = Math.hypot(FxR, FyR) / Math.max(capR, 1);
+
+      // ---- body forces and yaw moment
+      let Fx = FxF * cosD - FyF * sinD + FxR;
+      const Fy = FxF * sinD + FyF * cosD + FyR;
+      let Mz = a_ * (FxF * sinD + FyF * cosD) - b_ * FyR;
+      // limited-slip diff: equal rear wheel speeds through a turn push the inner wheel ahead -> yaw moment
+      // against the rotation (longitudinal slip stiffness ~25 x load); bounded by the drive it locks
+      if (lock > 0 && FxR > 0 && au > 3) {
+        const dFx = Math.min(lock * FxR, (lock * 25 * (RL + RR) * Math.abs(r) * VEH.tR) / au);
+        Mz -= Math.sign(r) * dFx * VEH.tR / 2;
+      }
+      if (pullK) Mz += pullK * 0.15 * dragForce(au, cdA) * VEH.tF / 2;
+      const res = dragForce(u, cdA) + dir * (VEH.crr + SF.crr) * (Fm + Fdf);
+      Fx -= res + m * 9.81 * grade;
+
+      // ---- integrate (body frame: u' = Fx/m + w r, w' = Fy/m - u r, r' = Mz/Iz)
+      this.ax = Fx / m; this.ay = Fy / m;
+      let nu = u + (this.ax + w * r) * hs, nw = w + (this.ay - u * r) * hs, nr = r + (Mz / VEH.Iz) * hs;
+      // brakes and rolling resistance stop the car, they don't push it backwards
+      if (!reverse && drive <= 0 && Math.sign(nu) !== Math.sign(u) && u !== 0) nu = 0;
+      if (reverse) nu = Math.max(-6, nu);
+      // walking pace: the tyre model degenerates (slip angles of a nearly stopped car); blend into
+      // rolling-without-slip kinematics below ~4 m/s
+      const kin = Math.min(1, Math.max(0, (Math.abs(nu) - 1.5) / 2.5));
+      if (kin < 1) {
+        const rk = (nu * Math.tan(delta)) / L;
+        nr = nr * kin + rk * (1 - kin); nw = nw * kin + rk * b_ * (1 - kin);
+      }
+      this.v = nu; this.vy = nw; this.yawRate = nr;
+      // ---- sprung mass: roll and pitch springs/dampers driven by the inertial moments
+      this.rollV += ((m * this.ay * VEH.h - SUSP.Kr * this.roll - SUSP.Cr * this.rollV) / VEH.Ix) * hs;
+      this.roll += this.rollV * hs;
+      this.pitchV += ((-m * this.ax * VEH.h - SUSP.Kp * this.pitch - SUSP.Cp * this.pitchV) / VEH.Iy) * hs;
+      this.pitch += this.pitchV * hs;
+      this.heave = -(Fdf + m * u * u * curvV) / VEH.heaveK;
+      // ---- position
+      this.yaw -= nr * hs;
+      this.x += (-Math.sin(this.yaw) * nu + Math.cos(this.yaw) * nw) * hs;
+      this.z += (-Math.cos(this.yaw) * nu - Math.sin(this.yaw) * nw) * hs;
+    }
+    if (Math.abs(this.v) < 0.05 && Math.abs(this.vy) < 0.05 && thr < 0.05 && brk < 0.05) { this.v = 0; this.vy = 0; }
+    this.wheelspin = spin;
+    this.lockup = Math.max(lockF, lockR);
+    this.usage[0] = usF; this.usage[1] = usR;
+    // sliding indicator (tyre heat, wear, sound): how far past the grip peak the tyres run
+    const over = Math.max(Math.abs(this.aF), Math.abs(this.aR)) / ALPHA_PEAK;
+    this.slip = Math.min(1, Math.max(0, over - 1) * 1.5 + this.lockup * 0.6 + spin * 0.5);
+    // legacy contact inputs (world shove / yaw kick) go straight into the velocities
     if (this.kx || this.kz || this.spin) {
-      this.x += this.kx * dt; this.z += this.kz * dt;
-      const kd = Math.exp(-dt * (this.surface === 'road' ? 2.6 : 4));
-      this.kx *= kd; this.kz *= kd;
-      this.yaw -= this.spin * dt;
-      if (Math.abs(this.spin) > 1.2) { this.v -= Math.sign(this.v) * Math.min(Math.abs(this.v), (3 + Math.abs(this.v) * 0.35) * dt); this.slip = 1; }
-      this.spin *= Math.exp(-dt * (Math.abs(this.spin) > 2 ? 1.1 : 2.8));
-      if (Math.abs(this.spin) < 0.02) this.spin = 0;
-      if (Math.hypot(this.kx, this.kz) < 0.05) this.kx = this.kz = 0;
+      this.setWorldVel(this.wvx + this.kx, this.wvz + this.kz); this.yawRate += this.spin;
+      this.kx = this.kz = this.spin = 0;
     }
 
     // --- track position & barriers
@@ -219,21 +312,39 @@ export class PlayerCar {
       const f = tr.frame(this.s);
       this.x -= f.rx * side * pen; this.z -= f.rz * side * pen;
       this.lat = side * lim;
-      // impact: kill velocity component into the wall
-      const heading = Math.atan2(-f.tx, -f.tz);
-      let rel = this.yaw - heading; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
-      const into = Math.abs(Math.sin(rel));
-      const hit = this.v * into;
-      if (hit > 2) { this.impact = Math.min(1, hit / 30); this.wallHit = Math.max(this.wallHit || 0, hit); this.wallSide = side; }
-      this.v *= 1 - Math.min(0.9, into * 1.6);
-      // shove into the wall is absorbed
-      const kin = this.kx * f.rx * side + this.kz * f.rz * side;
-      if (kin > 0) { this.kx -= f.rx * side * kin; this.kz -= f.rz * side * kin; }
-      this.yaw -= rel * 0.5; // align with wall
+      this.wallImpact(f.rx * side, f.rz * side);
     }
     this.bump = this.surface === 'kerb' ? 1 : this.surface === 'gravel' || this.surface === 'grass' ? 0.6 : 0;
     this.impact *= Math.exp(-dt * 3);
     this.wheelRot += (this.v * dt) / CAR.tyreR;
+  }
+
+  // rigid-body impulse against a barrier with outward normal n (pointing into the wall): the corner of the
+  // car that touches it takes the hit, so a glancing nose contact turns the car (restitution 0.15 and wall
+  // friction 0.3 are estimates for tyre barriers / Armco)
+  wallImpact(nx, nz) {
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), Rx = Math.cos(this.yaw), Rz = -Math.sin(this.yaw);
+    let best = -1e9, P = 0, Q = 0;
+    for (const p of [2.6, -2.6]) for (const q of [0.95, -0.95]) {
+      const d = (p * fx + q * Rx) * nx + (p * fz + q * Rz) * nz;
+      if (d > best) { best = d; P = p; Q = q; }
+    }
+    // velocity of that corner: V + r (P R - Q f)
+    const r = this.yawRate, lx = P * Rx - Q * fx, lz = P * Rz - Q * fz;
+    let vx = this.wvx + r * lx, vz = this.wvz + r * lz;
+    const vn = vx * nx + vz * nz;
+    if (vn <= 0) return;
+    const m = VEH.mass, I = VEH.Iz, e = 0.15, muW = 0.3;
+    const levN = lx * nx + lz * nz, J = (-(1 + e) * vn) / (1 / m + (levN * levN) / I);
+    let Vx = this.wvx + (J * nx) / m, Vz = this.wvz + (J * nz) / m, nr = r + (J * levN) / I;
+    // friction along the wall
+    const tx = -nz, tz = nx, levT = lx * tx + lz * tz;
+    vx = Vx + nr * lx; vz = Vz + nr * lz;
+    const vt = vx * tx + vz * tz;
+    const Jt = Math.max(-muW * Math.abs(J), Math.min(muW * Math.abs(J), -vt / (1 / m + (levT * levT) / I)));
+    Vx += (Jt * tx) / m; Vz += (Jt * tz) / m; nr += (Jt * levT) / I;
+    this.setWorldVel(Vx, Vz); this.yawRate = nr;
+    if (vn > 2) { this.impact = Math.min(1, vn / 30); this.wallHit = Math.max(this.wallHit || 0, vn); this.wallSide = nx * Rx + nz * Rz > 0 ? 1 : -1; }
   }
 }
 
@@ -403,11 +514,12 @@ export class AICar {
     this.laneTimer -= dt;
     if (this.laneTimer <= 0) this.latOff *= Math.exp(-dt * 0.6);
 
-    const acc = Math.max(0.5, (CAR.power / (CAR.mass * Math.max(this.v, 4))) - (0.5 * 1.2 * CAR.cdA * this.v * this.v) / CAR.mass);
-    const traction = wetMu * (12 + 0.002 * this.v * this.v) * (raceTime < 4 ? this.launch : 1);
-    if (this.v < target) this.v = Math.min(target, this.v + Math.min(acc, traction) * dt);
+    // same car limits as the player's model: rear traction / power net of drag, braking with ABS; the speed
+    // profile already accounts for the slope, so gravity acts here in full
+    const acc = Math.max(0.5, driveAccel(this.v, CAR.power, CAR.cdA, wetMu) * (raceTime < 4 ? this.launch : 1));
+    if (this.v < target) this.v = Math.min(target, this.v + acc * dt);
     else this.v = Math.max(target, this.v - brakeDecel(this.v, wetMu) * dt);
-    if (tr.hs && this.v > 3) this.v -= 9.81 * tr.gradeAt(s) * dt * 0.8; // slope (the speed profile is flat, so a little less)
+    if (tr.hs && this.v > 3) this.v -= 9.81 * tr.gradeAt(s) * dt;
     this.v = Math.max(0, this.v);
     this.dist += this.v * dt;
 
