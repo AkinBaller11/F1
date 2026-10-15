@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apex GP Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,700;0,900;1,900&display=swap" rel="stylesheet">
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<style>
+  :root { --bg: #050608; --ink: #f2f4f7; --dim: #8a909a; --line: rgba(255,255,255,.14); --acc: #e10600; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Titillium Web", system-ui, sans-serif; overflow: hidden; }
+  canvas#studio { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .ui { position: fixed; left: 0; right: 0; bottom: 0; padding: 16px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); pointer-events: none; display: flex; flex-direction: column; gap: 10px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+  .team { pointer-events: none; }
+  .team .name { font-weight: 900; font-style: italic; font-size: clamp(22px, 5vw, 40px); letter-spacing: .02em; line-height: 1; text-transform: uppercase; }
+  .team .meta { color: var(--dim); font-size: 14px; margin-top: 4px; }
+  .bar { display: flex; gap: 8px; overflow-x: auto; pointer-events: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .bar::-webkit-scrollbar { display: none; }
+  .bar button { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: rgba(16,18,22,.75); color: var(--ink); font: 700 14px "Titillium Web", sans-serif; padding: 8px 12px; border-radius: 8px; cursor: pointer; backdrop-filter: blur(6px); }
+  .bar button[aria-pressed="true"] { border-color: var(--ink); }
+  .bar i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(255,255,255,.3) inset; }
+  .top { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: max(12px, env(safe-area-inset-top)) 16px 12px; pointer-events: none; }
+  .top a, .top span { pointer-events: auto; color: var(--dim); text-decoration: none; font-size: 14px; }
+  .top a:hover { color: var(--ink); }
+  .note { color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<canvas id="studio" aria-label="Studio-Ansicht des Rennwagens, mit Maus oder Finger drehbar"></canvas>
+<div class="top"><a href="./">← Zurück zum Spiel</a><span id="tier"></span></div>
+<div class="ui">
+  <div class="team"><div class="name" id="tname"></div><div class="meta" id="tmeta"></div></div>
+  <div class="bar" id="teams" role="group" aria-label="Team wählen"></div>
+  <div class="note">Fiktive Teams und Sponsoren. Ziehen zum Drehen, Zoom mit Mausrad oder zwei Fingern.</div>
+</div>
+<script type="module" src="js/studio.js"></script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 // real wing profiles, wheels with covers, suspension, floor and diffuser.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { rigidOnTerrain } from './terrain.js';
 
 export const TEAMS = [
@@ -1079,9 +1080,10 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   // decals
   const lum = (c) => (0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255)) / 255;
   const light = lum(team.top) > 0.6;
+  const decals = [];
   const decal = (tex, w, h, x, y, z, ry = 0, rx = 0) => {
     const me = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.4, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false }));
-    me.position.set(x, y, z); me.rotation.set(rx, ry, 0, 'YXZ'); me.userData.lod = true; car.add(me); return me;
+    me.position.set(x, y, z); me.rotation.set(rx, ry, 0, 'YXZ'); me.userData.lod = true; car.add(me); decals.push({ me, w, h }); return me;
   };
   const numFont = { w: 256, h: 128, font: 'italic 900 100px "Titillium Web", Arial' };
   if (number) {
@@ -1092,9 +1094,10 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
       decal(decalTex(String(number), '#fff', numFont), 0.22, 0.11, sd * (c.w + 0.006), c.cy + 0.06, 1.25, sd * Math.PI / 2);
     }
   }
-  const sponsors = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ORACLE·X', mer: 'PETRA', ast: 'ARAMCOR', alp: 'BWT·A', wil: 'ATLAS', rb: 'VISA·C', sau: 'TITAN·R', cad: 'NOVA·US', has: 'MONEYG' };
+  // invented partner brands only (no real sponsors, not even thinly disguised ones)
+  const sponsors = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ZENTRIX', mer: 'HELIOX', ast: 'KORVAN', alp: 'AQUILON', wil: 'ATLAS', rb: 'SOLVIQ', sau: 'TITAN·R', cad: 'NOVA·US', has: 'BRAKKEN' };
   const giallo = team.pattern === 'giallo';
-  const spName = giallo ? 'AURIX' : sponsors[team.id] || 'KRONOS';
+  const spName = team.sponsor || (giallo ? 'AURIX' : sponsors[team.id] || 'KRONOS');
   const sp = decalTex(spName, light ? '#111' : '#fff');
   for (const sd of [1, -1]) {
     // flat decal on a curved pod: sit it where the pod is widest and keep it short so no letter sinks into the body
@@ -1106,21 +1109,22 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   if (!classic) decal(sp, 0.32, 0.08, 0, 0.705, -0.85, 0, -Math.PI / 2 + 0.1);
   else { const nz = sectionAt(MONO_C, -1.2); decal(sp, 0.3, 0.075, 0, nz.cy + nz.ht + 0.004, -1.2, 0, -Math.PI / 2 + 0.06); }
   decal(decalTex(spName, '#fff'), 0.7, 0.16, 0, 0.88, 2.43, Math.PI, 0.12);
-  if (giallo && !classic) {
-    // sponsor-style partner graphics (fictional brands)
-    const ink = '#101012';
+  const partners = team.partners || (giallo ? ['VESTRA', 'NORDLIT'] : null);
+  if (partners && !classic) {
+    // partner graphics (fictional brands): engine cover, rear-wing endplates, nose
+    const ink = team.ink || (giallo ? '#101012' : light ? '#111' : '#fff');
     for (const sd of [1, -1]) {
       const c = sectionAt(COVER, 0.75);
-      decal(decalTex('VESTRA', ink, { w: 512, h: 128, font: 'italic 800 78px "Titillium Web", Arial' }), 0.34, 0.085, sd * (c.w + 0.008), c.cy + 0.1, 0.75, sd * Math.PI / 2);
-      decal(decalTex('NORDLIT', '#fff', { w: 512, h: 128, font: 'italic 900 80px "Titillium Web", Arial' }), 0.3, 0.075, sd * 0.522, 0.66, 2.66, sd * Math.PI / 2);
+      decal(decalTex(partners[0], ink, { w: 512, h: 128, font: 'italic 800 78px "Titillium Web", Arial' }), 0.34, 0.085, sd * (c.w + 0.008), c.cy + 0.1, 0.75, sd * Math.PI / 2);
+      decal(decalTex(partners[1], '#fff', { w: 512, h: 128, font: 'italic 900 80px "Titillium Web", Arial' }), 0.3, 0.075, sd * 0.522, 0.66, 2.66, sd * Math.PI / 2);
     }
     const n = sectionAt(MONO, -1.45);
-    decal(decalTex('NORDLIT', ink, { w: 512, h: 128, font: 'italic 900 80px "Titillium Web", Arial' }), 0.24, 0.06, 0, n.cy + n.ht + 0.004, -1.45, 0, -Math.PI / 2 + 0.2);
+    decal(decalTex(partners[2] || partners[1], ink, { w: 512, h: 128, font: 'italic 900 80px "Titillium Web", Arial' }), 0.24, 0.06, 0, n.cy + n.ht + 0.004, -1.45, 0, -Math.PI / 2 + 0.2);
   }
 
   // partner lettering along the top of the halo fairing (left and right of the centre pillar)
   if (!classic) {
-    const words = giallo ? ['AURIX', 'NORDLIT'] : [spName, team.name.toUpperCase()];
+    const words = partners ? [spName, partners[1]] : [spName, team.name.toUpperCase()];
     [[0.18, 0.4, words[0]], [0.6, 0.82, words[1]]].forEach(([u0, u1, w]) => {
       const me = new THREE.Mesh(haloStripGeo(0.038, u0, u1), new THREE.MeshStandardMaterial({ map: decalTex(w, '#ffffff', { w: 512, h: 96, font: 'italic 900 72px "Titillium Web", Arial' }), transparent: true, roughness: 0.35, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false }));
       me.userData.lod = true; car.add(me);
@@ -1189,10 +1193,43 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   const discMat = new THREE.MeshStandardMaterial({ color: 0x3a3c40, metalness: 0.7, roughness: 0.45, emissive: new THREE.Color(0xff4a08), emissiveIntensity: 0 });
   for (const w of wheels) { w.wheel.userData.barrel.material = brakeMat; if (w.wheel.userData.disc) w.wheel.userData.disc.material = discMat; }
   car.userData.brakeMat = brakeMat; car.userData.discMat = discMat;
+  placeDecals(car, decals, !!opts.conform);
   car.add(contactShadow());
   collectLod(car);
   car.rotation.order = 'YXZ'; // heading, then the road's pitch
   return rigidOnTerrain(car);
+}
+
+// put every decal on the real outer skin: a ray from outside along the card's normal finds the paint (the
+// card positions come from approximate cross-sections and can sit inside the scaled 2026 body). With
+// `conform` the lettering is then projected onto the bodywork (DecalGeometry) and follows every curve of the
+// sidepods and the nose; that costs a little per decal, so only showroom cars use it.
+const _ray = new THREE.Raycaster();
+function placeDecals(car, decals, conform) {
+  const target = car.userData.parts.livery;
+  car.updateMatrixWorld(true);
+  const inv = car.matrixWorld.clone().invert(), p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  for (const { me, w, h } of decals) {
+    me.matrixWorld.decompose(p, q, sc);
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(q); // the card faces outwards
+    _ray.set(p.clone().addScaledVector(n, 0.6), n.clone().negate()); _ray.far = 1.2;
+    const hit = _ray.intersectObject(target, false)[0];
+    if (!hit) continue; // over a wing or a gap (rear-wing endplates): keep the card where it is
+    const at = hit.point.clone().addScaledVector(n, 0.004);
+    if (!conform) {
+      // move the flat card onto the skin (in its parent's space)
+      me.position.copy(me.parent.worldToLocal(at.clone()));
+      continue;
+    }
+    const g = new DecalGeometry(target, hit.point, new THREE.Euler().setFromQuaternion(q), new THREE.Vector3(w * sc.x, h * sc.y, 0.1));
+    if (!g.attributes.position || g.attributes.position.count === 0) continue;
+    g.translate(n.x * 0.003, n.y * 0.003, n.z * 0.003); // 3 mm off the paint against z-fighting
+    g.applyMatrix4(inv);
+    // the projected faces inherit the body's winding (it is built inside-out and drawn double-sided)
+    me.material.side = THREE.DoubleSide;
+    const dm = new THREE.Mesh(g, me.material); dm.userData.lod = true;
+    me.parent.remove(me); car.add(dm);
+  }
 }
 
 function helmetTex(team, number, sponsor = '') {

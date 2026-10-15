@@ -3678,6 +3678,7 @@ document.addEventListener('click', (e) => {
   if (act === 'photo' && game) { $('#pause').classList.remove('active'); game.startPhoto(); }
   if (act === 'podium-next' && game) game.endPodium();
   if (act === 'career') { if (game && game.resultsShown) quitToMenu(); renderCareer(); showScreen('career'); }
+  if (act === 'studio') { location.href = 'studio.html'; return; }
   if (act === 'trophies') { renderTrophies(); showScreen('trophies'); }
   if (act === 'school') { if (game) quitToMenu(); $('#school-result').hidden = true; renderSchool(); showScreen('school'); }
   if (act === 'school-retry') { $('#school-result').hidden = true; startRace(null, lastExtra); }
