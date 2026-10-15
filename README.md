@@ -51,11 +51,17 @@ Rennen erstellen, Code oder Einladungslink teilen (auf dem Handy über das Teile
 
 ## Streckendaten
 
-Die echten Streckenverläufe stammen aus [f1-circuits](https://github.com/bacinger/f1-circuits) von Tomislav Bacinger (MIT-Lizenz). Die GPS-Linien werden alle 20 m neu abgetastet, leicht geglättet und auf die offizielle Rundenlänge skaliert. Start-Ziel liegt wie im Original, Nachtrennen (Bahrain, Dschidda, Singapur, Las Vegas, Katar) starten bei Nacht. Höhenunterschiede und die Umgebung sind nachempfunden; an Suzukas Kreuzung gibt es statt der Brücke eine ebene Kreuzung ohne Kollisionen zwischen den beiden Ästen.
+Streckengeometrie, zwei Qualitätsstufen:
+
+**Vermessen (12 Strecken):** Spa, Monza, Silverstone, Spielberg, Budapest, Suzuka, Shanghai, Bahrain, Montreal, Austin, Mexiko-Stadt, São Paulo. Mittellinie und Fahrbahnbreite stammen aus der [TUMFTM racetrack-database](https://github.com/TUMFTM/racetrack-database) (LGPL-3.0, Lehrstuhl für Fahrzeugtechnik der TU München; Mittellinien aus OpenStreetMap, © OpenStreetMap-Mitwirkende, ODbL; Breiten per Bildverarbeitung aus Satellitenbildern). Die Linie wird auf die echte Fahrbahnmitte verschoben, ohne Skalierung per Rotation und Verschiebung auf die unabhängige f1-circuits-Linie gelegt (mittlere Abweichung 1–3 m) und alle 5 m gespeichert. Die gemessene Rundenlänge weicht höchstens 0,06 % von der offiziellen ab. Die Breite variiert entlang der Runde (z. B. Spa 8–16 m, Silverstone 11–17 m); Physik, KI, Ideallinie, Randsteine, Kies und Gelände richten sich nach ihr.
+
+**Geschätzt (12 Strecken):** Melbourne, Dschidda, Miami, Monaco, Barcelona, Zandvoort, Madrid, Baku, Singapur, Las Vegas, Katar, Abu Dhabi. Hier gibt es keine passenden Messdaten: Die TUM-Daten fehlen oder zeigen ein altes Layout (Melbourne und Abu Dhabi vor 2021, Barcelona mit der 2023 entfernten Schikane, Zandvoort nur DTM). Diese Strecken nutzen die GPS-Linien aus [f1-circuits](https://github.com/bacinger/f1-circuits) von Tomislav Bacinger (MIT-Lizenz), alle 20 m neu abgetastet, leicht geglättet und auf die offizielle Rundenlänge skaliert, mit einheitlich 14 m Fahrbahnbreite.
+
+Bei allen Strecken geschätzt: Randsteine, Kiesbetten, Auslaufzonen, Mauern und Leitplanken werden aus der Kurvenkrümmung abgeleitet. Für sie gibt es keine frei nutzbaren Messdaten. Start-Ziel liegt wie im Original, Nachtrennen (Bahrain, Dschidda, Singapur, Las Vegas, Katar) starten bei Nacht. An Suzukas Kreuzung gibt es statt der Brücke eine ebene Kreuzung ohne Kollisionen zwischen den beiden Ästen.
 
 An der Küste liegen die Strecken am Wasser (Monaco und Baku mit Yachten, Dschidda, Singapur, Abu Dhabi, Zandvoort, Montreal), Melbourne um den Albert-Park-See; Stadtkurse haben je nach Ort Hochhäuser (Singapur, Las Vegas) oder mittelhohe Bebauung (Monaco, Baku).
 
-Höhenprofile: echte Höhen aus den offenen AWS Terrain Tiles (SRTM und nationale Höhenmodelle) entlang jeder Strecke, gegen Bäume und Dächer geglättet (Spa 105 m, Spielberg 63 m, Monaco 45 m, Interlagos und Suzuka 43 m, Silverstone 12 m). Die ganze Welt wird im Shader um diese Höhe angehoben, Kamera und Fahrphysik lesen dieselbe Höhenkarte: bergauf bremst die Schwerkraft, bergab schiebt sie.
+Höhenprofile: echte Höhen aus den offenen AWS Terrain Tiles (SRTM und nationale Höhenmodelle, Raster ca. 10–30 m) entlang jeder Strecke, gegen Bäume und Dächer geglättet (Höhenunterschied Spa 104 m, Spielberg 63 m, Monaco 45 m, Interlagos und Suzuka 43 m, Silverstone 12 m). Kurze Steilstücke werden dadurch flacher: In Spa ergibt das Höhenmodell am Raidillon im 55-m-Mittel 13 % Steigung, genannt werden meist etwa 17–18 %. Die ganze Welt wird im Shader um diese Höhe angehoben, Kamera und Fahrphysik lesen dieselbe Höhenkarte: bergauf bremst die Schwerkraft, bergab schiebt sie.
 
 Formula 1, F1 und verwandte Marken gehören der Formula One Licensing B.V.; dies ist ein inoffizielles Fan-Projekt.
 

@@ -6,6 +6,10 @@
 // in race direction with the start/finish line at the origin (`start` shifts it, in metres).
 // `elev`: height of every control point above the lowest one in decimetres, sampled from the open AWS
 // Terrain Tiles (SRTM and national elevation models) and smoothed against trees and roofs.
+// The circuits in tracks_real.js (MEASURED) replace this line with measured TUM geometry incl. road width;
+// the others keep the GeoJSON line (scaled to the official length) and the default width: estimates.
+import { MEASURED } from './tracks_real.js';
+
 export const TRACKS = [
   { id: 'melbourne', name: 'Melbourne', gp: 'Großer Preis von Australien', style: 'park', tod: 'noon', laps: 5, real: true, start: 0, km: 5.278, bigLake: true, rise: 10.4,
     info: 'Albert Park: flüssiger Kurs rund um den See',
@@ -111,6 +115,16 @@ export const TRACKS = [
   },
 ];
 
+// circuits with measured geometry (TUM racetrack-database, see tracks_real.js) replace the GeoJSON line:
+// real lap length (no stretching), road centre, per-point road width and the elevation along that line
+for (const t of TRACKS) {
+  const m = MEASURED[t.id];
+  if (!m) continue;
+  t.ctrl = m.pts.map((p) => [p[0] / 100, p[1] / 100]);
+  t.elev = m.elev; t.hw = m.hw.map((v) => v / 10);
+  t.km = m.km; t.rise = m.rise; t.start = 0; t.measured = true;
+}
+
 export const TIMES = [
   { id: 'morning', name: 'Morgen' },
   { id: 'noon', name: 'Mittag' },
@@ -122,6 +136,6 @@ export const trackById = (id) => TRACKS.find((t) => t.id === id) || TRACKS.find(
 // storage id for lap records and ghosts: these five had hand-drawn layouts before the real data, so their
 // old times and ghosts belong to a different track
 const REDRAWN = ['barcelona', 'monza', 'silverstone', 'spa', 'monaco'];
-export const recordId = (id) => (REDRAWN.includes(id) ? id + '2' : id);
+export const recordId = (id) => (MEASURED[id] ? id + '3' : REDRAWN.includes(id) ? id + '2' : id); // '3': measured geometry
 // championship calendar: the real circuits in season order
 export const CALENDAR = TRACKS.filter((t) => t.real).map((t) => t.id);

@@ -4,7 +4,7 @@ import * as TX from './textures.js';
 import { buildScenery } from './scenery.js';
 import { buildTerrain } from './terrain.js';
 
-export const HALF_W = 7;      // half track width (m)
+export const HALF_W = 7;      // default half track width (m); measured circuits carry their own per sample (Track.hw)
 export const KERB_W = 1.6;
 const DS = 2;                 // sample spacing (m)
 
@@ -60,7 +60,7 @@ export class Track {
     this.buildRacingLine();
     this.buildSpeedProfile();
     this.buildLimits();
-    buildTerrain(this, 7000, 1024, HALF_W); // real elevation (no-op on flat circuits)
+    buildTerrain(this, 7000, 1024, HALF_W); // real elevation (no-op on flat circuits); uses this.hw per sample
     this.hilly = this.hs.some((h) => h > 0.5);
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -125,12 +125,15 @@ export class Track {
         for (let k = 1; k < ns; k++) dense.push([s0[0] + (s1[0] - s0[0]) * (k / ns), -(s0[1] + (s1[1] - s0[1]) * (k / ns))]);
       }
     } else {
-      const C = def.ctrl, n = C.length, E = def.elev;
+      const C = def.ctrl, n = C.length, E = def.elev, Wd = def.hw;
+      // measured circuits have points every 5 m: fewer spline steps keep the dense line small
+      const sub = n > 600 ? 12 : 60;
       for (let i = 0; i < n; i++) {
         const a = C[(i - 1 + n) % n], b = C[i], c = C[(i + 1) % n], d = C[(i + 2) % n];
-        for (let k = 0; k < 60; k++) {
-          const t = k / 60;
-          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t), E ? (E[i] + (E[(i + 1) % n] - E[i]) * t) / 10 : 0]);
+        for (let k = 0; k < sub; k++) {
+          const t = k / sub;
+          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t),
+            E ? (E[i] + (E[(i + 1) % n] - E[i]) * t) / 10 : 0, Wd ? Wd[i] + (Wd[(i + 1) % n] - Wd[i]) * t : HALF_W]);
         }
       }
     }
@@ -142,7 +145,7 @@ export class Track {
     const total = cum[dense.length];
     const N = Math.round(total / DS);
     this.N = N; this.ds = total / N; this.length = total;
-    this.px = new Float32Array(N); this.pz = new Float32Array(N); this.hs = new Float32Array(N);
+    this.px = new Float32Array(N); this.pz = new Float32Array(N); this.hs = new Float32Array(N); this.hw = new Float32Array(N);
     let j = 0;
     for (let i = 0; i < N; i++) {
       const s = i * this.ds;
@@ -152,6 +155,7 @@ export class Track {
       this.px[i] = p[0] + (q[0] - p[0]) * f;
       this.pz[i] = p[1] + (q[1] - p[1]) * f;
       this.hs[i] = (p[2] || 0) + ((q[2] || 0) - (p[2] || 0)) * f; // road height above the lowest point (m)
+      this.hw[i] = (p[3] || HALF_W) + ((q[3] || HALF_W) - (p[3] || HALF_W)) * f; // half road width (m)
     }
     this.tx = new Float32Array(N); this.tz = new Float32Array(N);
     for (let i = 0; i < N; i++) {
@@ -199,21 +203,33 @@ export class Track {
     return this.hs[i] + (this.hs[j] - this.hs[i]) * t;
   }
   gradeAt(s) { return (this.hAt(s + 6) - this.hAt(s - 6)) / 12; }
+  // half road width (centre line to the white edge line) at distance s
+  hwAt(s) {
+    s = this.wrapS(s);
+    const f = s / this.ds, i = Math.floor(f) % this.N, j = (i + 1) % this.N, t = f - Math.floor(f);
+    return this.hw[i] + (this.hw[j] - this.hw[i]) * t;
+  }
 
   buildRacingLine() {
     const N = this.N;
     const ks = smoothArr(this.k, 12, 3);
-    const G = 320, lim = HALF_W - 1.6;
+    // how close the car's centre gets to the white line: real cars put their wheels on the kerbs; the 14 m
+    // default-width circuits keep the older, wider margin so their lap times stay as they were
+    this.lineMargin = this.def.measured ? 0.5 : 1.6;
+    // in corners (where buildLimits lays kerbs) the line on measured circuits may run onto the kerb, the car's
+    // centre up to 0.3 m past the white line (one side of the car over it), like real cars through chicanes
+    const kerbed = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (Math.abs(this.k[i]) > 1 / 320) for (let d = -6; d <= 6; d++) kerbed[(i + d + N) % N] = 1;
+    const G = 320, lim = (i) => this.hw[i] - (this.def.measured && kerbed[i] ? -0.3 : this.lineMargin);
     const off = Math.round(55 / this.ds);
     const race = new Float32Array(N);
     for (let i = 0; i < N; i++) {
       const v = G * (ks[i] - 0.55 * ks[(i + off) % N] - 0.35 * ks[(i - off + N) % N]);
-      race[i] = Math.max(-lim, Math.min(lim, v));
+      race[i] = Math.max(-lim(i), Math.min(lim(i), v));
     }
     // minimum-curvature refinement ("elastic band"): every point is pulled toward the midpoint of its
     // neighbours and clamped to the track width -> real outside-inside-outside lines through corners
     const lat = smoothArr(race, 8, 3);
-    const edge = HALF_W - 1.6;
     for (const stride of [16, 8, 4, 2]) {
       for (let it = 0; it < 90; it++) {
         for (let i = 0; i < N; i++) {
@@ -224,6 +240,7 @@ export class Track {
           const tz = (-a2[1] + 4 * a1[1] + 4 * b1[1] - b2[1]) / 6 - this.pz[i];
           const want = tx * -this.tz[i] + tz * this.tx[i];
           const nl = lat[i] + (want - lat[i]) * 0.5;
+          const edge = lim(i);
           lat[i] = nl > edge ? edge : nl < -edge ? -edge : nl;
         }
       }
@@ -310,14 +327,15 @@ export class Track {
     // street circuit: walls right next to the track, no gravel
     if (this.style === 'city') {
       for (let i = 0; i < N; i++) {
-        left[i] = right[i] = HALF_W + 3.2 + Math.min(4, Math.abs(ks[i]) * 220);
+        left[i] = right[i] = this.hw[i] + 3.2 + Math.min(4, Math.abs(ks[i]) * 220);
         this.gravelL[i] = this.gravelR[i] = 0;
       }
     }
     // pit straight: pit wall on the right
     for (let i = 0; i < N; i++) {
       const s = i * this.ds;
-      if (this.inPitStraight(s)) { right[i] = 11; left[i] = this.style === 'city' ? 11 : 15; this.gravelL[i] = this.gravelR[i] = 0; }
+      // the pit wall stays clear of the pit lane however wide the road is
+      if (this.inPitStraight(s)) { right[i] = Math.max(11, this.hw[i] + 4); left[i] = Math.max(this.style === 'city' ? 11 : 15, this.hw[i] + (this.style === 'city' ? 4 : 8)); this.gravelL[i] = this.gravelR[i] = 0; }
     }
     // other parts of the circuit close by (parallel sections, Suzuka's crossover): run-off and walls stop
     // halfway to them; where the road crosses itself there are no walls, kerbs or gravel at all
@@ -325,13 +343,13 @@ export class Track {
     const near = this.neighbourGaps();
     for (let i = 0; i < N; i++) {
       if (near.cross[i]) { this.cross[i] = 1; left[i] = right[i] = 24; continue; }
-      if (near.L[i] < 1e9) left[i] = Math.min(left[i], Math.max(HALF_W + 1.6, near.L[i] / 2 - 1));
-      if (near.R[i] < 1e9) right[i] = Math.min(right[i], Math.max(HALF_W + 1.6, near.R[i] / 2 - 1));
+      if (near.L[i] < 1e9) left[i] = Math.min(left[i], Math.max(this.hw[i] + 1.6, near.L[i] / 2 - 1));
+      if (near.R[i] < 1e9) right[i] = Math.min(right[i], Math.max(this.hw[i] + 1.6, near.R[i] / 2 - 1));
     }
     if (near.pairs.length) this.levelCrossings(near.pairs);
     // verges (grass / pavement beside the road) end halfway to a neighbouring section, so they meet the other
     // section's verge instead of reaching over its road
-    const half = (g) => Float32Array.from(g, (d) => Math.max(HALF_W + 1, Math.min(92, d / 2)));
+    const half = (g) => Float32Array.from(g, (d, i) => Math.max(this.hw[i] + 1, Math.min(92, d / 2)));
     const soft = (raw) => { const sm = smoothArr(raw, 6, 2); for (let i = 0; i < N; i++) sm[i] = Math.min(sm[i], raw[i]); return sm; }; // never past the half gap
     this.vergeL = soft(half(near.L)); this.vergeR = soft(half(near.R));
     this.limL = smoothArr(left, 6, 2);
@@ -379,11 +397,11 @@ export class Track {
           if (arc < d * 3 + 40) continue;
           const along = dx * tx + dz * tz, lat = dx * -tz + dz * tx;
           if (Math.abs(along) > 20) continue;
-          if (Math.abs(lat) < 2 * HALF_W + 2) {
+          if (Math.abs(lat) < this.hw[i] + this.hw[j] + 2) {
             // a real crossover only if the other branch actually passes through our centre line
             const j0 = (j - 3 + N) % N, j1 = (j + 3) % N;
             const l0 = (this.px[j0] - x) * -tz + (this.pz[j0] - z) * tx, l1 = (this.px[j1] - x) * -tz + (this.pz[j1] - z) * tx;
-            if (Math.sign(l0) !== Math.sign(l1) && Math.abs(lat) < HALF_W) { cross[i] = 1; if (d < 4) pairs.push([i, j, d]); continue; }
+            if (Math.sign(l0) !== Math.sign(l1) && Math.abs(lat) < this.hw[i]) { cross[i] = 1; if (d < 4) pairs.push([i, j, d]); continue; }
           }
           if (lat > 0) Rr[i] = Math.min(Rr[i], lat); else L[i] = Math.min(L[i], -lat);
         }
@@ -522,7 +540,7 @@ export class Track {
 
   buildMeshes() {
     const wet = this.wet;
-    const W = HALF_W;
+    const W = (i) => this.hw[i], nW = (i) => -this.hw[i], at = (d) => (i) => this.hw[i] + d, nat = (d) => (i) => -this.hw[i] - d;
     // asphalt
     const asp = TX.asphalt(wet);
     const roadMat = new THREE.MeshStandardMaterial({
@@ -530,33 +548,33 @@ export class Track {
     });
     if (this.quality !== 'low') { roadMat.normalMap = TX.noiseNormal(512, 11, 1, 2.6); roadMat.normalMap.repeat.set(9, 11); roadMat.normalScale.set(0.45, 0.45); }
     this.roadMat = roadMat;
-    this.ribbon(-W, W, 0.03, roadMat, 1, 16);
+    this.ribbon(nW, W, 0.03, roadMat, 1, 16);
 
     // run-off verge (tarmac strip next to track)
     const ro = TX.runoff();
     const roMat = (this.roMat = new THREE.MeshStandardMaterial({ map: ro, roughness: 0.9, color: 0xbbbbbb }));
-    this.ribbon(-W - 4.5, -W, 0.02, roMat, 1, 30, (i) => this.kerbL[i]);
-    this.ribbon(W, W + 4.5, 0.02, roMat, 1, 30, (i) => this.kerbR[i]);
+    this.ribbon(nat(4.5), nW, 0.02, roMat, 1, 30, (i) => this.kerbL[i]);
+    this.ribbon(W, at(4.5), 0.02, roMat, 1, 30, (i) => this.kerbR[i]);
 
     // gravel traps
     const gr = TX.gravel(); gr.repeat.set(3, 1);
     const grMat = new THREE.MeshStandardMaterial({ map: gr, roughness: 1, color: wet ? 0x9a8f7a : 0xffffff });
-    this.ribbon((i) => -this.limL[i] + 1.5, -W - 4.5, 0.015, grMat, 3, 12, (i) => this.gravelL[i]);
-    this.ribbon(W + 4.5, (i) => this.limR[i] - 1.5, 0.015, grMat, 3, 12, (i) => this.gravelR[i]);
+    this.ribbon((i) => -this.limL[i] + 1.5, nat(4.5), 0.015, grMat, 3, 12, (i) => this.gravelL[i]);
+    this.ribbon(at(4.5), (i) => this.limR[i] - 1.5, 0.015, grMat, 3, 12, (i) => this.gravelR[i]);
 
     // kerbs
     const kt = TX.kerb();
     const kMat = (this.kerbMat = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.7 }));
-    this.ribbon(-W - KERB_W, -W + 0.1, 0.045, kMat, 1, 8, (i) => this.kerbL[i]);
-    this.ribbon(W - 0.1, W + KERB_W, 0.045, kMat, 1, 8, (i) => this.kerbR[i]);
+    this.ribbon(nat(KERB_W), nat(-0.1), 0.045, kMat, 1, 8, (i) => this.kerbL[i]);
+    this.ribbon(at(-0.1), at(KERB_W), 0.045, kMat, 1, 8, (i) => this.kerbR[i]);
 
     // start/finish line + grid slots
     const startI = this.idx(this.startS);
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
-    this.ribbon(-W, W, 0.04, lineMat, 1, 1, (i) => i === startI || i === (startI + 1) % this.N);
+    this.ribbon(nW, W, 0.04, lineMat, 1, 1, (i) => i === startI || i === (startI + 1) % this.N);
     for (let g = 0; g < 22; g++) {
       const s = this.startS - 8 - g * 8;
-      const lat = g % 2 === 0 ? -2.6 : 2.6;
+      const lat = (g % 2 === 0 ? -1 : 1) * Math.min(2.6, this.hwAt(s) - 1.8);
       const slotGeo = new THREE.PlaneGeometry(2.8, 0.3); slotGeo.rotateX(-Math.PI / 2);
       this.place(new THREE.Mesh(slotGeo, lineMat), s, lat, 0.045);
     }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Track, HALF_W, CAR, brakeDecel as brakeDecelAt } from './track.js';
+import { Track, CAR, brakeDecel as brakeDecelAt } from './track.js';
 import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
@@ -870,7 +870,7 @@ class Game {
     lineup.forEach((it, g) => {
       const d = it.d;
       const gs = this.track.startS - 8 - g * 8;
-      const lat = g % 2 === 0 ? -2.6 : 2.6;
+      const lat = (g % 2 === 0 ? -1 : 1) * Math.min(2.6, this.track.hwAt(gs) - 1.8); // same slots as painted
       const dist0 = gs - this.track.startS;
       let entry;
       const name = it.name || d.name;
@@ -1043,7 +1043,7 @@ class Game {
     for (let k = 0; k < M; k++) {
       const i = (Math.random() * N) | 0, s = i * tr.ds, rl = tr.racingLat(s);
       const side = Math.random() < 0.5 ? -1 : 1;
-      const lat = Math.max(-HALF_W + 0.3, Math.min(HALF_W - 0.3, rl + side * (2.6 + Math.random() * 3)));
+      const lat = Math.max(-tr.hw[i] + 0.3, Math.min(tr.hw[i] - 0.3, rl + side * (2.6 + Math.random() * 3)));
       const [x, z] = tr.posAt(s, lat);
       d.position.set(x, 0.022, z); d.scale.setScalar(0.6 + Math.random() * 1.2); d.updateMatrix();
       marbles.setMatrixAt(k, d.matrix);
@@ -1854,7 +1854,7 @@ class Game {
     // wet, shiny patch over the zone (vertex alpha fades in and out at the edges)
     const n = Math.ceil(Z.len / tr.ds), pos = new Float32Array((n + 1) * 2 * 3), col = new Float32Array((n + 1) * 2 * 4), idx = [];
     for (let k = 0; k <= n; k++) {
-      const s = tr.wrapS(Z.s0 + k * tr.ds), w = HALF_W + 0.6;
+      const s = tr.wrapS(Z.s0 + k * tr.ds), w = tr.hwAt(s) + 0.6;
       const [x1, z1] = tr.posAt(s, -w), [x2, z2] = tr.posAt(s, w);
       pos.set([x1, 0.026, z1, x2, 0.026, z2], k * 6);
       const e = Math.min(1, k * tr.ds / 40, (n - k) * tr.ds / 40);
@@ -1964,7 +1964,7 @@ class Game {
     this.updateRubber(dt);
     // rubbered line grips a little more, the marbles beside it a lot less
     const off = Math.abs(p.lat - tr.racingLat(p.s));
-    const rubberGrip = off < 1.6 ? 1 + this.rubber * 0.02 : off > 2.8 && Math.abs(p.lat) < HALF_W ? 1 - Math.max(0, this.rubber - 0.3) * 0.08 : 1;
+    const rubberGrip = off < 1.6 ? 1 + this.rubber * 0.02 : off > 2.8 && Math.abs(p.lat) < tr.hwAt(p.s) ? 1 - Math.max(0, this.rubber - 0.3) * 0.08 : 1;
     p.gripMul = (this.careerGrip || 1) * tyreGrip(p.tyre, p.wear, wp) * zoneMu(wp) * de.grip * (this.tempOn ? this.tyreTempGrip : 1) * rubberGrip; p.dragMul = de.drag; p.pull = de.pull;
     for (const ai of this.aiList) {
       if (ai.net) continue;
@@ -2689,7 +2689,8 @@ class Game {
       const f = tr.frame(o.s);
       o.dist += dx * f.tx + dz * f.tz;
       const dl = dx * f.rx + dz * f.rz;
-      o.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, o.lat + dl));
+      const hw = tr.hwAt(o.s);
+      o.lat = Math.max(-hw - 2.5, Math.min(hw + 2.5, o.lat + dl));
       o.latOff += dl;
       o.x += dx; o.z += dz;
     }
@@ -2883,7 +2884,7 @@ class Game {
       for (const w of m.userData.wheels) { w.wheel.rotation.x = -o.wheelRot; if (w.front) w.pivot.rotation.y = -o.steerVis * 0.5; }
       setWheelBlur(m, wheelBlur(o.v));
       setBrakeGlow(m, Math.max(0, Math.min(1, ((o.brakeT || 0) - 550) / 450)));
-      if (!this.replayMode && Math.hypot(o.x - p.x, o.z - p.z) < 140) this.floorSparks(o, dt, Math.abs(o.lat || 0) > HALF_W - 0.4);
+      if (!this.replayMode && Math.hypot(o.x - p.x, o.z - p.z) < 140) this.floorSparks(o, dt, Math.abs(o.lat || 0) > this.track.hwAt(o.s) - 0.4);
       m.userData.helmet.children[0].rotation.set(0, -(o.steerVis || 0) * 0.6, (o.rollVis || 0) * -3);
       const harvest = o.v > 20 && (o._pv ?? o.v) - o.v > 0.05; o._pv = o.v; // slowing at speed = recharging
       m.userData.rainLight.material.color.setHex((rainLights && blink) || (harvest && fastBlink) ? 0xff2020 : 0x330000);

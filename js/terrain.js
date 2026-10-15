@@ -198,7 +198,7 @@ export function buildTerrain(tr, size = 7000, res = 1024, hw = 7) {
     if (i2 >= 0 && Math.abs(tr.hs[i2] - h) > 0.2) {
       // on the road (inside the half width) the height is exact; off it, a linear embankment towards the
       // other section's road edge, fading out once that section is far away
-      const e1 = Math.max(0, dist[k] - hw), e2 = Math.max(0, dist2[k] - hw);
+      const e1 = Math.max(0, dist[k] - (tr.hw ? tr.hw[i1] : hw)), e2 = Math.max(0, dist2[k] - (tr.hw ? tr.hw[i2] : hw));
       const fade = 1 - Math.min(1, Math.max(0, (dist2[k] - 30) / 30));
       if (e1 > 0 && fade > 0) h += (tr.hs[i2] - h) * (e1 / (e1 + e2)) * fade;
     }

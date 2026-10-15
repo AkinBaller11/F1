@@ -1,5 +1,5 @@
 // Player vehicle dynamics + AI drivers
-import { CAR, HALF_W, KERB_W, lateralGrip, brakeDecel } from './track.js';
+import { CAR, KERB_W, lateralGrip, brakeDecel } from './track.js';
 
 export const GEAR_TOP = [0, 82, 122, 158, 194, 230, 266, 302, 345].map((k) => k / 3.6); // m/s at 12500 rpm
 export const RPM_MAX = 12500, RPM_IDLE = 4000;
@@ -47,15 +47,16 @@ export class PlayerCar {
     // --- surface
     const lat = this.lat, a = Math.abs(lat);
     const i = this.hint;
+    const W = tr.hw[i]; // measured half width of the road here
     const kerb = lat > 0 ? tr.kerbR[i] : tr.kerbL[i];
     const gravel = lat > 0 ? tr.gravelR[i] : tr.gravelL[i];
     let mu = tr.mu * this.gripMul, extraDrag = 0;
-    if (a < HALF_W) this.surface = 'road';
-    else if (kerb && a < HALF_W + KERB_W) { this.surface = 'kerb'; mu *= tr.wet ? 0.8 : 0.95; }
-    else if (kerb && a < HALF_W + 4.5) { this.surface = 'runoff'; mu *= 0.85; }
+    if (a < W) this.surface = 'road';
+    else if (kerb && a < W + KERB_W) { this.surface = 'kerb'; mu *= tr.wet ? 0.8 : 0.95; }
+    else if (kerb && a < W + 4.5) { this.surface = 'runoff'; mu *= 0.85; }
     else if (gravel) { this.surface = 'gravel'; mu *= 0.4; extraDrag = Math.min(7, Math.abs(this.v) * 0.5) + this.v * 0.08; }
     else { this.surface = 'grass'; mu *= tr.wet ? 0.35 : 0.5; extraDrag = Math.min(1.5, Math.abs(this.v) * 0.3) + this.v * 0.02; }
-    this.offTrack = a > HALF_W + KERB_W + 0.6;
+    this.offTrack = a > W + KERB_W + 0.6;
 
     // --- inputs
     let thr = raceOn ? input.throttle : 0;
@@ -256,6 +257,7 @@ export class AICar {
 
   update(dt, raceTime, cars, wetMu) {
     const tr = this.track;
+    const HW = tr.hwAt(this.s); // half road width here (measured circuits vary along the lap)
     if (raceTime < this.reaction) { this.computePose(dt); return; }
     // spun: slide and scrub to a stop, then the driver turns the car round and rejoins
     if (this.spunT > 0) {
@@ -265,7 +267,7 @@ export class AICar {
       this.v = Math.max(0, this.v - (6 + this.v * 0.35) * dt);
       this.dist += this.v * dt;
       this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 2.2);
-      this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
+      this.lat = Math.max(-HW - 2.5, Math.min(HW + 2.5, this.lat));
       this.latOff = this.lat - this.track.racingLat(this.s);
       this.wheelRot += (this.v * dt) / CAR.tyreR;
       if (this.v < 1 && Math.abs(this.spinRate) < 0.5) { this.spunT = 0; this.spinRate = 0; this.recover = true; }
@@ -280,7 +282,7 @@ export class AICar {
       this.v = Math.min(this.v + dt * 2, 2.5);
       this.dist += this.v * dt;
       this.latOff *= Math.exp(-dt * 0.4);
-      this.lat += (Math.max(-HALF_W + 1, Math.min(HALF_W - 1, this.track.racingLat(this.s) + this.latOff)) - this.lat) * Math.min(1, dt * 0.8);
+      this.lat += (Math.max(-HW + Math.min(1, tr.lineMargin), Math.min(HW - Math.min(1, tr.lineMargin), this.track.racingLat(this.s) + this.latOff)) - this.lat) * Math.min(1, dt * 0.8);
       this.wheelRot += (this.v * dt) / CAR.tyreR;
       if (Math.abs(d) < 0.08) { this.spinYaw = 0; this.recover = false; }
       this.computePose(dt);
@@ -328,7 +330,7 @@ export class AICar {
     if (this.blueT > 0) {
       this.blueT -= dt;
       const side = lapper ? -Math.sign(lapper.lat - this.lat || tr.racingLat(s) || 1) : Math.sign(this.lat || 1);
-      this.latOff = side * (HALF_W - 1.4) - tr.racingLat(s);
+      this.latOff = side * (HW - 1.4) - tr.racingLat(s);
       this.laneTimer = Math.max(this.laneTimer, 0.5);
       target *= 0.97;
     }
@@ -338,7 +340,7 @@ export class AICar {
       this.defT = 9;
       if (Math.random() < 0.35 + this.agg * 0.6) {
         const dir = Math.sign(behind.lat - this.lat) || -Math.sign(tr.racingLat(s + 150)) || 1;
-        const nl = Math.max(-HALF_W + 1.2, Math.min(HALF_W - 1.2, this.lat + dir * 2.4));
+        const nl = Math.max(-HW + 1.2, Math.min(HW - 1.2, this.lat + dir * 2.4));
         this.latOff = nl - tr.racingLat(s);
         this.laneTimer = 2.2;
       }
@@ -371,13 +373,13 @@ export class AICar {
         // try to pass on the side with more room
         const room = (dir) => {
           const nl = blocked.lat + dir * 3.0;
-          if (Math.abs(nl) > HALF_W - 1) return -1;
+          if (Math.abs(nl) > HW - 1) return -1;
           for (const c of cars) {
             if (c === this || c === blocked) continue;
             let ds = c.dist - this.dist; if (ds < -tr.length / 2) ds += tr.length;
             if (Math.abs(ds) < 8 && Math.abs(c.lat - nl) < 2.2) return -1;
           }
-          return HALF_W - Math.abs(nl);
+          return HW - Math.abs(nl);
         };
         const rl = room(-1), rr = room(1);
         if (rl > 0 || rr > 0) {
@@ -409,7 +411,7 @@ export class AICar {
     this.v = Math.max(0, this.v);
     this.dist += this.v * dt;
 
-    let wantLat = Math.max(-HALF_W + 1, Math.min(HALF_W - 1, tr.racingLat(this.s) + this.latOff));
+    let wantLat = Math.max(-HW + Math.min(1, tr.lineMargin), Math.min(HW - Math.min(1, tr.lineMargin), tr.racingLat(this.s) + this.latOff));
     // side awareness: never steer into a car alongside, ease away if it is close
     for (const c of cars) {
       if (c === this || c.gone) continue;
@@ -423,16 +425,16 @@ export class AICar {
       if (Math.abs(dl) < 2.3) {
         wantLat = this.lat - Math.sign(dl || 1) * (2.4 - Math.abs(dl));
         // no room to ease away (track edge) and the other car is a little ahead: lift and tuck in behind
-        if (ds > 0 && Math.abs(wantLat) > HALF_W - 1.2) this.backOff = Math.min(this.backOff ?? 1e9, c.v - 1.5);
+        if (ds > 0 && Math.abs(wantLat) > HW - 1.2) this.backOff = Math.min(this.backOff ?? 1e9, c.v - 1.5);
       }
     }
-    wantLat = Math.max(-HALF_W + 0.8, Math.min(HALF_W - 0.8, wantLat));
+    wantLat = Math.max(-HW + Math.min(0.8, tr.lineMargin), Math.min(HW - Math.min(0.8, tr.lineMargin), wantLat));
     const maxMove = (1.2 + this.v * 0.04) * dt;
     this.lat += Math.max(-maxMove, Math.min(maxMove, wantLat - this.lat));
     if (this.knock) {
       this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 3);
       if (Math.abs(this.knock) < 0.05) this.knock = 0;
-      this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
+      this.lat = Math.max(-HW - 2.5, Math.min(HW + 2.5, this.lat));
       this.latOff = this.lat - tr.racingLat(this.s); // rejoin from where the shove left it
     }
     this.wheelRot += (this.v * dt) / CAR.tyreR;

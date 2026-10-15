@@ -4,7 +4,6 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as TX from './textures.js';
 import { terrainAt, levelOnTerrain } from './terrain.js';
-import { HALF_W } from './track.js';
 
 // ------------------------------------------------------------------ helpers
 function hash(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
@@ -437,7 +436,7 @@ export function buildScenery(tr) {
   tr.lights = [];
   {
     const gantry = new THREE.Group();
-    const span = 2 * HALF_W + 6;
+    const span = 2 * tr.hwAt(tr.startS) + 6;
     const beam = new THREE.Mesh(new THREE.BoxGeometry(span, 1.6, 1.2), darkMat); beam.position.y = 7.5; gantry.add(beam);
     for (const x of [-span / 2, span / 2]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.8, 8.3, 0.8), darkMat); leg.position.set(x, 4.15, 0); gantry.add(leg); }
     const lb = new THREE.Mesh(new THREE.PlaneGeometry(span - 1, 1.3), new THREE.MeshStandardMaterial({ map: TX.banner(3) })); lb.position.set(0, 8.9, 0.6); gantry.add(lb);
@@ -587,7 +586,7 @@ function buildNature(tr, df, height, lakeAt, R) {
       const lim = side > 0 ? tr.limR[i] : tr.limL[i];
       const grav = side > 0 ? tr.gravelR[i] : tr.gravelL[i];
       const kerb = side > 0 ? tr.kerbR[i] : tr.kerbL[i];
-      const from = HALF_W + (kerb ? 5 : 1.2);
+      const from = tr.hw[i] + (kerb ? 5 : 1.2);
       const lat = side * (from + R() * Math.max(0.5, (grav ? 3 : lim) - from - 0.6));
       if (Math.abs(lat) > lim - 0.5) continue;
       const [x, z] = tr.posAt(s, lat);
