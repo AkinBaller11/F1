@@ -546,7 +546,8 @@ setInterval(fitTouchHud, 500);
 const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
-  tcam: { label: 'T-KAMERA', pos: [0, 1.28, 0.62], pitch: -0.05, fov: 62, shake: 1.0, lean: 0.8, lens: true },
+  // T-cam: on the airbox right behind the helmet, like the TV onboard
+  tcam: { label: 'T-KAMERA', pos: [0, 1.15, 0.4], pitch: -0.12, fov: 70, shake: 1.0, lean: 0.8, lens: true },
   sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },

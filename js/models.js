@@ -386,10 +386,16 @@ function sharedGeometry() {
     { z: 0.22, cy: 0.69, w: 0.265, ht: 0.012, hb: 0.012, n: 4 },
     { z: 0.3, cy: 0.69, w: 0.2, ht: 0.012, hb: 0.012, n: 4 },
   ], { seg: 24, sub: 4 }));
+  // padded headrest in body colour: a pad either side of the helmet and one behind it (up to ear height)
   for (const s of [1, -1]) {
-    const pad = new THREE.CapsuleGeometry(0.04, 0.42, 4, 10); pad.rotateX(Math.PI / 2);
-    black.push(at(pad, s * 0.235, 0.71, 0.03));
+    livery.push(solid(loft([
+      { z: -0.24, cx: 0.205, cy: 0.72, w: 0.02, ht: 0.02, hb: 0.03, n: 3 },
+      { z: -0.16, cx: 0.205, cy: 0.74, w: 0.05, ht: 0.055, hb: 0.05, n: 4 },
+      { z: 0.12, cx: 0.205, cy: 0.76, w: 0.058, ht: 0.075, hb: 0.06, n: 4.5 },
+      { z: 0.24, cx: 0.205, cy: 0.76, w: 0.055, ht: 0.07, hb: 0.06, n: 4.5 },
+    ], { seg: 24, sub: 4, mirrorX: s < 0 }), 0.45, 0.2));
   }
+  livery.push(solid(bplate(curvy([[0.17, 0.69], [0.17, 0.8], [0.22, 0.85], [0.3, 0.84], [0.3, 0.69]], 20), 0.36), 0.45, 0.2));
   {
     const sh = new THREE.Shape();
     sh.moveTo(-0.11, -0.05); sh.lineTo(0.11, -0.05); sh.quadraticCurveTo(0.15, 0, 0.11, 0.06); sh.lineTo(-0.11, 0.06); sh.quadraticCurveTo(-0.15, 0, -0.11, -0.05);
@@ -405,7 +411,7 @@ function sharedGeometry() {
   // small shark fin
   livery.push(solid(bplate(curvy([[0.62, 0.96], [1.4, 0.82], [2.15, 0.6], [2.3, 0.52], [1.4, 0.6], [0.7, 0.86]], 32), 0.01), 0.5, 0.7));
   // halo with a slimmer aero fairing on top
-  carbon.push(haloGeo(0.038, 64));
+  livery.push(solid(haloGeo(0.038, 64), 0.04, 0.5)); // painted in the livery's lower colour, like the real cars
   // floor: plank, edge wings, fences and the boards ahead of the sidepods
   const floorPts = [[-0.3, -1.3], [-0.58, -1.05], [-0.76, -0.6], [-0.8, 1.3], [-0.62, 1.6], [-0.56, 2.05], [-0.5, 2.38], [0.5, 2.38], [0.56, 2.05], [0.62, 1.6], [0.8, 1.3], [0.76, -0.6], [0.58, -1.05], [0.3, -1.3]];
   black.push(slab(floorPts, 0.025, 0.055)); // matte: a clear-coated floor would mirror the bright sky
@@ -496,6 +502,35 @@ function sharedGeometry() {
 }
 
 // Halo: titanium ring around the cockpit + centre pillar, in car space
+// centre line of the halo ring (car space): legs beside the cockpit, the arc over the driver's head
+function haloCurve() {
+  const pts = [];
+  for (let i = 0; i <= 24; i++) {
+    const a = -Math.PI * 0.82 + (i / 24) * Math.PI * 1.64;
+    const front = Math.cos(a);
+    pts.push(new THREE.Vector3(Math.sin(a) * 0.4, 0.7 + 0.32 * Math.pow(Math.max(0, (front + 0.75) / 1.75), 0.6), -0.1 - front * 0.47));
+  }
+  return new THREE.CatmullRomCurve3(pts);
+}
+// section of the faired ring at a point: half thickness a (up), half width b (across)
+const haloSection = (r, y) => { const top = Math.max(0, (y - 0.86) / 0.16), k = top * top * (3 - 2 * top); return [r * (1 - 0.25 * k), r * (1 + 1.4 * k)]; };
+// strip lying on the top of the fairing between curve positions u0..u1, for sponsor lettering
+export function haloStripGeo(r, u0, u1, seg = 24) {
+  const curve = haloCurve(), pos = [], uv = [], idx = [];
+  const T = new THREE.Vector3(), N = new THREE.Vector3(), B = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3();
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg, u = u0 + (u1 - u0) * t;
+    curve.getPointAt(u, P); curve.getTangentAt(u, T);
+    N.copy(UP).addScaledVector(T, -UP.dot(T)).normalize(); B.crossVectors(T, N).normalize();
+    const [a, b] = haloSection(r, P.y), w = b * 0.8;
+    for (const sd of [-1, 1]) { pos.push(P.x + N.x * (a + 0.0015) + B.x * w * sd, P.y + N.y * (a + 0.0015) + B.y * w * sd, P.z + N.z * (a + 0.0015) + B.z * w * sd); uv.push(1 - t, sd < 0 ? 0 : 1); } // reads the right way round from behind (T-cam, chase)
+    if (i) { const k = i * 2; idx.push(k - 2, k, k - 1, k - 1, k, k + 1); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
 export function haloGeo(r, seg = 64) {
   const pts = [];
   for (let i = 0; i <= 24; i++) {
@@ -515,8 +550,7 @@ export function haloGeo(r, seg = 64) {
     curve.getPointAt(u, P); curve.getTangentAt(u, T);
     N.copy(UP).addScaledVector(T, -UP.dot(T)).normalize(); // up, across the section
     B.crossVectors(T, N).normalize();                       // sideways, across the section
-    const top = Math.max(0, (P.y - 0.86) / 0.16), k = top * top * (3 - 2 * top);
-    const a = r * (1 - 0.25 * k), b = r * (1 + 1.4 * k); // thinner and wider over the top
+    const [a, b] = haloSection(r, P.y); // thinner and wider over the top
     for (let j = 0; j < R; j++) {
       const th = (j / R) * Math.PI * 2;
       pos.push(P.x + N.x * Math.sin(th) * a + B.x * Math.cos(th) * b, P.y + N.y * Math.sin(th) * a + B.y * Math.cos(th) * b, P.z + N.z * Math.sin(th) * a + B.z * Math.cos(th) * b);
@@ -902,8 +936,8 @@ function sharedMats() {
   mats.carbon = new THREE.MeshPhysicalMaterial({ map: cb.map, normalMap: cb.normal, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.42, metalness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, side: THREE.DoubleSide });
   mats.black = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.8, side: THREE.DoubleSide });
   const slick = treadTex(false), wetT = treadTex(true);
-  mats.rubber = new THREE.MeshStandardMaterial({ map: slick.map, roughnessMap: slick.rough, roughness: 1, metalness: 0 });
-  mats.rubberWet = new THREE.MeshStandardMaterial({ map: wetT.map, roughnessMap: wetT.rough, roughness: 1, metalness: 0 });
+  mats.rubber = squashTyre(new THREE.MeshStandardMaterial({ map: slick.map, roughnessMap: slick.rough, roughness: 1, metalness: 0 }), 'vec3( 1.0, 0.0, 0.0 )');
+  mats.rubberWet = squashTyre(new THREE.MeshStandardMaterial({ map: wetT.map, roughnessMap: wetT.rough, roughness: 1, metalness: 0 }), 'vec3( 1.0, 0.0, 0.0 )');
   mats.barrel = new THREE.MeshStandardMaterial({ color: 0x4a4e55, metalness: 0.9, roughness: 0.32, side: THREE.DoubleSide });
   mats.glass = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.05, metalness: 0.9 });
   return mats;
@@ -948,7 +982,37 @@ export function setWheelBlur(car, lvl) {
   }
 }
 
+// loaded tyre: the bottom of the tyre flattens into a contact patch and the sidewall bulges out a little. The
+// wheels spin, so this can't live in the geometry: the vertex shader squashes whatever is below the hub at the
+// moment. SQ_AXLE is the axle in the mesh's own axes (lathe tyre: x, flat sidewall ring: z).
+export const TYRE_SQUASH = 0.012; // m the loaded radius is below the free radius
+const tyreR = { value: 0.3525 };
+function squashTyre(mat, axle) {
+  mat.onBeforeCompile = function (shader) {
+    THREE.Material.prototype.onBeforeCompile.call(this, shader);
+    shader.uniforms.tyreR = tyreR;
+    shader.vertexShader = shader.vertexShader.replace('void main() {', `uniform float tyreR;\nvoid main() {`).replace('#include <begin_vertex>', `#include <begin_vertex>
+      {
+        vec4 tw = modelMatrix * vec4( transformed, 1.0 );
+        vec3 hub = ( modelMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
+        vec3 ax = normalize( ( modelMatrix * vec4( ${axle}, 0.0 ) ).xyz );
+        float lim = -( tyreR - ${TYRE_SQUASH.toFixed(4)} );
+        float dy = tw.y - hub.y;
+        if ( dy < lim ) {
+          float k = lim - dy;
+          vec3 dW = vec3( 0.0, k, 0.0 ) + ax * sign( dot( tw.xyz - hub, ax ) ) * k * 0.45;
+          // back into the mesh's axes (the wheel matrices are rotation + translation only)
+          vec3 c0 = modelMatrix[ 0 ].xyz, c1 = modelMatrix[ 1 ].xyz, c2 = modelMatrix[ 2 ].xyz;
+          transformed += vec3( dot( dW, c0 ) / dot( c0, c0 ), dot( dW, c1 ) / dot( c1, c1 ), dot( dW, c2 ) / dot( c2, c2 ) );
+        }
+      }`);
+  };
+  mat.customProgramCacheKey = () => 'tyre-squash-' + axle;
+  return mat;
+}
+
 function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, compound = null) {
+  tyreR.value = r;
   const m = sharedMats();
   const code = compoundOf(wet, seed, compound);
   const wheel = new THREE.Group();
@@ -958,7 +1022,7 @@ function buildWheel(r, w, wet, accent, seed, rimR = 0.235, classic = false, comp
   // brake disc + caliper inside the rim (seen through open classic rims, glows when hot)
   const disc = classic ? new THREE.Mesh(discGeo(rimR), m.barrel) : null; if (disc) wheel.add(disc); // hidden behind modern covers
   const outer = r - 0.004;
-  const sideMat = new THREE.MeshStandardMaterial({ map: null, transparent: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 });
+  const sideMat = squashTyre(new THREE.MeshStandardMaterial({ map: null, transparent: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }), 'vec3( 0.0, 0.0, 1.0 )');
   const coverMat = new THREE.MeshStandardMaterial({ map: classic ? rimTex(accent) : coverTex(accent), roughness: classic ? 0.3 : 0.45, metalness: classic ? 0.8 : 0.35, alphaTest: classic ? 0.5 : 0, side: classic ? THREE.DoubleSide : THREE.FrontSide });
   for (const s of [1, -1]) {
     // the overlay starts at the rim so the machined lip is part of the sidewall texture
@@ -1054,17 +1118,24 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
     decal(decalTex('NORDLIT', ink, { w: 512, h: 128, font: 'italic 900 80px "Titillium Web", Arial' }), 0.24, 0.06, 0, n.cy + n.ht + 0.004, -1.45, 0, -Math.PI / 2 + 0.2);
   }
 
+  // partner lettering along the top of the halo fairing (left and right of the centre pillar)
+  if (!classic) {
+    const words = giallo ? ['AURIX', 'NORDLIT'] : [spName, team.name.toUpperCase()];
+    [[0.18, 0.4, words[0]], [0.6, 0.82, words[1]]].forEach(([u0, u1, w]) => {
+      const me = new THREE.Mesh(haloStripGeo(0.038, u0, u1), new THREE.MeshStandardMaterial({ map: decalTex(w, '#ffffff', { w: 512, h: 96, font: 'italic 900 72px "Titillium Web", Arial' }), transparent: true, roughness: 0.35, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false }));
+      me.userData.lod = true; car.add(me);
+    });
+  }
   // helmet: painted shell (team colours, stripes, number), dark visor, chin guard; pivots at the neck
   const helmet = new THREE.Group();
   helmet.position.set(0, 0.74, 0.07);
   const head = new THREE.Group(); head.position.y = 0.12; helmet.add(head);
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.135, 32, 20), new THREE.MeshPhysicalMaterial({ map: helmetTex(team, number), roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.05 }));
-  shell.scale.set(1, 1.05, 1.12); shell.rotation.y = Math.PI; head.add(shell);
-  // SphereGeometry: front (-z) sits at phi = 1.5 PI
-  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.1385, 24, 8, Math.PI * 1.22, Math.PI * 0.56, Math.PI * 0.36, Math.PI * 0.17), new THREE.MeshPhysicalMaterial({ color: 0x0a0d12, roughness: 0.05, metalness: 0.9, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.6 }));
-  visor.scale.set(1, 1.05, 1.12); head.add(visor);
-  const chin = new THREE.Mesh(new THREE.SphereGeometry(0.137, 20, 6, Math.PI * 1.25, Math.PI * 0.5, Math.PI * 0.6, Math.PI * 0.18), new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 }));
-  chin.scale.set(1, 1.05, 1.12); head.add(chin);
+  const HG = helmetGeos();
+  const hSponsor = team.pattern === 'giallo' ? 'AURIX' : '';
+  head.add(new THREE.Mesh(HG.shell, new THREE.MeshPhysicalMaterial({ map: helmetTex(team, number, hSponsor), roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.04 })));
+  head.add(new THREE.Mesh(HG.visor, new THREE.MeshPhysicalMaterial({ color: 0x0a0d12, roughness: 0.05, metalness: 0.9, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.6 })));
+  head.add(new THREE.Mesh(HG.chin, new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 })));
+  head.add(new THREE.Mesh(HG.parts, sharedMats().carbon));
   const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 20), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
   collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
   // shoulders in the race suit with the HANS collar, just showing above the cockpit rim
@@ -1106,7 +1177,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   const seed = (number || 1) + team.id.length;
   for (const [ax, front] of [[WHEELS.front, true], [WHEELS.rear, false]]) {
     for (const s of [-1, 1]) {
-      const pivot = new THREE.Group(); pivot.position.set(s * ax.x, WHEELS.r, ax.z);
+      const pivot = new THREE.Group(); pivot.position.set(s * ax.x, WHEELS.r - TYRE_SQUASH, ax.z); // hub at the loaded radius
       const wh = buildWheel(WHEELS.r, ax.w, wet, team.accent, seed, WHEELS.rim, classic, opts.tyre);
       pivot.add(wh); car.add(pivot);
       wheels.push({ pivot, wheel: wh, front });
@@ -1124,27 +1195,66 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   return rigidOnTerrain(car);
 }
 
-function helmetTex(team, number) {
+function helmetTex(team, number, sponsor = '') {
   const Hm = team.helmet;
-  const key = 'helm' + team.id + number + (Hm ? '_' + Hm.main + '_' + Hm.stripe : '');
+  const key = 'helm' + team.id + number + sponsor + (Hm ? '_' + Hm.main + '_' + Hm.stripe : '');
   if (texCache[key]) return texCache[key];
-  const [c, g] = canvas(512, 256);
-  // equirectangular: x = around the head (front at the centre after the mesh is turned), y = top -> bottom
+  const W = 1024, H = 512, [c, g] = canvas(W, H);
+  // equirectangular: x = around the head (front at the centre, sides at 1/4 and 3/4, back at the edges),
+  // y = top -> bottom
   const main = Hm ? Hm.main : team.top === 0xf2f2f2 || team.top === 0xf0f0f0 ? team.body : team.top, acc = Hm ? Hm.stripe : team.accent;
-  g.fillStyle = hex(main); g.fillRect(0, 0, 512, 256);
-  g.fillStyle = hex(acc); g.fillRect(0, 0, 512, 46);
-  g.fillStyle = hex(Hm ? main : team.body); g.fillRect(0, 150, 512, 106);
-  g.strokeStyle = '#ffffff'; g.lineWidth = 6;
-  for (const y of [52, 144]) { g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+  g.fillStyle = hex(main); g.fillRect(0, 0, W, H);
+  g.fillStyle = hex(acc); g.fillRect(0, 0, W, 92);
+  g.fillStyle = hex(Hm ? main : team.body); g.fillRect(0, 300, W, 212);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 10;
+  for (const y of [104, 288]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
   // swooshes on the sides
   g.fillStyle = hex(acc);
-  for (const x of [128, 384]) { g.beginPath(); g.moveTo(x - 70, 140); g.quadraticCurveTo(x, 70, x + 70, 140); g.lineTo(x + 70, 150); g.quadraticCurveTo(x, 90, x - 70, 150); g.fill(); }
+  for (const x of [256, 768]) { g.beginPath(); g.moveTo(x - 140, 280); g.quadraticCurveTo(x, 140, x + 140, 280); g.lineTo(x + 140, 300); g.quadraticCurveTo(x, 180, x - 140, 300); g.fill(); }
+  const light = (col) => { const v = (0.2126 * ((col >> 16) & 255) + 0.7152 * ((col >> 8) & 255) + 0.0722 * (col & 255)) / 255; return v > 0.6; };
+  g.textAlign = 'center'; g.textBaseline = 'middle';
   if (number) {
-    g.fillStyle = '#ffffff'; g.font = 'italic 900 54px "Titillium Web", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(String(number), 128, 110); g.fillText(String(number), 384, 110);
+    g.fillStyle = light(main) ? '#111' : '#fff'; g.font = 'italic 900 108px "Titillium Web", Arial';
+    g.fillText(String(number), 256, 220); g.fillText(String(number), 768, 220);
+  }
+  if (sponsor) {
+    // partner names where the cameras see them: across the back (wraps over the seam) and over the visor
+    g.fillStyle = light(main) ? '#111' : '#fff'; g.font = 'italic 900 64px "Titillium Web", Arial';
+    g.fillText(sponsor, 0, 200, 240); g.fillText(sponsor, W, 200, 240);
+    g.fillStyle = light(acc) ? '#111' : '#fff'; g.font = '900 46px Arial';
+    g.fillText(sponsor, W / 2, 50, 300); g.fillText(sponsor, 0, 50, 260); g.fillText(sponsor, W, 50, 260);
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return (texCache[key] = t);
+}
+
+// helmet shapes: the sphere geometries (painted shell, visor band, chin guard) are bent into a real helmet:
+// longer than wide, a chin bar that reaches forward, the neck opening cut away at the back. Front is -z.
+const helmetGeoCache = {};
+function helmetShape(g, grow = 1) {
+  const p = g.attributes.position, d = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    d.fromBufferAttribute(p, i).normalize();
+    let x = d.x * 0.128, y = d.y * (d.y > 0 ? 0.142 : 0.13), z = d.z * (d.z < 0 ? 0.152 : 0.16);
+    if (d.y < -0.25 && d.z > -0.25) y *= 0.8;           // neck opening sits higher at the back and sides
+    if (d.z < -0.35 && d.y < 0.15) z *= 1.07;           // chin bar
+    p.setXYZ(i, x * grow, y * grow, z * grow);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function helmetGeos() {
+  if (helmetGeoCache.shell) return helmetGeoCache;
+  const shell = new THREE.SphereGeometry(1, 48, 28); shell.rotateY(Math.PI); // texture front to -z
+  helmetGeoCache.shell = helmetShape(shell);
+  // SphereGeometry: front (-z) sits at phi = 1.5 PI
+  helmetGeoCache.visor = helmetShape(new THREE.SphereGeometry(1, 32, 8, Math.PI * 1.2, Math.PI * 0.6, Math.PI * 0.37, Math.PI * 0.17), 1.012);
+  helmetGeoCache.chin = helmetShape(new THREE.SphereGeometry(1, 24, 6, Math.PI * 1.25, Math.PI * 0.5, Math.PI * 0.6, Math.PI * 0.16), 1.008);
+  // air intake on the crown and the rear spoiler (gurney) that steadies the helmet in the airflow
+  const scoop = new THREE.CapsuleGeometry(0.016, 0.075, 4, 10); scoop.rotateX(Math.PI / 2); scoop.scale(1.7, 1, 1); scoop.translate(0, 0.138, -0.035);
+  const spoiler = new THREE.BoxGeometry(0.17, 0.012, 0.05); spoiler.rotateX(-0.45); spoiler.translate(0, 0.098, 0.15);
+  helmetGeoCache.parts = merge([scoop, spoiler]);
+  return helmetGeoCache;
 }
 
 // far away a car only needs its body and tyres: decals, rim covers, helmet, T-cam are hidden and it stops
