@@ -506,7 +506,29 @@ export function haloGeo(r, seg = 64) {
     const y = 0.7 + 0.32 * Math.pow(Math.max(0, (front + 0.75) / 1.75), 0.6);
     pts.push(new THREE.Vector3(x, y, z));
   }
-  const ring = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, r, 8, false);
+  // swept elliptical section: round titanium legs at the back, a flat aero fairing (about 2.4x as wide as
+  // it is thick) over the top arc in front of the driver
+  const curve = new THREE.CatmullRomCurve3(pts), R = 12, pos = [], idx = [];
+  const T = new THREE.Vector3(), N = new THREE.Vector3(), B = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3();
+  for (let i = 0; i <= seg; i++) {
+    const u = i / seg;
+    curve.getPointAt(u, P); curve.getTangentAt(u, T);
+    N.copy(UP).addScaledVector(T, -UP.dot(T)).normalize(); // up, across the section
+    B.crossVectors(T, N).normalize();                       // sideways, across the section
+    const top = Math.max(0, (P.y - 0.86) / 0.16), k = top * top * (3 - 2 * top);
+    const a = r * (1 - 0.25 * k), b = r * (1 + 1.4 * k); // thinner and wider over the top
+    for (let j = 0; j < R; j++) {
+      const th = (j / R) * Math.PI * 2;
+      pos.push(P.x + N.x * Math.sin(th) * a + B.x * Math.cos(th) * b, P.y + N.y * Math.sin(th) * a + B.y * Math.cos(th) * b, P.z + N.z * Math.sin(th) * a + B.z * Math.cos(th) * b);
+    }
+  }
+  for (let i = 0; i < seg; i++) for (let j = 0; j < R; j++) {
+    const a0 = i * R + j, a1 = i * R + (j + 1) % R, b0 = a0 + R, b1 = a1 + R;
+    idx.push(a0, b0, a1, a1, b0, b1);
+  }
+  const ring = new THREE.BufferGeometry();
+  ring.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  ring.setIndex(idx); ring.computeVertexNormals();
   const pillar = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, 1.015, -0.57), new THREE.Vector3(0, 0.95, -0.72), new THREE.Vector3(0, 0.71, -0.9),
   ]), 12, r * 0.9, 10, false);
@@ -1045,6 +1067,14 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   chin.scale.set(1, 1.05, 1.12); head.add(chin);
   const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 20), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
   collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
+  // shoulders in the race suit with the HANS collar, just showing above the cockpit rim
+  if (!classic) {
+    const suit = new THREE.MeshStandardMaterial({ color: team.body, roughness: 0.75 });
+    const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), suit);
+    torso.scale.set(0.2, 0.075, 0.12); torso.position.set(0, -0.06, 0.03); helmet.add(torso);
+    const hans = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.022, 6, 20, Math.PI * 1.3), new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55 }));
+    hans.rotation.set(Math.PI / 2, 0, Math.PI * 0.35 + Math.PI); hans.position.set(0, 0.0, 0.02); helmet.add(hans);
+  }
   car.add(helmet);
   car.userData.helmet = helmet;
   helmet.traverse((o) => { if (o.isMesh) o.userData.lod = true; });

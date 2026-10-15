@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Track, HALF_W, brakeDecel as brakeDecelAt } from './track.js';
+import { Track, HALF_W, CAR, brakeDecel as brakeDecelAt } from './track.js';
 import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
@@ -23,6 +23,15 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+// GTAO fed with an existing depth texture: r160 still touches its own normal target in setGBuffer / setSize /
+// dispose, which only exists when it renders a G-buffer itself, so it gets a harmless stand-in
+class SceneDepthAO extends GTAOPass {
+  setGBuffer(depthTexture, normalTexture) {
+    if (depthTexture && !this.normalRenderTarget) this.normalRenderTarget = { depthTexture, setSize() {}, dispose() {} };
+    super.setGBuffer(depthTexture, normalTexture);
+  }
+}
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
@@ -61,7 +70,7 @@ const defaults = {
 const ONOFF = { vals: [true, false], labels: ['An', 'Aus'] };
 const SETTINGS = [
   { tab: 'Grafik', items: [
-    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Ultra: 4K-Schatten, 8× Kantenglättung, Grasbüschel, Linsenreflexe. Für starke PCs und neue iPads.' },
+    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Hoch: Umgebungsverdeckung (Kontaktschatten) und echte Spiegelungen der Umgebung im eigenen Lack. Ultra zusätzlich: doppelt so weite 4K-Schatten, 8× Kantenglättung, Grasbüschel, Linsenreflexe – für starke PCs und neue iPads.' },
     { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
     { key: 'dynRes', label: 'Auflösung automatisch', ...ONOFF, hint: 'Wird es ruckelig, rendert das Spiel kurz etwas kleiner und danach wieder scharf. Hält die Bildrate stabil.' },
     { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
@@ -664,7 +673,7 @@ class RemoteCar {
     let dy = yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * k;
     this.dist = dist; this.lat = lat; this.v = v;
     this.steerVis = steer * 0.3;
-    this.wheelRot += (this.v * dt) / 0.36;
+    this.wheelRot += (this.v * dt) / CAR.tyreR;
   }
 }
 
@@ -737,7 +746,7 @@ class Game {
     sun.castShadow = opts.quality !== 'low' && opts.shadows;
     const sz = opts.quality === 'ultra' ? 4096 : opts.quality === 'high' ? 2048 : 1024;
     sun.shadow.mapSize.set(sz, sz);
-    const sr = opts.quality === 'ultra' ? 55 : 70;
+    const sr = opts.quality === 'ultra' ? 110 : 70; // ultra: twice the shadowed area at the same texel size as high (4096 vs 2048)
     const sc = sun.shadow.camera; sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.near = 10; sc.far = 600;
     sun.shadow.normalBias = 0.02;
     sun.shadow.bias = -0.0005;
@@ -754,6 +763,9 @@ class Game {
       // multisampled target keeps anti-aliasing when post-processing is on
       const pr = renderer.getPixelRatio();
       const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: opts.quality === 'ultra' ? 8 : 4 });
+      // high / ultra: keep the scene depth so the ambient occlusion pass can read it (no second scene render)
+      this.wantAO = opts.quality === 'high' || opts.quality === 'ultra';
+      if (this.wantAO) rt.depthTexture = new THREE.DepthTexture(rt.width, rt.height);
       const c = new EffectComposer(renderer, rt);
       this.renderPass = terrainScenePass(new RenderPass(scene, null));
       c.addPass(this.renderPass);
@@ -770,6 +782,23 @@ class Game {
     // camera
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 5000);
     if (this.renderPass) this.renderPass.camera = this.camera;
+    if (this.composer && this.wantAO) {
+      // ambient occlusion from the scene's own depth buffer (normals rebuilt from depth): contact darkening under
+      // cars, wings, stands and barriers. No override-material pass, so the terrain lift and the rigid cars
+      // are seen exactly as rendered.
+      const pr = renderer.getPixelRatio();
+      const ao = new SceneDepthAO(scene, this.camera, innerWidth * pr, innerHeight * pr, { depthTexture: this.composer.renderTarget1.depthTexture },
+        { radius: 1.1, distanceExponent: 1.0, thickness: 1.5, scale: 2.2, samples: opts.quality === 'ultra' ? 16 : 10 }, { radius: 6, samples: 12 });
+      ao.blendIntensity = 0.85;
+      const aoRender = ao.render.bind(ao);
+      ao.render = (r, w, read, ...rest) => { // the composer ping-pongs two targets: read the one the scene went into
+        const d = read.depthTexture;
+        if (d) { ao.depthTexture = d; ao.gtaoMaterial.uniforms.tDepth.value = d; ao.pdMaterial.uniforms.tDepth.value = d; }
+        aoRender(r, w, read, ...rest);
+      };
+      this.composer.insertPass(ao, 1);
+      this.aoPass = ao;
+    }
     this.camMode = opts.camera;
 
     // player
@@ -793,6 +822,16 @@ class Game {
     const myLook = myLiv ? customTeam(myLiv, pd.team) : pd.team, myNum = myLiv && myLiv.number ? myLiv.number : pd.number;
     this.playerModel = buildCar(myLook, wet, myNum, { mirrorTex: this.mirrorRT.texture, second: pd.team.drivers.indexOf(pd.name) === 1, style: opts.carStyle, retro: opts.retro && !myLiv });
     this.playerBody.add(this.playerModel);
+    // high / ultra: the player's paint reflects its real surroundings (road, kerbs, stands, other cars) from a
+    // small cube map around the car instead of only the sky
+    if (opts.quality === 'high' || opts.quality === 'ultra') {
+      this.envRT = new THREE.WebGLCubeRenderTarget(opts.quality === 'ultra' ? 256 : 128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+      this.envCam = new THREE.CubeCamera(0.4, 1500, this.envRT);
+      this.envEvery = opts.quality === 'ultra' ? 3 : 8;
+      scene.add(this.envCam);
+      const P = this.playerModel.userData.parts;
+      for (const m of [P.livery.material, P.accent.material]) { m.envMap = this.envRT.texture; m.needsUpdate = true; }
+    }
     this.cockpit = buildCockpit(myLook); this.playerBody.add(this.cockpit);
     this.rearCam = new THREE.PerspectiveCamera(42, 512 / 160, 0.3, 3500);
     this.rearCam.position.set(0, 0.95, 0.9); this.rearCam.rotation.y = Math.PI;
@@ -1574,7 +1613,7 @@ class Game {
           if (ty && ty !== a.tyre) { a.tyre = ty; setTyreLook(this.entryOf.get(a).mesh, ty); }
           a.latOff = a.lat - this.track.racingLat(a.s);
         }
-        a.wheelRot += (a.v * dt) / 0.36;
+        a.wheelRot += (a.v * dt) / CAR.tyreR;
         a.computePose(dt);
       }
     }
@@ -1671,11 +1710,11 @@ class Game {
       const [x, z] = tr.posAt(s, lat), [x2, z2] = tr.posAt(tr.wrapS(s + 3), P.lat);
       o.x = x; o.z = z; o.yaw = Math.atan2(-(x2 - x), -(z2 - z)); o.yawRate = 0; o.steer *= Math.exp(-dt * 4);
       tr.locate(x, z, o.hint, o.loc); o.hint = o.loc.i; o.s = o.loc.s; o.lat = o.loc.lat;
-      o.dist += d; o.wheelRot += d / 0.36; o.throttle = 0; o.brake = vT < o.v ? 0.3 : 0;
+      o.dist += d; o.wheelRot += d / CAR.tyreR; o.throttle = 0; o.brake = vT < o.v ? 0.3 : 0;
       o.gear = o.v < 1 ? 1 : 2;
     } else {
       o.dist += d; o.lat += (P.lat - o.lat) * Math.min(1, dt * 1.2); o.latOff = o.lat - tr.racingLat(o.s);
-      o.wheelRot += d / 0.36; o.computePose(dt);
+      o.wheelRot += d / CAR.tyreR; o.computePose(dt);
     }
   }
 
@@ -1771,7 +1810,7 @@ class Game {
     p.hint = p.loc.i; p.s = p.loc.s; p.lat = p.loc.lat;
     let d = p.s - prevS; if (d > tr.length / 2) d -= tr.length; if (d < -tr.length / 2) d += tr.length;
     p.dist += d;
-    p.wheelRot += (p.v * dt) / 0.36;
+    p.wheelRot += (p.v * dt) / CAR.tyreR;
     p.gear = Math.max(1, Math.min(8, Math.ceil(p.v / 11)));
     p.rpm = 4500 + ((p.v % 11) / 11) * 6000; p.throttle = P.ph === 'stop' ? 0 : 0.4; p.brake = 0; p.limiter = false;
     p.impact = 0; p.slip = 0;
@@ -1794,7 +1833,7 @@ class Game {
     const r = stepPit(tr, ai, P, dt);
     let d = r.s - prevS; if (d > tr.length / 2) d -= tr.length; if (d < -tr.length / 2) d += tr.length;
     ai.dist += d; ai.lat = r.lat; ai.latOff = ai.lat - tr.racingLat(ai.s);
-    ai.wheelRot += (ai.v * dt) / 0.36;
+    ai.wheelRot += (ai.v * dt) / CAR.tyreR;
     ai.computePose(dt);
     if (P.serviced && !P.applied) {
       P.applied = true;
@@ -2110,7 +2149,7 @@ class Game {
       const x = A[oa + k] + (B[ob + k] - A[oa + k]) * f, z = A[oa + k + 1] + (B[ob + k + 1] - A[oa + k + 1]) * f;
       const moved = Math.hypot(x - o.x, z - o.z);
       o.v = dt > 0 && M.playing ? Math.min(100, moved / dt) : 0;
-      o.wheelRot = (o.wheelRot || 0) + moved / 0.36;
+      o.wheelRot = (o.wheelRot || 0) + moved / CAR.tyreR;
       o.x = x; o.z = z; o.yaw = lerpYaw(A[oa + k + 2], B[ob + k + 2]);
       if (c.isPlayer) { o.impact = 0; o.bump = 0; this.track.locate(x, z, o.hint, o.loc); o.hint = o.loc.i; o.s = o.loc.s; }
       k += 3;
@@ -2895,6 +2934,18 @@ class Game {
       undoRear();
       this.cockpit.visible = true; this.playerModel.visible = true;
     }
+    if (this.envCam && (this.envFrame = (this.envFrame || 0) + 1) % this.envEvery === 1) {
+      // refresh the car's reflection cube from just above the cockpit, without the car itself and without
+      // re-rendering the sun's shadow map six times
+      const vis = [this.playerModel.visible, this.cockpit.visible];
+      this.playerModel.visible = false; this.cockpit.visible = false;
+      this.playerRoot.getWorldPosition(this.envCam.position); this.envCam.position.y += 0.8;
+      this.envCam.updateMatrixWorld(true);
+      const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+      this.envCam.update(renderer, this.scene);
+      renderer.shadowMap.autoUpdate = au;
+      [this.playerModel.visible, this.cockpit.visible] = vis;
+    }
     if (this.photo && this.photo.dof > 0) this.renderPhotoDof();
     else if (this.composer) { terrainEnable(false); this.composer.render(); } else renderer.render(this.scene, cam);
     undoLift();
@@ -3120,7 +3171,11 @@ class Game {
       if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { m.map && m.map.dispose(); m.dispose(); });
     });
     this.mirrorRT.dispose();
-    if (this.composer) this.composer.dispose();
+    if (this.envRT) this.envRT.dispose();
+    if (this.composer) {
+      for (const t of [this.composer.renderTarget1, this.composer.renderTarget2]) if (t.depthTexture) t.depthTexture.dispose();
+      this.composer.dispose();
+    }
     $('#hud').innerHTML = '';
   }
 }

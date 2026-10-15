@@ -232,7 +232,7 @@ export class PlayerCar {
     }
     this.bump = this.surface === 'kerb' ? 1 : this.surface === 'gravel' || this.surface === 'grass' ? 0.6 : 0;
     this.impact *= Math.exp(-dt * 3);
-    this.wheelRot += (this.v * dt) / 0.36;
+    this.wheelRot += (this.v * dt) / CAR.tyreR;
   }
 }
 
@@ -267,7 +267,7 @@ export class AICar {
       this.lat += this.knock * dt; this.knock *= Math.exp(-dt * 2.2);
       this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
       this.latOff = this.lat - this.track.racingLat(this.s);
-      this.wheelRot += (this.v * dt) / 0.36;
+      this.wheelRot += (this.v * dt) / CAR.tyreR;
       if (this.v < 1 && Math.abs(this.spinRate) < 0.5) { this.spunT = 0; this.spinRate = 0; this.recover = true; }
       this.computePose(dt);
       return;
@@ -281,7 +281,7 @@ export class AICar {
       this.dist += this.v * dt;
       this.latOff *= Math.exp(-dt * 0.4);
       this.lat += (Math.max(-HALF_W + 1, Math.min(HALF_W - 1, this.track.racingLat(this.s) + this.latOff)) - this.lat) * Math.min(1, dt * 0.8);
-      this.wheelRot += (this.v * dt) / 0.36;
+      this.wheelRot += (this.v * dt) / CAR.tyreR;
       if (Math.abs(d) < 0.08) { this.spinYaw = 0; this.recover = false; }
       this.computePose(dt);
       return;
@@ -435,7 +435,7 @@ export class AICar {
       this.lat = Math.max(-HALF_W - 2.5, Math.min(HALF_W + 2.5, this.lat));
       this.latOff = this.lat - tr.racingLat(this.s); // rejoin from where the shove left it
     }
-    this.wheelRot += (this.v * dt) / 0.36;
+    this.wheelRot += (this.v * dt) / CAR.tyreR;
     this.computePose(dt);
   }
 

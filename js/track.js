@@ -34,6 +34,7 @@ export const CAR = {
   mass: 800, power: 600000, ersPower: 120000, cdA: 1.35, drsCdA: 1.0,
   gripBase: 13.7, downforce: 0.0039, brakeBase: 15, brakeDf: 0.0055,
   wheelBase: 3.4, vMaxClamp: 100, // 2026 wheelbase
+  tyreR: 0.3525, // rolling radius of the 2026 tyres (about 705 mm diameter): turns the wheels as fast as the car moves
 };
 
 export function lateralGrip(v, mu) { return mu * (CAR.gripBase + CAR.downforce * v * v); }
