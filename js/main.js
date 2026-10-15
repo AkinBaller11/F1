@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { Track, CAR, brakeDecel as brakeDecelAt } from './track.js';
+import { THERM, newTyreSet, stepTyres, stepBrake, tyreFactors, gripTemp, aiTyreEnergy } from './tyres.js';
+import { VEH } from './vehicle.js';
 import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
-import { TYRES, TYRE_ORDER, isSlick, tyreGrip, wearPerM, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
+import { TYRES, TYRE_ORDER, isSlick, tyreGrip, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
 import { Audio } from './audio.js';
@@ -1786,7 +1788,7 @@ class Game {
     if (this.pitTyre !== 'auto') return this.pitTyre;
     const w = this.wetPlan(), remain = this.laps * this.track.length - this.player.dist;
     if (w > 0.32) return wetChoice(w);
-    return dryChoice(Math.max(0, remain), this.raceM);
+    return dryChoice(Math.max(0, remain), this.raceM, this.wearRef());
   }
 
   beginPlayerPit() {
@@ -1818,7 +1820,7 @@ class Game {
     if (P.ph === 'stop') this.hud.message(`BOXENSTOPP<br><b>${Math.max(0, P.stopT - P.t).toFixed(1)}</b>`, 0.3);
     if (P.serviced && !P.applied) {
       P.applied = true;
-      p.tyre = P.tyre; p.wear = 0;
+      p.tyre = P.tyre; p.wear = 0; p.tset = null; p.setDist = 0;
       if (P.repair) { p.dmg = newDamage(); this.showWing(this.playerModel, p.dmg); }
       setTyreLook(this.playerModel, p.tyre);
       this.playerEntry.stops = (this.playerEntry.stops || 0) + 1;
@@ -1838,7 +1840,7 @@ class Game {
     ai.computePose(dt);
     if (P.serviced && !P.applied) {
       P.applied = true;
-      ai.tyre = P.tyre; ai.wear = 0; ai.boxWant = null;
+      ai.tyre = P.tyre; ai.wear = 0; ai.tset = null; ai.setDist = 0; ai.boxWant = null;
       const e = this.entryOf.get(ai);
       if (P.repair) { ai.dmg = newDamage(); this.showWing(e.mesh, ai.dmg); }
       setTyreLook(e.mesh, ai.tyre);
@@ -1897,44 +1899,45 @@ class Game {
 
   // tyre temperatures per corner (player) and brake temperatures (every car)
   updateTemps(dt, racing) {
-    const p = this.player, w = this.wetAt(p.s);
+    const p = this.player, w = this.wetAt(p.s), tr = this.track;
     this.tempOn = this.opts.tyreTemp !== false && this.mode !== 'school';
     const amb = (this.tod.lamps > 0.5 ? 24 : this.tod.sunEl < 20 ? 28 : 34) - w * 14;
+    // asphalt: sun-heated in daylight, near air temperature at night, cooled by water (estimate)
+    const trackT = amb + (this.tod.lamps > 0.5 ? 4 : this.tod.sunEl < 20 ? 8 : 16) * (1 - w);
     if (dt <= 0) return;
-    for (const c of this.cars) {
-      const o = c.obj;
-      if (o.brakeT === undefined) o.brakeT = amb + 180;
-      let heat;
-      if (o === p) heat = p.brake * Math.abs(p.v) * 12;
-      else { const dv = (o.prevVb ?? o.v) - o.v; o.prevVb = o.v; heat = dv > 0 ? Math.min(45, dv / dt) * o.v * 0.3 : 0; }
-      o.brakeT += (heat - (o.brakeT - amb) * (0.04 + Math.abs(o.v) * 0.002)) * dt;
-    }
-    // cold brakes bite less, overheated ones fade
+    // tyre wear: energy-based (tyres.js), compressed to the race length like the wear rate of F1 games
+    const k = this.lesson && this.lesson.id === 'tyres' ? 0.4 : this.solo ? 0 : this.opts.tyreWear ?? 1;
+    const comp = Math.max(1, THERM.realRaceM / Math.max(this.raceM || THERM.realRaceM, 1));
+    this.wearScale = k * comp;
+    const freshT = (c) => (this.flying ? TYRE_WINDOW[c][0] - 6 : isSlick(c) ? 70 : 50); // blankets: 70 °C slicks
+    // ---- player: energies straight from the vehicle model
+    if (!p.tset || p.tset.c !== p.tyre) p.tset = newTyreSet(p.tyre, freshT(p.tyre));
+    for (let i = 0; i < 4; i++) { p.tset.E[i] += p.tyreE[i]; p.tset.R[i] += p.tyreR[i]; p.tyreE[i] = 0; p.tyreR[i] = 0; }
+    p.tset.R[0] += p.brakeE * THERM.rimShare / 2; p.tset.R[1] += p.brakeE * THERM.rimShare / 2; // brake heat through the rims
+    const wearing = racing && !this.pitCtl ? this.wearScale : 0;
+    const over = stepTyres(p.tset, dt, p.v, amb, trackT, w, wearing);
+    p.tyreT = [0, 1, 2, 3].map((i) => gripTemp(p.tset, i)); p.tyreFor = p.tyre;
+    p.wear = Math.max(...p.tset.wear);
+    tyreFactors(p.tset, p.tyreMu, this.tempOn);
+    this.overheat = over;
+    p.brakeT = stepBrake(p.brakeT ?? amb + 180, p.brakeE * (1 - THERM.rimShare), dt, p.v, amb); p.brakeE = 0;
+    // cold carbon brakes bite less, overheated ones fade
     p.brakeMul = !this.tempOn ? 1 : p.brakeT < 300 ? 0.9 + (p.brakeT / 300) * 0.1 : p.brakeT > 1000 ? Math.max(0.75, 1 - (p.brakeT - 1000) / 1200) : 1;
-    const W = TYRE_WINDOW[p.tyre];
-    if (!p.tyreT || p.tyreFor !== p.tyre) {
-      // fresh set from the blankets (flying laps start warm)
-      const t0 = this.flying ? W[0] - 6 : isSlick(p.tyre) ? 72 : 50;
-      p.tyreT = [t0, t0, t0, t0]; p.tyreFor = p.tyre;
+    // ---- AI: the same energies estimated from speed, line curvature and acceleration
+    for (const ai of this.aiList) {
+      if (ai.net) continue;
+      const wa = this.wetAt(ai.s), ax = ((ai.v - (ai.prevVb ?? ai.v)) / dt); ai.prevVb = ai.v;
+      if (!ai.tset || ai.tset.c !== ai.tyre) ai.tset = newTyreSet(ai.tyre, freshT(ai.tyre));
+      const moving = racing && !ai.pitCtl && !(ai.spunT > 0);
+      if (moving) aiTyreEnergy(ai.tset, ai.v, tr.kRace[tr.idx(ai.s)], Math.max(-60, Math.min(20, ax)), tr.mu * tyreGrip(ai.tyre, 0, wa), dt);
+      stepTyres(ai.tset, dt, ai.v, amb, trackT, wa, moving ? this.wearScale : 0);
+      ai.wear = Math.max(...ai.tset.wear);
+      ai.tyreF = tyreFactors(ai.tset, ai.tyreF || [1, 1, 1, 1], this.tempOn);
+      if (ax < 0 && moving) { const eb = VEH.mass * -ax * ai.v * 0.56 * dt; ai.brakeE = (ai.brakeE || 0) + eb; ai.tset.R[0] += eb * THERM.rimShare / 2; ai.tset.R[1] += eb * THERM.rimShare / 2; }
+      ai.brakeT = stepBrake(ai.brakeT ?? amb + 180, (ai.brakeE || 0) * (1 - THERM.rimShare), dt, ai.v, amb); ai.brakeE = 0;
+      if (moving) ai.setDist = (ai.setDist || 0) + ai.v * dt;
     }
-    const v = Math.abs(p.v), ay = p.ay ?? p.yawRate * p.v, ax = p.ax ?? (p.v - (this.prevVt ?? p.v)) / dt;
-    this.prevVt = p.v;
-    const moving = racing && !this.pitCtl;
-    const weave = this.state === 'formation' || this.state === 'grid' ? 1.5 : 0; // weaving / burnouts on the formation lap, still hot on the grid
-    const H = weave + (moving ? ((Math.abs(ay) * 1.1 + Math.min(40, Math.abs(ax)) * 0.8) * (0.5 + v / 80) + p.slip * 20 + (p.surface === 'road' ? 0 : 4)) * 0.13 : 0);
-    const kL = 0.5 + Math.max(-0.3, Math.min(0.3, ay / 50)), kF = 0.5 + Math.max(-0.25, Math.min(0.3, -ax / 60));
-    const cool = 0.018 + v * 0.0011 + w * 0.04;
-    let g = 0, over = 0;
-    const mean = (p.tyreT[0] + p.tyreT[1] + p.tyreT[2] + p.tyreT[3]) / 4;
-    for (let i = 0; i < 4; i++) {
-      p.tyreT[i] += (mean - p.tyreT[i]) * Math.min(1, dt * 0.25); // heat soaks across the car
-      const left = i % 2 === 0, front = i < 2;
-      const share = 4 * (left ? kL : 1 - kL) * (front ? kF : 1 - kF);
-      const T = p.tyreT[i] += (H * share - (p.tyreT[i] - amb) * cool) * dt;
-      g += tempGrip(p.tyre, T); over = Math.max(over, T - W[1]);
-    }
-    this.tyreTempGrip = g / 4;
-    this.overheatWear = 1 + Math.max(0, over) / 25;
+    if (racing && !this.pitCtl) p.setDist = (p.setDist || 0) + Math.abs(p.v) * dt;
   }
 
   // underfloor sparks: the plank scrapes at top speed, kerbs throw bursts
@@ -1958,19 +1961,18 @@ class Game {
     if (this.launchT > 0) { this.launchT -= dt; if (this.launchT <= 0) this.player.launchMul = 1; }
     const tr = this.track, w = this.weather.wetness, k = this.lesson && this.lesson.id === 'tyres' ? 0.6 : this.solo ? 0 : this.opts.tyreWear ?? 1, p = this.player;
     const wp = this.wetAt(p.s), zoneMu = (x) => (this.rainZone ? 1 - 0.28 * x : 1); // the dry speed profile doesn't know about the wet patch
-    if (racing && !this.pitCtl) p.wear = Math.min(1, p.wear + wearPerM(p.tyre, wp, p.slip, this.raceM, k) * Math.abs(p.v) * dt * (this.tempOn ? this.overheatWear || 1 : 1));
     const de = damageEffect(p.dmg);
     this.updateTemps(dt, racing);
     this.updateRubber(dt);
     // rubbered line grips a little more, the marbles beside it a lot less
     const off = Math.abs(p.lat - tr.racingLat(p.s));
     const rubberGrip = off < 1.6 ? 1 + this.rubber * 0.02 : off > 2.8 && Math.abs(p.lat) < tr.hwAt(p.s) ? 1 - Math.max(0, this.rubber - 0.3) * 0.08 : 1;
-    p.gripMul = (this.careerGrip || 1) * tyreGrip(p.tyre, p.wear, wp) * zoneMu(wp) * de.grip * (this.tempOn ? this.tyreTempGrip : 1) * rubberGrip; p.dragMul = de.drag; p.pull = de.pull;
+    p.gripMul = (this.careerGrip || 1) * tyreGrip(p.tyre, 0, wp) * zoneMu(wp) * de.grip * rubberGrip; // temperature + wear act per wheel (p.tyreMu) p.dragMul = de.drag; p.pull = de.pull;
     for (const ai of this.aiList) {
       if (ai.net) continue;
       const wa = this.wetAt(ai.s);
-      if (racing && !ai.pitCtl) ai.wear = Math.min(1, ai.wear + wearPerM(ai.tyre, wa, 0.15, this.raceM, k) * ai.v * dt);
-      ai.gripMul = tyreGrip(ai.tyre, ai.wear, wa) * zoneMu(wa) * damageEffect(ai.dmg).grip;
+      const f = ai.tyreF || [1, 1, 1, 1];
+      ai.gripMul = tyreGrip(ai.tyre, 0, wa) * ((f[0] + f[1] + f[2] + f[3]) / 4) * zoneMu(wa) * damageEffect(ai.dmg).grip;
     }
     // wall hits break the front wing
     if (p.wallHit > 22) this.incident(p, 1);
@@ -1985,6 +1987,15 @@ class Game {
     this.hud.setCarStatus({ tyre: p.tyre, wear: p.wear, dmg: p.dmg, box: this.boxReq || !!this.pitCtl, pen: this.playerEntry.pen, wearOn: k > 0, temps: this.tempOn ? p.tyreT : null, win: TYRE_WINDOW[p.tyre], brakeT: p.brakeT });
   }
 
+  // wear per metre of a medium in this race, measured from every car's current set (the strategists
+  // look at the timing data); before there is enough running, a prior: half a race distance to the cliff
+  wearRef() {
+    let wSum = 0, dSum = 0;
+    for (const c of this.cars) { const o = c.obj; if (!o.tset || !(o.setDist > 800)) continue; wSum += o.wear / TYRES[o.tyre].wear; dSum += o.setDist; }
+    const prior = (0.7 / (0.5 * (this.raceM || 1))) * ((this.opts.tyreWear ?? 1) > 0 ? 1 : 0);
+    return dSum > 4000 ? wSum / dSum : prior;
+  }
+
   // AI pit calls: weather changes (not all on the same lap), worn tyres, a broken wing
   aiStrategy() {
     const tr = this.track, w = this.wetPlan(), L = tr.length, k = this.opts.tyreWear ?? 1;
@@ -1995,10 +2006,11 @@ class Game {
       if (remain < L * 0.6) { ai.boxWant = null; continue; } // bring it home
       if (!ai.boxWant) {
         const call = weatherCall(ai.tyre, w);
-        const rate = wearPerM(ai.tyre, w, 0.15, this.raceM, k);
-        if (call) ai.boxWant = call === 'dry' ? dryChoice(remain, this.raceM) : call;
-        else if (k > 0 && ai.wear > 0.5 && ai.wear + rate * remain > 0.92) ai.boxWant = isSlick(ai.tyre) ? dryChoice(remain, this.raceM) : ai.tyre;
-        else if (this.dmgOn && wingDmg(ai.dmg) > 0.45) ai.boxWant = isSlick(ai.tyre) ? dryChoice(remain, this.raceM) : ai.tyre;
+        // wear per metre this car has actually seen on this set (falls back to the race-wide estimate)
+        const rate = ai.setDist > 800 ? ai.wear / ai.setDist : this.wearRef() * TYRES[ai.tyre].wear;
+        if (call) ai.boxWant = call === 'dry' ? dryChoice(remain, this.raceM, this.wearRef()) : call;
+        else if (k > 0 && ai.wear > 0.5 && ai.wear + rate * remain > 0.92) ai.boxWant = isSlick(ai.tyre) ? dryChoice(remain, this.raceM, this.wearRef()) : ai.tyre;
+        else if (this.dmgOn && wingDmg(ai.dmg) > 0.45) ai.boxWant = isSlick(ai.tyre) ? dryChoice(remain, this.raceM, this.wearRef()) : ai.tyre;
       }
       const inWin = pitWindow(tr, ai.s);
       if (inWin && !ai.inWin && ai.boxWant && !(ai.spunT > 0) && !this.sc) {

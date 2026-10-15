@@ -5,6 +5,7 @@
 // so the same code always gives the same numbers.
 import { PlayerCar, steerLock } from '../js/physics.js';
 import { VEH, lateralLimit, brakeLimit } from '../js/vehicle.js';
+import { newTyreSet, stepTyres, stepBrake, gripTemp, tyreFactors } from '../js/tyres.js';
 
 const G = 9.81;
 
@@ -203,11 +204,32 @@ export function lockTest(dt = 1 / 120) {
   return { test: 'Volleinschlag 10 km/h', 'Wendekreis-Radius m': ((maxX - minX) / 2).toFixed(2) };
 }
 
+// tyres on a 100 m circle at 85 % of the limit for 90 s (medium, 30 °C air, 40 °C track), the thermal model
+// stepped at the game's frame rate dt; wear without race compression
+export function tyreThermalTest(frameDt = 1 / 30) {
+  const car = newCar(testPad()), inp = input(), R = 100, set = newTyreSet('M', 70);
+  const cx = car.x + R, cz = car.z;
+  let vS = 10; for (let k = 0; k < 40; k++) vS = Math.sqrt(R * lateralLimit(vS, 1));
+  const vT = vS * Math.sqrt(0.85), sub = Math.round(frameDt * 120);
+  let t = 0, Tb = 300, dist = 0;
+  car.v = vT; car.gear = 5;
+  while (t < 90) {
+    for (let k = 0; k < sub; k++) { holdSpeed(car, inp, vT); pursueCircle(car, inp, cx, cz, R, 1 / 120); car.update(1 / 120, inp, true); dist += car.v / 120; }
+    t += frameDt;
+    for (let i = 0; i < 4; i++) { set.E[i] += car.tyreE[i]; set.R[i] += car.tyreR[i]; car.tyreE[i] = car.tyreR[i] = 0; }
+    stepTyres(set, frameDt, car.v, 30, 40, 0, 1);
+    Tb = stepBrake(Tb, car.brakeE, frameDt, car.v, 30); car.brakeE = 0;
+    tyreFactors(set, car.tyreMu);
+  }
+  const f = (a) => a.map((x) => Math.round(x)).join('/');
+  return { test: `Reifenthermik Kreis R=100, 85 % Grenze, Takt 1/${Math.round(1 / frameDt)}`, 'Lauffläche °C FL/FR/RL/RR': f(set.Ts), 'Karkasse °C': f(set.Tc), 'Grip-Temp °C': f([0, 1, 2, 3].map((i) => gripTemp(set, i))), 'Verschleiß je km (ohne Zeitraffer)': set.wear.map((w) => (w / (dist / 1000)).toFixed(4)).join('/'), 'Grip-Faktor': car.tyreMu.map((x) => x.toFixed(3)).join('/') };
+}
+
 export async function runAll() {
   return [
     accelTest(), brakeTest(), brakeTest(200 / 3.6), brakeTest(300 / 3.6, false), circleTest(30), circleTest(100), circleTest(300),
     stepSteerTest(200, 0.2, 1 / 60), stepSteerTest(200, 0.2, 1 / 120), stepSteerTest(200, 0.2, 1 / 240), stepSteerTest(200, 0.5), stepSteerTest(100, 0.5),
-    highSpeedTest(), trailBrakeTest(0.56, 0.2), trailBrakeTest(0.48), trailBrakeTest(0.56), trailBrakeTest(0.64), trailBrakeTest(0.56, 1), gravelTest(), crestTest(), lockTest(),
+    highSpeedTest(), trailBrakeTest(0.56, 0.2), trailBrakeTest(0.48), trailBrakeTest(0.56), trailBrakeTest(0.64), trailBrakeTest(0.56, 1), gravelTest(), crestTest(), lockTest(), tyreThermalTest(1 / 30), tyreThermalTest(1 / 120),
   ];
 }
 

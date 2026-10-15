@@ -43,6 +43,9 @@ export class PlayerCar {
     this.vy = 0; this.aF = 0; this.aR = 0; this.ax = 0; this.ay = 0;
     this.roll = 0; this.rollV = 0; this.pitch = 0; this.pitchV = 0; this.heave = 0;
     this.load = [0, 0, 0, 0]; this.usage = [0, 0];
+    // per-wheel grip from tyre temperature and wear (set by tyres.js each frame), and the energy this model
+    // puts into each tyre (friction / rolling, J) and the front brakes since the last read
+    this.tyreMu = [1, 1, 1, 1]; this.tyreE = [0, 0, 0, 0]; this.tyreR = [0, 0, 0, 0]; this.brakeE = 0;
     // tyres / damage / setup feed in as multipliers (set by the race each frame)
     this.tyre = 'M'; this.wear = 0; this.dmg = { L: 0, R: 0, rear: 0 };
     this.gripMul = 1; this.dragMul = 1; this.pull = 0;
@@ -204,7 +207,9 @@ export class PlayerCar {
       const fo = (Fm * b_ / L + Fdf * aeroFront + dLong) / 2, ro = (Fm * a_ / L + Fdf * (1 - aeroFront) - dLong) / 2;
       const FL = Math.max(0, fo + dF), FR = Math.max(0, fo - dF), RL = Math.max(0, ro + dR), RR = Math.max(0, ro - dR);
       this.load[0] = FL; this.load[1] = FR; this.load[2] = RL; this.load[3] = RR;
-      const capF = tyrePeak(FL, mu) + tyrePeak(FR, mu), pRL = tyrePeak(RL, mu), pRR = tyrePeak(RR, mu);
+      const tm = this.tyreMu;
+      const pFL = tyrePeak(FL, mu * tm[0]), pFR = tyrePeak(FR, mu * tm[1]), pRL = tyrePeak(RL, mu * tm[2]), pRR = tyrePeak(RR, mu * tm[3]);
+      const capF = pFL + pFR;
       const capR = pRL + pRR, capRd = (1 - lock) * 2 * Math.min(pRL, pRR) + lock * capR;
 
       // ---- slip angles with tyre relaxation (side force needs ~half a metre of rolling to build up)
@@ -244,6 +249,18 @@ export class PlayerCar {
       if (lockR) { const vv = Math.hypot(vrx, vry) || 1; FxR = -MF_SLIDE * capR * vrx / vv; FyR = -MF_SLIDE * capR * vry / vv; }
       else FyR = clampC(FyRp, capR, FxR);
       usF = Math.hypot(FxF, FyF) / Math.max(capF, 1); usR = Math.hypot(FxR, FyR) / Math.max(capR, 1);
+      // ---- energy into the tyres: force x sliding speed (lateral: the wheel's sideways speed; longitudinal:
+      // slip ratio from the slip stiffness ~25 x load, the full speed when locked, more when spinning up),
+      // split between the two wheels of an axle by their grip; rolling hysteresis crr·Fz·v; brake power
+      const kF = lockF ? 1 : Math.min(0.15, Math.abs(FxF) / Math.max(25 * (FL + FR), 1));
+      const kR = lockR ? 1 : Math.min(0.3, Math.abs(FxR) / Math.max(25 * (RL + RR), 1) + spin * 0.25);
+      const PF = (Math.abs(FyF) * Math.abs(vfy) + Math.abs(FxF) * kF * Math.abs(vfx)) * hs;
+      const PR = (Math.abs(FyR) * Math.abs(vry) + Math.abs(FxR) * kR * au) * hs;
+      const E = this.tyreE, Rr = this.tyreR, rr = VEH.crr * au * hs;
+      E[0] += PF * pFL / Math.max(capF, 1); E[1] += PF * pFR / Math.max(capF, 1);
+      E[2] += PR * pRL / Math.max(capR, 1); E[3] += PR * pRR / Math.max(capR, 1);
+      Rr[0] += rr * FL; Rr[1] += rr * FR; Rr[2] += rr * RL; Rr[3] += rr * RR;
+      if (FxF * dir < 0 && !lockF) this.brakeE += -FxF * dir * au * hs;
 
       // ---- body forces and yaw moment
       let Fx = FxF * cosD - FyF * sinD + FxR;

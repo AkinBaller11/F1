@@ -26,12 +26,6 @@ export function tyreGrip(c, wear, w) {
   return rawGrip(c, wear, w) / ref;
 }
 
-// wear per metre: on a 5+ lap race a soft lasts ~55 % of the distance, a hard ~140 %
-export function wearPerM(c, w, slip, raceM, k) {
-  let r = (TYRES[c] || TYRES.M).wear / (raceM * 0.95);
-  if (!isSlick(c)) r *= 1 + 2.2 * Math.max(0, (c === 'W' ? 0.6 : 0.3) - w); // inters / wets cook on a drying track
-  return r * (1 + slip * 1.2) * k;
-}
 
 // what the weather asks for: a compound, 'dry' (back to slicks) or null (fine as is)
 export function weatherCall(c, w) {
@@ -41,9 +35,10 @@ export function weatherCall(c, w) {
   if (c === 'W' && w < 0.5) return w < 0.16 ? 'dry' : 'I';
   return null;
 }
-// softest slick that makes it to the flag
-export function dryChoice(remainM, raceM) {
-  for (const c of ['S', 'M', 'H']) if ((TYRES[c].wear / (raceM * 0.95)) * remainM < 0.82) return c;
+// softest slick that makes it to the flag; ref = measured wear per metre of a medium (tyres.js energy model),
+// the compounds scale it by their wear factor
+export function dryChoice(remainM, raceM, ref = 0.7 / (0.5 * raceM)) {
+  for (const c of ['S', 'M', 'H']) if (TYRES[c].wear * ref * remainM < 0.82) return c;
   return 'H';
 }
 export function wetChoice(w) { return w > 0.72 ? 'W' : 'I'; }
