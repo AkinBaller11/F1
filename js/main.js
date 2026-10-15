@@ -3236,7 +3236,7 @@ function startRace(mpStart, extra = null) {
     game = new Game(opts);
     game.warmup();
     $('#res-again').textContent = mpStart ? 'Zur Lobby' : 'Nochmal fahren';
-    window.__game = game; window.__input = input; window.__renderer = renderer;
+    window.__game = game; window.__input = input; window.__renderer = renderer; window.__audio = audio;
     showScreen('none');
     $('#hud').classList.add('active');
     document.body.classList.add('ingame');

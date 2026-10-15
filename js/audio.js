@@ -90,9 +90,15 @@ export class Audio {
     this.wind.f.frequency.setTargetAtTime(400 + v * 12, t, 0.1);
     this.rain.g.gain.setTargetAtTime(this.rainLevel * (inCockpit ? 1 : 0.6), t, 0.3);
     this.rumble.g.gain.setTargetAtTime(car.bump * Math.min(1, v / 20) * 0.35, t, 0.03);
-    const sq = Math.max(car.lockup || 0, (car.wheelspin || 0) * 0.8) * Math.min(1, v / 10);
+    // tyre noise from the vehicle model: lock-ups and wheelspin squeal; near the grip limit in a corner the
+    // slicks scrub (how much of the friction circle the busier axle uses, from 85 % up); water quietens it
+    const use = car.usage ? Math.max(car.usage[0], car.usage[1]) : 0;
+    const scrub = Math.min(1, Math.max(0, (use - 0.85) / 0.15)) * Math.min(1, v / 15) * (1 - 0.7 * Math.min(1, this.rainLevel * 4));
+    const sq = Math.max(car.lockup || 0, (car.wheelspin || 0) * 0.8, scrub * 0.45) * Math.min(1, v / 10);
+    this.scrubLevel = sq;
     this.squeal.g.gain.setTargetAtTime(sq * 0.5, t, 0.04);
-    this.squeal.f.frequency.setTargetAtTime(1500 + v * 6, t, 0.1);
+    // a scrubbing slick sounds lower than a locked or spinning tyre
+    this.squeal.f.frequency.setTargetAtTime((car.lockup || car.wheelspin > 0.05 ? 1500 : 1050) + v * 6, t, 0.1);
     // nearby cars -> crowd/air rush
     let near = 0;
     for (const o of others) { const d = Math.hypot(o.x - car.x, o.z - car.z); if (d < 40) near += (1 - d / 40) * Math.min(1, o.v / 50); }
