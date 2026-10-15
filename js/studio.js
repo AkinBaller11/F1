@@ -8,9 +8,9 @@ import { buildCar, carModelReady } from './models.js';
 
 const LIVERIES = [
   { name: 'F1 2026', orig: true, num: 26, p: '#003572', s: '#ff6b00', a: '#ffdb96', meta: 'Originallackierung des Modells' },
-  { name: 'Rosso Vento', num: 7, p: '#c4101c', s: '#f3f3f1', a: '#151517', meta: 'Eigene Lackierung · Hauptsponsor NOVALINE' },
-  { name: 'Glacier GP', num: 21, p: '#eef2f6', s: '#0e2b4c', a: '#2ec4f0', meta: 'Eigene Lackierung · Hauptsponsor ARCTIQ' },
-  { name: 'Ember Racing', num: 44, p: '#16171a', s: '#ff6a13', a: '#ffd23f', meta: 'Eigene Lackierung · Hauptsponsor VOLTEK' },
+  { name: 'Rosso Vento', num: 7, sponsor: 'NOVALINE', partner: 'KESTREL', p: '#c4101c', s: '#f3f3f1', a: '#151517', meta: 'Eigene Lackierung · Hauptsponsor NOVALINE' },
+  { name: 'Glacier GP', num: 21, sponsor: 'ARCTIQ', partner: 'POLARIS', p: '#eef2f6', s: '#0e2b4c', a: '#2ec4f0', meta: 'Eigene Lackierung · Hauptsponsor ARCTIQ' },
+  { name: 'Ember Racing', num: 44, sponsor: 'VOLTEK', partner: 'SOLARA', p: '#16171a', s: '#ff6a13', a: '#ffd23f', meta: 'Eigene Lackierung · Hauptsponsor VOLTEK' },
 ];
 const RIM = ['#ff5a1a', '#ff2436', '#3fb8ff', '#ff7a1a'];
 const $ = (id) => document.getElementById(id);
@@ -114,7 +114,7 @@ function setLivery(i) {
   current = i;
   const L = LIVERIES[i];
   if (car) stand.remove(car);
-  car = buildCar({ id: 'custom', name: L.name, body: parseInt(L.p.slice(1), 16), top: parseInt(L.s.slice(1), 16), low: 0x16171b, accent: parseInt(L.a.slice(1), 16), pattern: 'plain' }, false, L.num, { origLivery: !!L.orig });
+  car = buildCar({ id: 'custom', name: L.name, body: parseInt(L.p.slice(1), 16), top: parseInt(L.s.slice(1), 16), low: 0x16171b, accent: parseInt(L.a.slice(1), 16), pattern: 'plain', sponsor: L.sponsor, partners: [L.partner] }, false, L.num, { origLivery: !!L.orig });
   car.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
   for (const o of car.children) if (o.isMesh && o.material && o.material.isMeshBasicMaterial && o.material.transparent) o.visible = false; // the game's own contact shadow
   const box = new THREE.Box3().setFromObject(car), len = box.max.z - box.min.z;

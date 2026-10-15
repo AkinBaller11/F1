@@ -4,9 +4,14 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { rigidOnTerrain } from './terrain.js';
-import { carModel, buildModelCar } from './carmodel.js';
-export { carModelReady, carModel } from './carmodel.js';
+import { carModel, buildModelCar, carModelReady as modelLoaded, decalsReady } from './carmodel.js';
+export { carModel } from './carmodel.js';
+// model decoded and its stickers cut
+export const carModelReady = modelLoaded.then(() => decalsReady);
 
+// fictional sponsors per team (main, partner)
+const TEAM_SPONSORS = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ZENTRIX', mer: 'HELIOX', ast: 'KORVAN', alp: 'AQUILON', wil: 'ATLAS', rb: 'SOLVIQ', sau: 'TITAN·R', cad: 'NOVA·US', has: 'BRAKKEN' };
+const TEAM_PARTNERS = { mcl: 'ORBIQ', fer: 'MERIDIA', rbr: 'VOLTRA', mer: 'SILVANT', ast: 'GREENLINE', alp: 'BLUEMAR', wil: 'KOMET', rb: 'HYPERA', sau: 'QUANTA', cad: 'LIBERTE', has: 'MONOLITH' };
 export const TEAMS = [
   { id: 'mcl', name: 'McLaren', body: 0xff8000, top: 0xff8000, low: 0x161616, accent: 0x47c7fc, drivers: ['NORRIS', 'PIASTRI'], numbers: [4, 81], pace: 1.0 },
   { id: 'fer', name: 'Ferrari', body: 0xd40000, top: 0xf2f2f2, low: 0xd40000, accent: 0xffd200, drivers: ['LECLERC', 'HAMILTON'], numbers: [16, 44], pace: 0.985 },
@@ -1098,7 +1103,7 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
     }
   }
   // invented partner brands only (no real sponsors, not even thinly disguised ones)
-  const sponsors = { mcl: 'VELOX', fer: 'ROSSA', rbr: 'ZENTRIX', mer: 'HELIOX', ast: 'KORVAN', alp: 'AQUILON', wil: 'ATLAS', rb: 'SOLVIQ', sau: 'TITAN·R', cad: 'NOVA·US', has: 'BRAKKEN' };
+  const sponsors = TEAM_SPONSORS;
   const giallo = team.pattern === 'giallo';
   const spName = team.sponsor || (giallo ? 'AURIX' : sponsors[team.id] || 'KRONOS');
   const sp = decalTex(spName, light ? '#111' : '#fff');
@@ -1214,7 +1219,10 @@ function buildHelmet(team, number, classic) {
 const MODEL_HELMET = [0, 0.655, -0.3];
 function modelCar(team, number, opts) {
   const car = new THREE.Group();
-  const M = buildModelCar(opts.origLivery ? null : team.body);
+  const giallo = team.pattern === 'giallo';
+  const sponsor = team.sponsor || (giallo ? 'AURIX' : TEAM_SPONSORS[team.id] || 'KRONOS');
+  const partner = (team.partners && team.partners[0]) || (giallo ? 'VESTRA' : TEAM_PARTNERS[team.id] || 'NORDLIT');
+  const M = buildModelCar(opts.origLivery ? null : team, number, sponsor, partner);
   car.add(M.group);
   car.userData.parts = { livery: M.livery, carbon: M.livery, accent: M.livery };
   car.userData.wheels = M.wheels;

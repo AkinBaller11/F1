@@ -6,7 +6,6 @@
 import * as THREE from 'three';
 
 const SCALE = 3.384 / 7.291;          // model axle distance 7.291 units -> game wheelbase 3.384 m
-const SRC_NAVY = [0, 53, 114];        // body colour of the original livery (sRGB 0..255)
 const BASE = 'assets/car/';
 
 const state = { ready: false };
@@ -107,41 +106,150 @@ export const carModelReady = (async () => {
   return state;
 })().catch((e) => { console.warn('car model unavailable, using the built-in car', e); return null; });
 
-// livery material per team colour: the studio material plus the navy -> team colour shift of its switcher
+// livery material per team: the studio material plus the colour shift of its switcher, extended from the navy
+// alone to the stripes. Each source colour of the texture moves to a team colour, the shift is added (not
+// replaced) so shading, anti-aliased edges and the painted lines keep their shape:
+//   navy body ............ team body; on upward-facing panels above the sidepods its top colour, along the
+//                          floor edge and lower sidepods its low colour (the two-tone of the built-in car)
+//   cream / pale stripes . the team's second colour (top, or white when the top is the body colour)
+//   orange, yellow, red .. the team's accent
+const SRC = { navy: [1, 53, 113], cream: [252, 218, 148], pale: [250, 250, 150], orange: [252, 104, 0], yellow: [252, 226, 0], red: [240, 12, 16] };
+const toS = (hex) => { const c = new THREE.Color(hex); return new THREE.Vector3(...[c.r, c.g, c.b].map((v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255)); };
+const v3 = (a) => `vec3(${a.map((x) => x.toFixed(1)).join(',')})`;
 const liveryCache = new Map();
-export function liveryMaterial(hex) {
-  const key = hex == null ? 'orig' : hex;
+export function liveryMaterial(team) {
+  if (!team) return state.mats.Livery; // the original paint
+  const top = team.top ?? team.body, low = team.low ?? team.body;
+  const second = top !== team.body ? top : 0xf2f2f2;
+  const key = [team.body, top, low, team.accent, second].join('/');
   if (liveryCache.has(key)) return liveryCache.get(key);
-  const base = state.mats.Livery;
-  if (hex == null) { liveryCache.set(key, base); return base; }
-  const m = base.clone();
-  const tgt = new THREE.Color(hex);
-  const T = [tgt.r, tgt.g, tgt.b].map((c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055) * 255); // linear -> sRGB
-  m.userData.delta = new THREE.Vector3(T[0] - SRC_NAVY[0], T[1] - SRC_NAVY[1], T[2] - SRC_NAVY[2]);
+  const m = state.mats.Livery.clone();
+  const U = { uBody: toS(team.body), uTop: toS(top), uLow: toS(low), uSecond: toS(second), uAccent: toS(team.accent ?? team.body) };
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uNavyDelta = { value: m.userData.delta };
+    for (const k in U) sh.uniforms[k] = { value: U[k] };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCarPos; varying vec3 vCarN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCarPos = position; vCarN = normal;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform vec3 uNavyDelta;
+uniform vec3 uBody, uTop, uLow, uSecond, uAccent;
+varying vec3 vCarPos; varying vec3 vCarN;
 vec3 cmToS(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
-vec3 cmToL(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }`)
+vec3 cmToL(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+float near(vec3 s, vec3 src, float full, float zero) { float e = abs(s.r - src.r) + abs(s.g - src.g) + abs(s.b - src.b); return 1.0 - smoothstep(full, zero, e); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
 {
   vec3 s = cmToS(clamp(diffuseColor.rgb, 0.0, 1.0)) * 255.0;
-  float e = abs(s.r - ${SRC_NAVY[0]}.0) + abs(s.g - ${SRC_NAVY[1]}.0) + abs(s.b - ${SRC_NAVY[2]}.0);
-  float w = e > 150.0 ? 0.0 : (e < 40.0 ? 1.0 : 1.0 - (e - 40.0) / 110.0);
-  diffuseColor.rgb = cmToL(clamp((s + uNavyDelta * w) / 255.0, 0.0, 1.0));
+  vec3 N = normalize(vCarN);
+  float wTop = smoothstep(0.69, 0.71, N.y) * smoothstep(0.51, 0.52, vCarPos.y);
+  float wLow = (1.0 - smoothstep(0.205, 0.215, vCarPos.y)) * step(-1.3, vCarPos.z) * step(vCarPos.z, 1.9);
+  vec3 bodyC = mix(mix(uBody, uTop, wTop), uLow, wLow);
+  float wN = near(s, ${v3(SRC.navy)}, 40.0, 150.0);
+  float wC = near(s, ${v3(SRC.cream)}, 30.0, 90.0), wP = near(s, ${v3(SRC.pale)}, 30.0, 90.0);
+  float wO = near(s, ${v3(SRC.orange)}, 30.0, 95.0), wY = near(s, ${v3(SRC.yellow)}, 30.0, 90.0), wR = near(s, ${v3(SRC.red)}, 35.0, 100.0);
+  vec3 d = wN * (bodyC - ${v3(SRC.navy)}) + wC * (uSecond - ${v3(SRC.cream)}) + wP * (uSecond - ${v3(SRC.pale)})
+         + wO * (uAccent - ${v3(SRC.orange)}) + wY * (uAccent - ${v3(SRC.yellow)}) + wR * (uAccent - ${v3(SRC.red)});
+  float wSum = wN + wC + wP + wO + wY + wR;
+  if (wSum > 1.0) d /= wSum;
+  diffuseColor.rgb = cmToL(clamp((s + d) / 255.0, 0.0, 1.0));
 }`);
   };
-  m.customProgramCacheKey = () => 'navyShift';
+  m.customProgramCacheKey = () => 'teamShift';
   liveryCache.set(key, m);
   return m;
 }
 
-// the visual car: body (near + far), wheels as { pivot, wheel, front } like the built-in car's
-export function buildModelCar(hex) {
+// ---------------------------------------------------------------- stickers
+// start numbers and (fictional) sponsors projected onto the bodywork. The decal shapes are the same for every
+// car, so each is cut from the body once (DecalGeometry over just the triangles near it); every car then only
+// gets its own small text textures.
+const SLOTS = [
+  // name, ray origin, ray direction, decal size (w, h), kind
+  ['nose', [0, 2, -1.75], [0, -1, 0], [0.24, 0.24], 'num'],
+  ['coverR', [1.5, 0.78, 0.55], [-1, 0, 0], [0.26, 0.26], 'num'],
+  ['coverL', [-1.5, 0.78, 0.55], [1, 0, 0], [0.26, 0.26], 'num'],
+  ['podR', [1.6, 0.42, -0.15], [-1, 0, 0], [0.62, 0.15], 'sponsor'],
+  ['podL', [-1.6, 0.42, -0.15], [1, 0, 0], [0.62, 0.15], 'sponsor'],
+  ['noseR', [1.0, 0.47, -1.45], [-1, 0, 0], [0.34, 0.08], 'partner'],
+  ['noseL', [-1.0, 0.47, -1.45], [1, 0, 0], [0.34, 0.08], 'partner'],
+  ['wingR', [1.5, 0.86, 2.3], [-1, 0, 0], [0.4, 0.11], 'sponsor'],
+  ['wingL', [-1.5, 0.86, 2.3], [1, 0, 0], [0.4, 0.11], 'sponsor'],
+];
+let decalGeos = null;
+async function cutDecals() {
+  const { DecalGeometry } = await import('three/addons/geometries/DecalGeometry.js');
+  const src = state.body.Livery.full, pos = src.attributes.position, idx = src.index.array;
+  const ray = new THREE.Raycaster(), probe = new THREE.Mesh(src);
+  const out = [];
+  for (const [name, o, dir, size, kind] of SLOTS) {
+    ray.set(new THREE.Vector3(...o), new THREE.Vector3(...dir)); ray.far = 3;
+    const hit = ray.intersectObject(probe, false)[0];
+    if (!hit) continue;
+    // projector: looks against the ray (its +z points out of the surface), text up = +y on the sides, nose up
+    // towards the front on the top so it reads from behind (chase / onboard cameras)
+    const e = dir[1] < 0 ? new THREE.Euler(-Math.PI / 2, 0, 0) : new THREE.Euler(0, dir[0] < 0 ? Math.PI / 2 : -Math.PI / 2, 0);
+    // only the triangles near the hit go into the projection
+    const r = Math.max(size[0], size[1]) * 0.75 + 0.05, P = hit.point, sub = [], a = new THREE.Vector3();
+    for (let i = 0; i < idx.length; i += 3) {
+      a.fromBufferAttribute(pos, idx[i]);
+      if (a.distanceTo(P) < r) sub.push(idx[i], idx[i + 1], idx[i + 2]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', pos); g.setAttribute('normal', src.attributes.normal);
+    g.setIndex(sub);
+    const dg = new DecalGeometry(new THREE.Mesh(g), P, e, new THREE.Vector3(size[0], size[1], 0.25));
+    if (!dg.attributes.position.count) continue;
+    const n = new THREE.Vector3(...dir).negate().multiplyScalar(0.002); dg.translate(n.x, n.y, n.z); // just off the paint
+    out.push({ name, kind, geo: dg, aspect: size[0] / size[1] });
+  }
+  return out;
+}
+export const decalsReady = carModelReady.then((s) => (s ? cutDecals().then((d) => { decalGeos = d; }) : null)).catch((e) => console.warn('car stickers unavailable', e));
+
+const lum = (hex) => { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; };
+function textTex(text, aspect, color, italic, font) {
+  const h = 128, w = Math.round(h * aspect), c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  let px = h * 0.86; g.font = `${italic ? 'italic ' : ''}900 ${px}px ${font}`;
+  while (g.measureText(text).width > w * 0.94 && px > 8) { px -= 4; g.font = `${italic ? 'italic ' : ''}900 ${px}px ${font}`; }
+  g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, w / 2, h / 2 + px * 0.04);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+const texCache = new Map();
+function cachedTex(text, aspect, color, italic) {
+  const k = [text, aspect.toFixed(2), color, italic].join('|');
+  if (!texCache.has(k)) texCache.set(k, textTex(text, aspect, color, italic, '"Titillium Web", Arial, sans-serif'));
+  return texCache.get(k);
+}
+const matCache = new Map();
+function decalMat(tex) {
+  if (!matCache.has(tex)) matCache.set(tex, new THREE.MeshPhysicalMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.04 }));
+  return matCache.get(tex);
+}
+// stickers for one car: number, main sponsor, partner; ink contrasts with the panel it sits on
+function stickers(team, number, sponsor, partner) {
+  if (!decalGeos || !team) return [];
+  const ink = (hex) => (lum(hex) > 0.45 ? '#111316' : '#ffffff');
+  const top = team.top ?? team.body;
+  const list = [];
+  for (const d of decalGeos) {
+    const panel = d.name === 'nose' ? top : team.body;
+    const text = d.kind === 'num' ? String(number) : d.kind === 'sponsor' ? sponsor : partner;
+    if (!text) continue;
+    const me = new THREE.Mesh(d.geo, decalMat(cachedTex(text, d.aspect, ink(panel), true)));
+    me.renderOrder = 3; me.userData.lod = true;
+    list.push(me);
+  }
+  return list;
+}
+
+// the visual car: body (near + far), stickers, wheels as { pivot, wheel, front } like the built-in car's.
+// team null = the model's original paint without stickers
+export function buildModelCar(team, number = 0, sponsor = '', partner = '') {
   const S = state, group = new THREE.Group();
-  const liv = liveryMaterial(hex);
+  const liv = liveryMaterial(team);
   const mesh = (g, mat, far) => {
     const me = new THREE.Mesh(g, mat); me.castShadow = me.receiveShadow = true;
     if (far) me.userData.far = true; else me.userData.lod = true;
@@ -152,7 +260,7 @@ export function buildModelCar(hex) {
   // own rear-light material per car so the rain light can blink (same look when off)
   const lightMat = S.mats.RearLight.clone();
   const light = new THREE.Mesh(S.body.RearLight.full, lightMat);
-  group.add(livery, liveryFar, light);
+  group.add(livery, liveryFar, light, ...stickers(team, number, sponsor, partner));
   const wheels = [];
   for (const w of S.wheels) {
     const pivot = new THREE.Group(); pivot.position.copy(w.hub);

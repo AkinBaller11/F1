@@ -113,19 +113,22 @@ export class PlayerCar {
       this.assistErr = Math.abs(err);
       this.assistAnalog = true;
     }
-    const analog = input.analog || this.assistAnalog;
+    // the assist's own corrections may move the wheel quickly, but a held key or touch button stays digital:
+    // it keeps the slip-angle cap and the ramp below (before, the assist switched both off, so a held key
+    // snapped to full lock at any speed and the car slid wide or spun)
+    const analog = !!input.analog, assistOnly = this.assistAnalog && input.steer === 0;
     this.assistAnalog = false;
     // keys are all-or-nothing: a held key may steer as far as the current rotation needs (r L / v) plus the
     // tyres' peak slip angle, never beyond that peak where more lock only loses side force. Analog input
     // (pad, wheel) keeps the full range.
     if (!input.analog && Math.abs(this.v) > 8) {
-      const lock = steerLock(this.v), cap = (Math.abs(this.yawRate) * VEH.L) / Math.abs(this.v) + ALPHA_PEAK * 1.1;
+      const lock = steerLock(this.v), cap = (Math.abs(this.yawRate) * VEH.L) / Math.abs(this.v) + ALPHA_PEAK;
       const c = Math.min(1, cap / lock);
       st = Math.max(-c, Math.min(c, st));
     }
     // keyboard: quick at low speed, calmer at high speed so lines stay clean
     const vk = Math.abs(this.v);
-    const rate = analog ? 12 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 2.2 + 2.2 / (1 + vk / 25));
+    const rate = analog ? 12 : assistOnly ? 6 : (Math.sign(st) !== Math.sign(this.steer) && st !== 0 ? 6 : 2.2 + 2.2 / (1 + vk / 25));
     const ret = analog ? 12 : 3.6 + 1.6 / (1 + vk / 30);
     if (st === 0) this.steer -= Math.sign(this.steer) * Math.min(Math.abs(this.steer), ret * dt);
     else this.steer += Math.max(-rate * dt, Math.min(rate * dt, st - this.steer));
@@ -183,6 +186,7 @@ export class PlayerCar {
     const reverse = u0 <= 0.3 && brk > 0.5 && thr < 0.05;
     const dfMul = S.df, aeroFront = VEH.aeroFront + (S.bal || 0); // wing balance moves the centre of pressure
     const lock = S.diff, tc = this.opts.tc || 'full', abs = this.opts.abs !== false;
+    const esc = tc === 'full';
     // road shape: slope along the car's heading, vertical curvature (crest < 0: the car goes light, dip > 0)
     const ti = this.hint >= 0 ? this.hint : 0;
     const along = -Math.sin(this.yaw) * tr.tx[ti] - Math.cos(this.yaw) * tr.tz[ti];
@@ -242,6 +246,10 @@ export class PlayerCar {
       }
       // ---- side forces: the slip-angle force, capped by the friction circle left after Fx;
       // a locked axle slides: its whole (sliding) force points against its own velocity
+      if (esc && FxR > 0) {
+        const over = Math.abs(this.aR) / ALPHA_PEAK; // rears past their peak: power oversteer
+        if (over > 1.1) FxR *= Math.max(0.15, 1 - (over - 1.1) * 2.5);
+      }
       const clampC = (fy, cap, fx) => { const l = room(cap, fx); return Math.max(-l, Math.min(l, fy)); };
       let FyF, FyR;
       if (lockF) { const vv = Math.hypot(vfx, vfy) || 1; FxF = -MF_SLIDE * capF * vfx / vv; FyF = -MF_SLIDE * capF * vfy / vv; }
@@ -273,6 +281,20 @@ export class PlayerCar {
         Mz -= Math.sign(r) * dFx * VEH.tR / 2;
       }
       if (pullK) Mz += pullK * 0.15 * dragForce(au, cdA) * VEH.tF / 2;
+      // stability aid (with full traction control, i.e. the Normal / Easy assists; Pro drives without it): like an
+      // ESC it brakes single wheels when the car rotates faster than the steering asks for (the rear stepping
+      // out) and takes drive away while the rears slide past their grip peak
+      if (esc && au > 6) {
+        const rMax = (capF + capR) / (m * au);
+        const rRef = Math.max(-rMax, Math.min(rMax, (u * Math.tan(delta)) / L));
+        const e = r - rRef;
+        if (Math.abs(r) > Math.abs(rRef) + 0.015 || Math.sign(r) !== Math.sign(rRef)) {
+          const Mmax = 0.35 * (capF * VEH.tF + capR * VEH.tR) / 2;
+          const Mc = Math.max(-Mmax, Math.min(Mmax, (-VEH.Iz * e) / 0.12));
+          Mz += Mc;
+          Fx -= dir * Math.abs(Mc) / (VEH.tF / 2) * 0.5; // the braked wheel slows the car a little
+        }
+      }
       const res = dragForce(u, cdA) + dir * (VEH.crr + SF.crr) * (Fm + Fdf);
       Fx -= res + m * 9.81 * grade;
 
@@ -578,9 +600,16 @@ export class AICar {
     const fa = tr.frame(s + look);
     const la = tr.racingLat(s + look) + this.latOff;
     const x2 = fa.x + fa.rx * la, z2 = fa.z + fa.rz * la;
+    const px = this.x, pz = this.z;
     this.x = f.x + f.rx * this.lat; this.z = f.z + f.rz * this.lat;
-    const yawT = Math.atan2(-(x2 - this.x), -(z2 - this.z));
-    if (this.yawInit) { let d = yawT - this.yawB; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yawB += d * Math.min(1, dt * 12); }
+    // the car points where it travels: its actual movement this frame (aiming at the look-ahead point turned
+    // the nose into every corner, up to ~15° in hairpins, so AI cars looked as if they were drifting);
+    // standing it keeps its heading; after a jump in position (pit, reset) it takes the look-ahead direction
+    const mx = this.x - px, mz = this.z - pz, md = Math.hypot(mx, mz);
+    const moved = md > 0.02 && md < 8;
+    const yawT = this.yawInit && moved ? Math.atan2(-mx, -mz) : Math.atan2(-(x2 - this.x), -(z2 - this.z));
+    if (this.yawInit && md <= 0.02) { /* not moved since the last call (stopped, or a second call this frame): keep the heading */ }
+    else if (this.yawInit && moved) { let d = yawT - this.yawB; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yawB += d * Math.min(1, dt * 20); }
     else { this.yawB = yawT; this.yawInit = true; }
     this.yaw = this.yawB + this.spinYaw;
     const steerT = Math.max(-0.4, Math.min(0.4, tr.k[tr.idx(s + 5)] * 12));
