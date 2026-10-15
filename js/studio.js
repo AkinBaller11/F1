@@ -1,190 +1,164 @@
-// Studio showroom: the game's car model (models.js) under a product-shot light rig. Fictional teams only.
+// Studio showroom: the 2026 car model under the studio set-up of f1-studio.html (soft box, red rim light,
+// cool side light, mirror floor with a darkening veil, contact shadow) and its livery switcher. Liveries are
+// fictional; the original one is the model's own paint with the real-world logos painted out.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { buildCar, setTyreLook } from './models.js';
+import { buildCar, carModelReady } from './models.js';
 
-// invented teams, colours and partner brands (no real teams, logos or sponsors)
-export const STUDIO_TEAMS = [
-  { name: 'Carmine Veloce', body: 0xa8001a, top: 0xa8001a, low: 0x141518, accent: 0xd8b35f, pattern: 'racing', number: 28, tyre: 'S', sponsor: 'VELMARE', partners: ['ORVENTA', 'LUMIQ', 'VELMARE'], base: 'Maranello-Süd (fiktiv)' },
-  { name: 'Aurelion GP', body: 0x0d5b61, top: 0xeef1f3, low: 0x111316, accent: 0xc77d3a, pattern: 'split', number: 7, tyre: 'M', sponsor: 'HALVEX', partners: ['QUORVIA', 'TESSALT', 'HALVEX'], base: 'Kopenhagen (fiktiv)' },
-  { name: 'Kestrel Dynamics', body: 0x0f1c3f, top: 0x0f1c3f, low: 0x0a0f22, accent: 0xff6a13, pattern: 'chevron', number: 22, tyre: 'H', sponsor: 'ZEPHRA', partners: ['VANTOR', 'KYRIX', 'ZEPHRA'], base: 'Oxfordshire (fiktiv)' },
-  { name: 'Valkyr Motorsport', body: 0x3a1468, top: 0x111214, low: 0x111214, accent: 0x9be22d, pattern: 'fade', number: 9, tyre: 'S', sponsor: 'NYXTEL', partners: ['OBSIDIA', 'FERRUM9', 'NYXTEL'], base: 'Tallinn (fiktiv)' },
-  { name: 'Heliant Austral', body: 0xff9f1c, top: 0xfaf7f0, low: 0x18181b, accent: 0x1f5bd8, pattern: 'stripe', number: 33, tyre: 'M', sponsor: 'HELIANT', partners: ['SOLVERA', 'MAROQ', 'HELIANT'], base: 'Perth (fiktiv)' },
-  { name: 'Nordwind Racing', body: 0xc9d1d9, top: 0x1b2026, low: 0x0e1114, accent: 0x29b6f6, pattern: 'racing', number: 51, tyre: 'H', sponsor: 'FJORDA', partners: ['ISBRE', 'POLARIQ', 'FJORDA'], base: 'Bergen (fiktiv)' },
+const LIVERIES = [
+  { name: 'F1 2026', orig: true, num: 26, p: '#003572', s: '#ff6b00', a: '#ffdb96', meta: 'Originallackierung des Modells' },
+  { name: 'Rosso Vento', num: 7, p: '#c4101c', s: '#f3f3f1', a: '#151517', meta: 'Eigene Lackierung · Hauptsponsor NOVALINE' },
+  { name: 'Glacier GP', num: 21, p: '#eef2f6', s: '#0e2b4c', a: '#2ec4f0', meta: 'Eigene Lackierung · Hauptsponsor ARCTIQ' },
+  { name: 'Ember Racing', num: 44, p: '#16171a', s: '#ff6a13', a: '#ffd23f', meta: 'Eigene Lackierung · Hauptsponsor VOLTEK' },
 ];
+const RIM = ['#ff5a1a', '#ff2436', '#3fb8ff', '#ff7a1a'];
+const $ = (id) => document.getElementById(id);
 
-// quality tiers: render resolution, shadow map, reflection resolution and blur taps
+// ---------------------------------------------------------------- renderer, quality tiers
+const canvas = $('studio');
+const isMobile = matchMedia('(pointer:coarse)').matches;
 const TIERS = [
-  { name: 'Niedrig', pr: 1, shadow: 1024, refl: 0.25, taps: 2 },
-  { name: 'Mittel', pr: 1.5, shadow: 2048, refl: 0.35, taps: 2 },
-  { name: 'Hoch', pr: 2, shadow: 2048, refl: 0.5, taps: 3 },
+  { name: 'Niedrig', pr: 1, shadow: 1024, refl: 0.35 },
+  { name: 'Mittel', pr: 1.5, shadow: 1024, refl: 0.5 },
+  { name: 'Hoch', pr: 2, shadow: 2048, refl: 0.5 },
 ];
-const mobile = matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 820;
-let tier = mobile ? 1 : 2;
-
-const canvas = document.getElementById('studio');
+let tier = isMobile ? 1 : 2;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-// r160: physically based light units are the default (useLegacyLights = false replaces physicallyCorrectLights)
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.85;
+renderer.toneMappingExposure = 0.9;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-// backdrop: near black, lifting softly towards the lit studio wall at the top right
-{
-  const c = document.createElement('canvas'); c.width = 512; c.height = 288;
-  const g = c.getContext('2d'), gr = g.createRadialGradient(470, -20, 10, 470, -20, 520);
-  gr.addColorStop(0, '#3a3f49'); gr.addColorStop(0.35, '#15171c'); gr.addColorStop(1, '#030405');
-  g.fillStyle = gr; g.fillRect(0, 0, 512, 288);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  scene.background = t;
-}
-scene.fog = new THREE.Fog(0x030405, 8, 20); // the studio falls off into darkness
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+scene.background = new THREE.Color('#0b0d11');
+scene.fog = new THREE.Fog('#0b0d11', 14, 30);
 
-const camera = new THREE.PerspectiveCamera(28, 1, 0.3, 120);
-camera.position.set(5.0, 4.5, -5.3);
-const BASE_DIST = Math.hypot(5.0 - 0.05, 4.5 - 0.35, -5.3 + 0.05); // the 16:9 framing (distance to the target)
+// studio environment for the reflections: soft box above, red strip, cool side light, low fill
+const pmrem = new THREE.PMREMGenerator(renderer);
+{
+  const env = new THREE.Scene(); env.background = new THREE.Color('#040405');
+  const box = (w, h, color, k, pos, look) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }));
+    m.position.set(...pos); m.lookAt(...look); env.add(m);
+  };
+  box(14, 5, '#ffffff', 5.5, [0, 9, 0], [0, 0, 0]);
+  box(2.5, 9, '#ff2638', 4.0, [-9, 2.5, 4], [0, 0.5, 0]);
+  box(3, 10, '#e4ecff', 4.5, [6, 3, -9], [0, 0.5, 0]);
+  box(16, 1.2, '#ffffff', 1.4, [9, 1.4, 6], [0, 0.5, 0]);
+  box(30, 30, '#16181d', 1, [0, -0.5, 0], [0, 1, 0]);
+  scene.environment = pmrem.fromScene(env, 0.015).texture;
+}
+
+const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+const HOME = new THREE.Vector3(5.3, 3.1, 4.6), PORTRAIT_HOME = new THREE.Vector3(8.2, 5.0, 7.2);
+const homePos = () => (innerWidth / innerHeight < 0.8 ? PORTRAIT_HOME : HOME);
+camera.position.copy(homePos());
 const controls = new OrbitControls(camera, canvas);
-controls.target.set(0.05, 0.35, -0.05);
+controls.target.set(0.15, 0.35, 0);
 controls.enableDamping = true; controls.dampingFactor = 0.06;
+controls.minDistance = 3.2; controls.maxDistance = 17;
+controls.maxPolarAngle = Math.PI / 2 - 0.06;
+controls.autoRotate = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+controls.autoRotateSpeed = 0.55;
 controls.enablePan = false;
-controls.minDistance = 4.6; controls.maxDistance = 12;
-controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.42; // never below the floor
-controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
-controls.rotateSpeed = 0.5;
-controls.addEventListener('start', () => { controls.autoRotate = false; });
 
 // ---------------------------------------------------------------- lights
-RectAreaLightUniformsLib.init();
-// large soft box overhead
-const soft = new THREE.RectAreaLight(0xffffff, 5.5, 7, 3.6);
-soft.position.set(0, 6.5, 0); soft.lookAt(0, 0, 0); scene.add(soft);
-// the shadow from the soft box: a directional light from almost straight above
-const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-sun.position.set(1.2, 9, -1.2); sun.target.position.set(0, 0, 0);
-sun.castShadow = true;
-Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 });
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
-scene.add(sun, sun.target);
-// red rim light from behind on the left
-const rim = new THREE.SpotLight(0xff1608, 60, 22, 0.26, 0.8, 2);
-rim.position.set(-3.5, 2.6, 8); rim.target.position.set(0.2, 0.5, 1.6); scene.add(rim, rim.target);
-const rimPanel = new THREE.RectAreaLight(0xff2010, 6, 5, 1.2);
-rimPanel.position.set(-6.5, 1.6, 6.8); rimPanel.lookAt(0, 0.4, 0); scene.add(rimPanel);
-// cool white light from above on the right
-const cool = new THREE.RectAreaLight(0xdfe8ff, 4.5, 4, 4);
-cool.position.set(6.5, 5.5, -2.5); cool.lookAt(0, 0.3, 0); scene.add(cool);
-const coolSpot = new THREE.SpotLight(0xe6eeff, 1800, 34, 0.6, 1, 2);
-coolSpot.position.set(-3, 10, -1); coolSpot.target.position.set(-4.5, 0, 1.8); scene.add(coolSpot, coolSpot.target);
-
-// ---------------------------------------------------------------- floor: blurred mirror under a dark, rough lit floor
-const BlurReflect = {
-  uniforms: { color: { value: new THREE.Color(0x010102) }, tDiffuse: { value: null }, textureMatrix: { value: null }, strength: { value: 0.32 }, blur: { value: 0.0045 } },
-  vertexShader: /* glsl */`
-    uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vPos;
-    void main() { vUv = textureMatrix * vec4(position, 1.0); vPos = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: /* glsl */`
-    uniform vec3 color; uniform sampler2D tDiffuse; uniform float strength; uniform float blur;
-    varying vec4 vUv; varying vec3 vPos;
-    void main() {
-      vec2 uv = vUv.xy / vUv.w; vec3 acc = vec3(0.0); float ws = 0.0;
-      // the further the floor point is below the car, the softer: a rough floor blurs with distance
-      float b = blur * (0.6 + 0.25 * length(vPos.xz));
-      for (int i = -TAPS; i <= TAPS; i++) for (int j = -TAPS; j <= TAPS; j++) {
-        float w = exp(-float(i * i + j * j) / float(TAPS * TAPS + 1));
-        acc += texture2D(tDiffuse, uv + vec2(float(i), float(j)) * b).rgb * w; ws += w;
-      }
-      float fade = smoothstep(14.0, 2.5, length(vPos.xz));
-      gl_FragColor = vec4(color + acc / ws * strength * fade, 1.0);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-    }`,
-};
-let mirror = null;
-function makeMirror() {
-  if (mirror) { scene.remove(mirror); mirror.getRenderTarget().dispose(); }
-  const T = TIERS[tier], pr = Math.min(T.pr, devicePixelRatio);
-  mirror = new Reflector(new THREE.PlaneGeometry(240, 240), {
-    shader: { ...BlurReflect, fragmentShader: BlurReflect.fragmentShader.replace(/TAPS/g, String(T.taps)) }, // Reflector ignores defines
-    textureWidth: Math.round(innerWidth * pr * T.refl), textureHeight: Math.round(innerHeight * pr * T.refl),
-    clipBias: 0.003, color: 0x010102, // Reflector writes this into the shader's base colour (default mid grey)
-  });
-  mirror.rotation.x = -Math.PI / 2; mirror.position.y = -0.02; // a clear gap to the lit floor above it (no depth fighting far away) mirror.renderOrder = -2;
-  scene.add(mirror);
+const key = new THREE.DirectionalLight('#ffffff', 2.4);
+key.position.set(1.5, 9, 2.5); key.castShadow = true;
+Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 });
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 6;
+scene.add(key);
+const rim = new THREE.SpotLight('#ff2436', 260, 22, 0.55, 0.9, 2);
+rim.position.set(-6.5, 2.2, 3.5); rim.target.position.set(0, 0.3, 0); scene.add(rim, rim.target);
+const cool = new THREE.SpotLight('#dfe9ff', 220, 26, 0.6, 1, 2);
+cool.position.set(3, 6, -8); cool.target.position.set(0, 0.2, 0); scene.add(cool, cool.target);
+scene.add(new THREE.HemisphereLight('#c9d3e6', '#1a0d10', 0.15));
+{ // bright soft-box strip in the background
+  const c = document.createElement('canvas'); c.width = 16; c.height = 256;
+  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 16, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(16, 6), new THREE.MeshBasicMaterial({ map: t, transparent: true, fog: false, color: '#e9edf5' }));
+  m.position.set(4, 9, -17); scene.add(m);
 }
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshStandardMaterial({ color: 0x1a1d24, roughness: 0.5, metalness: 0, transparent: true, opacity: 0.84, envMapIntensity: 0.08, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; floor.renderOrder = -1;
-scene.add(floor);
 
-// ---------------------------------------------------------------- car
+// ---------------------------------------------------------------- floor: mirror + darkening veil + contact shadow
+const mirror = new Reflector(new THREE.PlaneGeometry(60, 60), { textureWidth: 512, textureHeight: 512, color: 0x50535a });
+mirror.rotation.x = -Math.PI / 2; scene.add(mirror);
+function radialTex(stops, size = 512) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  stops.forEach(([o, col]) => gr.addColorStop(o, col));
+  g.fillStyle = gr; g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+const veil = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({
+  color: '#07080a', roughness: 0.75, metalness: 0, transparent: true, depthWrite: false,
+  alphaMap: radialTex([[0, '#b0b0b0'], [0.2, '#c4c4c4'], [0.6, '#f2f2f2'], [1, '#ffffff']]),
+}));
+veil.rotation.x = -Math.PI / 2; veil.position.y = 0.002; veil.receiveShadow = true; scene.add(veil);
+{
+  const t = radialTex([[0, 'rgba(0,0,0,.85)'], [0.45, 'rgba(0,0,0,.55)'], [1, 'rgba(0,0,0,0)']], 256);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 2.6), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(0.2, 0.004, 0); m.renderOrder = 2; scene.add(m);
+}
+
+// ---------------------------------------------------------------- car and livery switcher
+// the game builds the car nose to -z at its real size; the studio frames it nose to +x at 5.6 m
+const stand = new THREE.Group(); stand.rotation.y = -Math.PI / 2; scene.add(stand);
 let car = null, current = 0;
-const $ = (id) => document.getElementById(id);
-function showTeam(i) {
+function setLivery(i) {
   current = i;
-  const T = STUDIO_TEAMS[i];
-  // the body geometry is shared between builds (models.js caches it), so the old car is only removed
-  if (car) scene.remove(car);
-  car = buildCar({ id: 'custom', ...T }, false, T.number, { conform: true });
-  setTyreLook(car, T.tyre);
-  car.traverse((o) => {
-    if (!o.isMesh) return;
-    o.receiveShadow = true;
-    const m = o.material;
-    if (!m || !('envMapIntensity' in m)) return;
-    if (m.map && m.normalMap && m.clearcoat !== undefined) {
-      // carbon weave: half-matt lacquer, the studio shouldn't mirror in it like in paint
-      m.envMapIntensity = 0.35; m.clearcoat = 0.45; m.clearcoatRoughness = 0.32; m.roughness = 0.5;
-    } else m.envMapIntensity = m.metalness > 0.5 ? 0.9 : 0.6;
-  });
-  const paint = car.userData.parts.livery.material; paint.clearcoat = 1; paint.clearcoatRoughness = 0.05; paint.metalness = 0.12; paint.roughness = 0.3;
-  if (car.userData.flap) car.userData.flap.rotation.x = -0.65;
-  scene.add(car);
-  $('tname').textContent = T.name;
-  $('tmeta').textContent = `#${T.number} · Hauptsponsor ${T.sponsor} · ${T.base}`;
+  const L = LIVERIES[i];
+  if (car) stand.remove(car);
+  car = buildCar({ id: 'custom', name: L.name, body: parseInt(L.p.slice(1), 16), top: parseInt(L.s.slice(1), 16), low: 0x16171b, accent: parseInt(L.a.slice(1), 16), pattern: 'plain' }, false, L.num, { origLivery: !!L.orig });
+  car.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+  for (const o of car.children) if (o.isMesh && o.material && o.material.isMeshBasicMaterial && o.material.transparent) o.visible = false; // the game's own contact shadow
+  const box = new THREE.Box3().setFromObject(car), len = box.max.z - box.min.z;
+  stand.scale.setScalar(5.6 / len);
+  stand.position.set(((box.max.z + box.min.z) / 2) * (5.6 / len), 0, 0);
+  stand.add(car);
+  rim.color.set(RIM[i]);
+  $('tname').innerHTML = '<span></span>'; $('tname').firstChild.textContent = L.name;
+  $('tmeta').textContent = `Saison 2026 · Nr. ${L.num} · ${L.meta}`;
+  document.documentElement.style.setProperty('--acc', L.orig ? L.s : L.p === '#eef2f6' ? L.a : L.p === '#16171a' ? L.s : L.p);
   for (const b of $('teams').children) b.setAttribute('aria-pressed', String(+b.dataset.i === i));
+  try { localStorage.setItem('apexgp-studio-livery', String(i)); } catch (e) { /* private mode */ }
 }
-STUDIO_TEAMS.forEach((T, i) => {
+LIVERIES.forEach((L, i) => {
   const b = document.createElement('button');
-  b.dataset.i = i; b.innerHTML = `<i style="background:#${T.body.toString(16).padStart(6, '0')}"></i>${T.name}`;
-  b.addEventListener('click', () => showTeam(i));
+  b.dataset.i = i;
+  b.setAttribute('aria-label', `Lackierung ${L.name}`);
+  b.innerHTML = `<i style="background:conic-gradient(${L.p} 0 50%, ${L.s} 50% 100%)"></i>${L.name}`;
+  b.addEventListener('click', () => setLivery(i));
   $('teams').appendChild(b);
 });
+$('spin').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; $('spin').setAttribute('aria-pressed', String(controls.autoRotate)); });
+$('spin').setAttribute('aria-pressed', String(controls.autoRotate));
+$('reset').addEventListener('click', () => { camera.position.copy(homePos()); controls.target.set(0.15, 0.35, 0); controls.update(); });
 
 // ---------------------------------------------------------------- quality and size
 function applyTier() {
   const T = TIERS[tier];
-  renderer.setPixelRatio(Math.min(T.pr, devicePixelRatio));
-  sun.shadow.mapSize.set(T.shadow, T.shadow);
-  if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
-  makeMirror();
+  renderer.setPixelRatio(Math.min(T.pr, devicePixelRatio, isMobile ? 1.75 : 2));
+  key.shadow.mapSize.set(T.shadow, T.shadow);
+  if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }
   $('tier').textContent = 'Grafik: ' + T.name;
 }
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
-  // keep the car's full length in frame on any screen: a slightly wider lens on narrow screens and the
-  // camera pulled back so the horizontal coverage matches the 16:9 framing; zoom limits and the fog follow
-  const asp = w / h, fov = asp < 1 ? 38 : 28;
-  camera.fov = fov; camera.updateProjectionMatrix();
-  // (the 16:9 framing leaves wide margins; on narrow screens the car may fill ~85 % of the width)
-  const fit = Math.max(1, 0.72 * (1.78 * Math.tan((28 * Math.PI) / 360)) / (asp * Math.tan((fov * Math.PI) / 360)));
-  const D = BASE_DIST * fit, off = camera.position.clone().sub(controls.target);
-  camera.position.copy(controls.target).addScaledVector(off.normalize(), D);
-  controls.minDistance = D * 0.62; controls.maxDistance = D * 1.5;
-  scene.fog.near = D + 1; scene.fog.far = D + 13;
-  if (mirror) { const T = TIERS[tier], pr = Math.min(T.pr, devicePixelRatio); mirror.getRenderTarget().setSize(Math.round(w * pr * T.refl), Math.round(h * pr * T.refl)); }
+  camera.fov = w / h < 0.8 ? 46 : 32;
+  camera.updateProjectionMatrix();
+  const pr = renderer.getPixelRatio(), k = TIERS[tier].refl;
+  mirror.getRenderTarget().setSize(Math.floor(w * pr * k), Math.floor(h * pr * k));
 }
 addEventListener('resize', resize);
-
-// frame-rate watch: step down when a device can't keep ~45 fps, once back up if it runs easily at the top
+// frame-rate watch: one step down when a device can't hold ~42 fps, one try up if it runs easily
 let frames = 0, acc = 0, last = performance.now(), settled = false, upTried = false;
 function watch(dt) {
   acc += dt; frames++;
@@ -195,14 +169,15 @@ function watch(dt) {
   else settled = true;
 }
 
-await document.fonts.load('italic 900 80px "Titillium Web"').catch(() => {});
-applyTier();
-resize();
-showTeam(0);
-window.__studio = { renderer, scene, camera, controls, showTeam, setTier: (t) => { tier = t; applyTier(); resize(); } };
+applyTier(); resize();
+let start = 0;
+try { start = Math.max(0, Math.min(LIVERIES.length - 1, parseInt(localStorage.getItem('apexgp-studio-livery') || '0', 10) || 0)); } catch (e) { /* private mode */ }
+await carModelReady;
+setLivery(start);
+$('load').classList.add('gone');
+window.__studio = { renderer, scene, camera, controls, setLivery, setTier: (t) => { tier = t; applyTier(); resize(); } };
 renderer.setAnimationLoop(() => {
-  const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const now = performance.now(); watch((now - last) / 1000); last = now;
   controls.update();
   renderer.render(scene, camera);
-  watch(dt);
 });

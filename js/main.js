@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Track, CAR, brakeDecel as brakeDecelAt } from './track.js';
 import { THERM, newTyreSet, stepTyres, stepBrake, tyreFactors, gripTemp, aiTyreEnergy } from './tyres.js';
 import { VEH } from './vehicle.js';
-import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
+import { TEAMS, customTeam, LIVERY_PATTERNS, GIALLO, buildCar, carModelReady, carModel, buildCockpit, setTyreLook, setWingLook, setWheelBlur, setBrakeGlow, COMPOUND_COL, buildSafetyCar, driverRating, setCarLod, FLAP_CLOSED, FLAP_OPEN } from './models.js';
 import { TYRES, TYRE_ORDER, isSlick, tyreGrip, weatherCall, dryChoice, wetChoice, pitWindow, startPit, stepPit, pitLat, newDamage, wingDmg, damageEffect, TYRE_WINDOW, tempGrip } from './race.js';
 import { PlayerCar, AICar } from './physics.js';
 import { HUD, fmtTime } from './hud.js';
@@ -559,6 +559,10 @@ const CAMS = {
   heli: { label: 'HELIKOPTER', world: true, heli: true, fov: 45 },
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
+// the 2026 model car is taller at the airbox and nose than the built-in car: onboard cameras sit just clear of it
+const MODEL_CAMS = { tcam: [0, 1.27, 0.45], nose: [0, 0.64, -2.0], wing: [0.62, 0.38, -2.4] };
+for (const k in MODEL_CAMS) CAMS[k].pos0 = CAMS[k].pos;
+function useModelCams(on) { for (const k in MODEL_CAMS) CAMS[k].pos = on ? MODEL_CAMS[k] : CAMS[k].pos0; }
 
 // floating name above another player's car (always readable, shrinks with distance like the official games)
 function nameTag(name, team) {
@@ -2880,7 +2884,10 @@ class Game {
       m.visible = !far;
       if (far) continue;
       const dCam = Math.hypot(o.x - camP.x, o.z - camP.z);
-      setCarLod(m, dCam < 75 || !!this.photo, dCam < 55 || !!this.photo); // details and shadow-map casting only up close
+      // details and shadow-map casting only up close; the full 2026 model (~200k triangles) is kept for the few
+      // nearest cars on low/medium quality, beyond that its simplified version (~25k) is drawn
+      const nearD = this.opts.quality === 'low' ? 22 : this.opts.quality === 'medium' ? 40 : 75;
+      setCarLod(m, dCam < nearD || !!this.photo, dCam < Math.min(55, nearD) || !!this.photo);
       if (dCam < 160) this.moveFlap(m, o.drsOn || (o.v > 50 && this.track.targetSpeed((o.s || 0) + 45) > (this.track._vTop || 90) * 0.82 && (o._pv ?? o.v) <= o.v + 0.02), dt);
       const RP = this.roadPose(o.x, o.z, o.yaw, this.replayMode && !c.isPlayer ? null : o.s, o._pose || (o._pose = {})); // replays only move x/z
       m.position.set(o.x, RP.y - Math.min(0.025, o.v * o.v * 0.0000035), o.z);
@@ -3228,9 +3235,11 @@ function startRace(mpStart, extra = null) {
   document.body.classList.toggle('auto-ers', !!settings.autoErs);
   showScreen('loading');
   $('#hud').classList.remove('active');
-  setTimeout(() => {
+  setTimeout(async () => {
+    await carModelReady; // the 2026 car model (decoded once, in the background since page load)
     if (game) { game.dispose(); game = null; }
     const opts = { ...settings, ...(extra || {}) };
+    useModelCams(carModel.ready && opts.carStyle !== 'classic');
     if (mpStart) Object.assign(opts, { laps: mpStart.laps, weather: mpStart.weather, difficulty: mpStart.difficulty, track: mpStart.track || 'barcelona', tod: mpStart.tod || 'noon', mp: { net, start: mpStart } }, mpRules(mpStart.rules));
     if (mpStart) input.setMode({ touchSteer: settings.touchSteer, autoGas: opts.autoGas });
     game = new Game(opts);
@@ -4035,7 +4044,7 @@ showScreen('menu');
   function loop(t) {
     requestAnimationFrame(loop);
     if (game) return;
-    const want = settings.driver + settings.carStyle + settings.retro + JSON.stringify(settings.livery);
+    const want = settings.driver + settings.carStyle + settings.retro + JSON.stringify(settings.livery) + carModel.ready;
     if (carName !== want) {
       if (car) scene.remove(car);
       const d = DRIVERS.find((x) => x.name === settings.driver) || DRIVERS[0];

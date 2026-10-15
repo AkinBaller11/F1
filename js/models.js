@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
 import { rigidOnTerrain } from './terrain.js';
+import { carModel, buildModelCar } from './carmodel.js';
+export { carModelReady, carModel } from './carmodel.js';
 
 export const TEAMS = [
   { id: 'mcl', name: 'McLaren', body: 0xff8000, top: 0xff8000, low: 0x161616, accent: 0x47c7fc, drivers: ['NORRIS', 'PIASTRI'], numbers: [4, 81], pace: 1.0 },
@@ -1045,6 +1047,7 @@ export const FLAP_CLOSED = 0.65, FLAP_OPEN = 0.1; // rear flap angle (rad): corn
 export function buildCar(team0, wet, number = 0, opts = {}) {
   const classic = opts.style === 'classic';
   const team = teamLook(team0, opts.retro);
+  if (!classic && carModel.ready && !opts.builtin) return modelCar(team, number, opts);
   const spec = classic ? SPECS.classic : SPECS.modern;
   const WHEELS = spec.wheels, MIRROR = spec.mirror;
   const geo = classic ? classicGeometry() : sharedGeometry();
@@ -1130,29 +1133,9 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
       me.userData.lod = true; car.add(me);
     });
   }
-  // helmet: painted shell (team colours, stripes, number), dark visor, chin guard; pivots at the neck
-  const helmet = new THREE.Group();
-  helmet.position.set(0, 0.74, 0.07);
-  const head = new THREE.Group(); head.position.y = 0.12; helmet.add(head);
-  const HG = helmetGeos();
-  const hSponsor = team.pattern === 'giallo' ? 'AURIX' : '';
-  head.add(new THREE.Mesh(HG.shell, new THREE.MeshPhysicalMaterial({ map: helmetTex(team, number, hSponsor), roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.04 })));
-  head.add(new THREE.Mesh(HG.visor, new THREE.MeshPhysicalMaterial({ color: 0x0a0d12, roughness: 0.05, metalness: 0.9, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.6 })));
-  head.add(new THREE.Mesh(HG.chin, new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 })));
-  head.add(new THREE.Mesh(HG.parts, sharedMats().carbon));
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 20), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
-  collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
-  // shoulders in the race suit with the HANS collar, just showing above the cockpit rim
-  if (!classic) {
-    const suit = new THREE.MeshStandardMaterial({ color: team.body, roughness: 0.75 });
-    const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), suit);
-    torso.scale.set(0.2, 0.075, 0.12); torso.position.set(0, -0.06, 0.03); helmet.add(torso);
-    const hans = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.022, 6, 20, Math.PI * 1.3), new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55 }));
-    hans.rotation.set(Math.PI / 2, 0, Math.PI * 0.35 + Math.PI); hans.position.set(0, 0.0, 0.02); helmet.add(hans);
-  }
+  const helmet = buildHelmet(team, number, classic);
   car.add(helmet);
   car.userData.helmet = helmet;
-  helmet.traverse((o) => { if (o.isMesh) o.userData.lod = true; });
 
   // rain light
   const rl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.02), new THREE.MeshBasicMaterial({ color: 0x330000 }));
@@ -1197,6 +1180,56 @@ export function buildCar(team0, wet, number = 0, opts = {}) {
   car.add(contactShadow());
   collectLod(car);
   car.rotation.order = 'YXZ'; // heading, then the road's pitch
+  return rigidOnTerrain(car);
+}
+
+// helmet: painted shell (team colours, stripes, number), dark visor, chin guard; pivots at the neck
+function buildHelmet(team, number, classic) {
+  const helmet = new THREE.Group();
+  helmet.position.set(0, 0.74, 0.07);
+  const head = new THREE.Group(); head.position.y = 0.12; helmet.add(head);
+  const HG = helmetGeos();
+  const hSponsor = team.pattern === 'giallo' ? 'AURIX' : '';
+  head.add(new THREE.Mesh(HG.shell, new THREE.MeshPhysicalMaterial({ map: helmetTex(team, number, hSponsor), roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.04 })));
+  head.add(new THREE.Mesh(HG.visor, new THREE.MeshPhysicalMaterial({ color: 0x0a0d12, roughness: 0.05, metalness: 0.9, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.6 })));
+  head.add(new THREE.Mesh(HG.chin, new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.6 })));
+  head.add(new THREE.Mesh(HG.parts, sharedMats().carbon));
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.035, 8, 20), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }));
+  collar.rotation.x = Math.PI / 2; collar.position.y = 0.0; helmet.add(collar);
+  // shoulders in the race suit with the HANS collar, just showing above the cockpit rim
+  if (!classic) {
+    const suit = new THREE.MeshStandardMaterial({ color: team.body, roughness: 0.75 });
+    const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), suit);
+    torso.scale.set(0.2, 0.075, 0.12); torso.position.set(0, -0.06, 0.03); helmet.add(torso);
+    const hans = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.022, 6, 20, Math.PI * 1.3), new THREE.MeshStandardMaterial({ color: 0x15171b, roughness: 0.55 }));
+    hans.rotation.set(Math.PI / 2, 0, Math.PI * 0.35 + Math.PI); hans.position.set(0, 0.0, 0.02); helmet.add(hans);
+  }
+  helmet.traverse((o) => { if (o.isMesh) o.userData.lod = true; });
+  return helmet;
+}
+
+// the 2026 model car (carmodel.js) with the interface the game expects from buildCar: wheels to spin and steer,
+// livery parts for the reflection probe, a rain light, LOD lists. The model's cockpit is empty, so the game's
+// driver (helmet and shoulders) sits in it. It has no separate DRS flap or T-cam: those are empty placeholders.
+const MODEL_HELMET = [0, 0.655, -0.3];
+function modelCar(team, number, opts) {
+  const car = new THREE.Group();
+  const M = buildModelCar(opts.origLivery ? null : team.body);
+  car.add(M.group);
+  car.userData.parts = { livery: M.livery, carbon: M.livery, accent: M.livery };
+  car.userData.wheels = M.wheels;
+  car.userData.mirrors = [];
+  const helmet = buildHelmet(team, number, false); helmet.position.set(...MODEL_HELMET); car.add(helmet); car.userData.helmet = helmet;
+  const tcam = new THREE.Group(); car.add(tcam); car.userData.tcam = tcam;
+  const flap = new THREE.Group(); car.add(flap); car.userData.flap = flap;
+  // rain light: the model's rear light glows brighter when it blinks (the game sets a colour on it)
+  const L = M.lightMat, base = L.emissiveIntensity;
+  car.userData.rainLight = { material: { color: { setHex: (h) => { L.emissiveIntensity = h === 0x330000 ? base : base * 3; } } } };
+  car.userData.brakeMat = new THREE.MeshStandardMaterial(); car.userData.discMat = new THREE.MeshStandardMaterial();
+  car.userData.model = true;
+  car.add(contactShadow());
+  collectLod(car);
+  car.rotation.order = 'YXZ';
   return rigidOnTerrain(car);
 }
 
@@ -1298,13 +1331,14 @@ function helmetGeos() {
 // casting into the shadow map (the contact shadow stays) -> about a third of the draw calls per car
 function collectLod(car) {
   const parts = [], casters = [];
-  car.traverse((o) => { if (o.userData.lod) parts.push(o); else if (o.isMesh && o.castShadow) casters.push(o); });
-  car.userData.lod = { parts, casters, near: true, shadow: true };
+  const far = [];
+  car.traverse((o) => { if (o.userData.lod) parts.push(o); else if (o.userData.far) { far.push(o); casters.push(o); } else if (o.isMesh && o.castShadow) casters.push(o); });
+  car.userData.lod = { parts, casters, far, near: true, shadow: true };
 }
 export function setCarLod(car, near, shadow) {
   const L = car.userData.lod;
   if (!L) return;
-  if (L.near !== near) { L.near = near; for (const o of L.parts) o.visible = near; }
+  if (L.near !== near) { L.near = near; for (const o of L.parts) o.visible = near; for (const o of L.far) o.visible = !near; }
   if (L.shadow !== shadow) { L.shadow = shadow; for (const o of L.casters) o.castShadow = shadow; }
 }
 

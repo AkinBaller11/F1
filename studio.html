@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Apex GP Studio</title>
+<link rel="modulepreload" href="js/carmodel-data.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,400;0,700;0,900;1,900&display=swap" rel="stylesheet">
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <style>
-  :root { --bg: #050608; --ink: #f2f4f7; --dim: #8a909a; --line: rgba(255,255,255,.14); --acc: #e10600; }
+  :root { --bg: #0b0d11; --ink: #f2f4f7; --dim: #8a909a; --line: rgba(255,255,255,.14); --acc: #e10600; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Titillium Web", system-ui, sans-serif; overflow: hidden; }
   canvas#studio { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -25,15 +26,24 @@
   .top a, .top span { pointer-events: auto; color: var(--dim); text-decoration: none; font-size: 14px; }
   .top a:hover { color: var(--ink); }
   .note { color: var(--dim); font-size: 12px; }
+  .team .name span { border-bottom: 4px solid var(--acc); transition: border-color .5s; padding-right: .08em; }
+  .tools { display: flex; gap: 8px; align-items: center; pointer-events: auto; }
+  .tools button { font: 700 13px "Titillium Web", sans-serif; color: var(--ink); background: rgba(16,18,22,.75); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; backdrop-filter: blur(6px); }
+  .tools button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  #load { position: fixed; inset: 0; display: grid; place-items: center; color: var(--dim); transition: opacity .6s; }
+  #load.gone { opacity: 0; pointer-events: none; }
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.45)); }
+  @media (max-width: 640px) { #tier { display: none; } }
 </style>
 </head>
 <body>
 <canvas id="studio" aria-label="Studio-Ansicht des Rennwagens, mit Maus oder Finger drehbar"></canvas>
-<div class="top"><a href="./">← Zurück zum Spiel</a><span id="tier"></span></div>
+<div id="load">F1-Modell wird geladen …</div>
+<div class="top"><a href="./">← Zurück zum Spiel</a><div class="tools"><span id="tier"></span><button id="spin" aria-pressed="true">Drehen</button><button id="reset" aria-label="Ansicht zurücksetzen">Zurücksetzen</button></div></div>
 <div class="ui">
   <div class="team"><div class="name" id="tname"></div><div class="meta" id="tmeta"></div></div>
-  <div class="bar" id="teams" role="group" aria-label="Team wählen"></div>
-  <div class="note">Fiktive Teams und Sponsoren. Ziehen zum Drehen, Zoom mit Mausrad oder zwei Fingern.</div>
+  <div class="bar" id="teams" role="group" aria-label="Lackierung wählen"></div>
+  <div class="note">Fiktive Lackierungen. Ziehen zum Drehen, Zoom mit Mausrad oder zwei Fingern.</div>
 </div>
 <script type="module" src="js/studio.js"></script>
 </body>
