@@ -703,7 +703,8 @@ export class Track {
 
     // start/finish line + grid slots
     const startI = this.idx(this.startS);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
+    // painted white line, lit like the road (unlit white glowed through the bloom at dusk and lit up at night)
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.7 });
     this.ribbon(nW, W, 0.04, lineMat, 1, 1, (i) => i === startI || i === (startI + 1) % this.N, 1, true);
     for (let g = 0; g < 22; g++) {
       const s = this.startS - 8 - g * 8;

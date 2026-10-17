@@ -29,6 +29,16 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 // GTAO fed with an existing depth texture: r160 still touches its own normal target in setGBuffer / setSize /
 // dispose, which only exists when it renders a G-buffer itself, so it gets a harmless stand-in
 class SceneDepthAO extends GTAOPass {
+  constructor(...a) {
+    super(...a);
+    // the sky: the multisampled depth resolves to just below 1.0 where nothing was drawn, so the pass's own
+    // "depth >= 1.0 -> skip" test missed it and laid a grid of AO noise over the sky (plain at noon, a visible
+    // pattern in the evening sky). Anything this far is sky.
+    this.gtaoMaterial.fragmentShader = this.gtaoMaterial.fragmentShader.replace('if (depth >= 1.0) {', 'if (depth >= 0.9999) {');
+    this.gtaoMaterial.needsUpdate = true;
+    this.pdMaterial.fragmentShader = this.pdMaterial.fragmentShader.replace('if (depth == 1. ||', 'if (depth >= 0.9999 ||');
+    this.pdMaterial.needsUpdate = true;
+  }
   setGBuffer(depthTexture, normalTexture) {
     if (depthTexture && !this.normalRenderTarget) this.normalRenderTarget = { depthTexture, setSize() {}, dispose() {} };
     super.setGBuffer(depthTexture, normalTexture);
@@ -72,7 +82,7 @@ const defaults = {
 const ONOFF = { vals: [true, false], labels: ['An', 'Aus'] };
 const SETTINGS = [
   { tab: 'Grafik', items: [
-    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Hoch: Umgebungsverdeckung (Kontaktschatten) und echte Spiegelungen der Umgebung im eigenen Lack. Ultra zusätzlich: doppelt so weite 4K-Schatten, 8× Kantenglättung, Grasbüschel, Linsenreflexe – für starke PCs und neue iPads.' },
+    { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Hoch: Umgebungsverdeckung (Kontaktschatten) und echte Spiegelungen der Umgebung im eigenen Lack. Ultra zusätzlich: doppelt so weite 4K-Schatten, 8× Kantenglättung, Linsenreflexe – für starke PCs und neue iPads.' },
     { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
     { key: 'dynRes', label: 'Auflösung automatisch', ...ONOFF, hint: 'Wird es ruckelig, rendert das Spiel kurz etwas kleiner und danach wieder scharf. Hält die Bildrate stabil.' },
     { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
@@ -596,11 +606,14 @@ const INTRO_LEN = 7.5; // seconds of TV opening before the grid / formation lap
 
 // broadcast-style grade after tone mapping: a touch more saturation and S-curve contrast, soft vignette
 const GRADE = {
-  uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 } },
+  // wb: white balance. The sky light (hemisphere, environment map) tints everything blue; a camera would balance
+  // that out, so asphalt reads neutral grey and grass olive-green like in broadcast footage
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 }, wb: { value: new THREE.Vector3(1.02, 1.0, 0.96) } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, curve, vig; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, curve, vig; uniform vec3 wb; varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
+      c.rgb *= wb;
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
       c.rgb = mix(vec3(l), c.rgb, sat);
       vec3 s = clamp(c.rgb, 0.0, 1.0);
@@ -719,18 +732,21 @@ class Game {
     const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 48, 24), new THREE.MeshBasicMaterial({ map: skyTexture(tod, true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
     sky.material.userData.noTerrain = true; skyWet.material.userData.noTerrain = true;
     // daytime: physically based sky (Rayleigh / Mie scattering, sun disc, haze at the horizon) under a cloud layer
-    const physSky = (k) => {
+    const physSky = (k, gain = 0.62, max = 24) => {
       const sk = new Sky(); sk.scale.setScalar(k);
       const u = sk.material.uniforms, low = tod.sunEl < 20;
-      u.turbidity.value = low ? 7 : 4; u.rayleigh.value = low ? 2.2 : 1.1; u.mieCoefficient.value = 0.004; u.mieDirectionalG.value = 0.8;
+      // clear-day air: little aerosol, so the sky stays blue even looking towards the sun (was a white veil)
+      u.turbidity.value = low ? 6 : 2.4; u.rayleigh.value = low ? 2.2 : 1.5; u.mieCoefficient.value = low ? 0.004 : 0.0018; u.mieDirectionalG.value = 0.78;
       u.sunPosition.value.copy(this.sunDir);
       // dimmed to our exposure; the sun disc is clamped so half-float targets (bloom) never see Inf / NaN
-      sk.material.fragmentShader = sk.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'vec3 skyC = clamp( retColor * 0.62, 0.0, 24.0 ); if ( skyC.r != skyC.r || skyC.g != skyC.g || skyC.b != skyC.b ) skyC = vec3( 0.0 ); gl_FragColor = vec4( skyC, 1.0 );');
+      sk.material.fragmentShader = sk.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'vec3 skyC = clamp( retColor * ' + gain.toFixed(3) + ', 0.0, ' + max.toFixed(1) + ' ); if ( skyC.r != skyC.r || skyC.g != skyC.g || skyC.b != skyC.b ) skyC = vec3( 0.0 ); gl_FragColor = vec4( skyC, 1.0 );');
       return sk;
     };
     this.physSky = tod.lamps < 0.5 && tod.sunEl > 3 && opts.quality !== 'low';
     if (this.physSky) {
-      sky.add(physSky(5200));
+      // the visible dome a little darker than the light it gives (environment map below keeps 0.62): ACES no
+      // longer burns the sky towards the sun to white, the blue holds like in a photo with the exposure on the cars
+      sky.add(physSky(5200, 0.4, 2.5)); // no HDR sun disc in the dome: the sprite draws the sun; the disc only blew out in reflections
       sky.material.map = skyTexture(tod, false, true); sky.material.transparent = true; sky.material.depthWrite = false;
     }
     sky.add(skyWet);
@@ -742,7 +758,9 @@ class Game {
     }
     const pm = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
-    envScene.add(this.physSky ? physSky(18) : new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
+    // reflections / sky light without the sun disc: the sun already lights the scene directly, a second sun in
+    // the environment map burned clear-coated and metallic paint to white wherever it was reflected
+    envScene.add(this.physSky ? physSky(18, 0.62, 1.6) : new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
     const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: tod.lamps > 0.5 ? 0x141a14 : 0x51703f }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; envScene.add(ground);
     scene.environment = pm.fromScene(envScene, 0.04).texture;
@@ -2956,14 +2974,16 @@ class Game {
     if (this.envCam && (this.envFrame = (this.envFrame || 0) + 1) % this.envEvery === 1) {
       // refresh the car's reflection cube from just above the cockpit, without the car itself and without
       // re-rendering the sun's shadow map six times
-      const vis = [this.playerModel.visible, this.cockpit.visible];
-      this.playerModel.visible = false; this.cockpit.visible = false;
+      // nor the sun sprite and its lens flare: they are screen effects of the main camera, but in the cube they
+      // became a huge additive blob that the clear coat reflected like a fire on the engine cover
+      const vis = [this.playerModel.visible, this.cockpit.visible, this.sunSprite ? this.sunSprite.visible : false];
+      this.playerModel.visible = false; this.cockpit.visible = false; if (this.sunSprite) this.sunSprite.visible = false;
       this.playerRoot.getWorldPosition(this.envCam.position); this.envCam.position.y += 0.8;
       this.envCam.updateMatrixWorld(true);
       const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
       this.envCam.update(renderer, this.scene);
       renderer.shadowMap.autoUpdate = au;
-      [this.playerModel.visible, this.cockpit.visible] = vis;
+      [this.playerModel.visible, this.cockpit.visible] = vis; if (this.sunSprite) this.sunSprite.visible = vis[2];
     }
     if (this.photo && this.photo.dof > 0) this.renderPhotoDof();
     else if (this.composer) { terrainEnable(false); this.composer.render(); } else renderer.render(this.scene, cam);

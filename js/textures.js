@@ -25,21 +25,28 @@ export function asphalt(wet) {
   const S = 1024;
   const [c, g] = canvas(S, S);
   const r = rand(7);
-  g.fillStyle = wet ? '#3a3c40' : '#55575b';
+  // race asphalt: dark binder, fine light-grey aggregate (a 14 m road over 1024 px: 1 px = 1.4 cm)
+  g.fillStyle = wet ? '#34363a' : '#46484c';
   g.fillRect(0, 0, S, S);
-  // aggregate: dense speckle in several sizes and tones
-  for (let i = 0; i < 120000; i++) {
-    const v = (wet ? 40 : 66) + r() * 58;
-    g.fillStyle = `rgba(${v},${v},${v + 3},${0.14 + r() * 0.26})`;
-    const s = r() < 0.92 ? 1 + r() * 1.5 : 2 + r() * 2.5;
+  // soft, round variations of the surface (no hard-edged patches: those read as a pattern repeating every 16 m)
+  for (let i = 0; i < 40; i++) {
+    const x = r() * S, y = r() * S, rad = 80 + r() * 220;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    const dark = r() < 0.5;
+    gr.addColorStop(0, dark ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.025)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  // aggregate: dense speckle in several sizes and tones, a few bright stones catch the light
+  for (let i = 0; i < 160000; i++) {
+    const v = (wet ? 38 : 58) + r() * 62;
+    g.fillStyle = `rgba(${v},${v},${v + 3},${0.12 + r() * 0.28})`;
+    const s = r() < 0.93 ? 1 + r() * 1.3 : 2 + r() * 2;
     g.fillRect(r() * S, r() * S, s, s);
   }
-  // patches of older / newer tarmac
-  for (let i = 0; i < 26; i++) {
-    const x = r() * S, y = r() * S, w = 60 + r() * 240, h = 40 + r() * 200;
-    g.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.03)';
-    g.fillRect(x, y, w, h);
-  }
+  for (let i = 0; i < 9000; i++) { const v = 150 + r() * 60; g.fillStyle = `rgba(${v},${v},${v},${0.25 + r() * 0.3})`; g.fillRect(r() * S, r() * S, 1, 1); }
+  // fine dark cracks / joints, very faint
+  g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1;
+  for (let i = 0; i < 18; i++) { let x = r() * S, y = r() * S; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 6; k++) { x += (r() - 0.5) * 60; y += r() * 50; g.lineTo(x, y); } g.stroke(); }
   // rubbered-in racing line darkening in the middle band
   const grd = g.createLinearGradient(0, 0, S, 0);
   grd.addColorStop(0, 'rgba(0,0,0,0)');
@@ -92,7 +99,8 @@ export function kerb() {
 export function grass(sand = false, mown = false) {
   const [c, g] = canvas(512, 512);
   const r = rand(3);
-  g.fillStyle = sand ? '#c4a26a' : '#48693a';
+  // summer turf: olive green with a yellow cast (bluish greens read as plastic under a strong sun)
+  g.fillStyle = sand ? '#c4a26a' : '#4f6a2c';
   g.fillRect(0, 0, 512, 512);
   // mowing bands, only for the mown verges beside the track (the open countryside is not a lawn)
   if (mown && !sand) { g.fillStyle = 'rgba(255,255,230,0.075)'; g.fillRect(0, 0, 256, 512); g.fillStyle = 'rgba(0,25,0,0.05)'; g.fillRect(256, 0, 256, 512); }
@@ -107,7 +115,7 @@ export function grass(sand = false, mown = false) {
   for (let i = 0; i < 16000; i++) {
     const gr = 90 + r() * 60;
     // desert: fine grains of light and dark sand instead of blades
-    g.fillStyle = sand ? `rgba(${gr * 1.6},${gr * 1.35},${gr * 0.9},0.18)` : `rgba(${gr * 0.5},${gr},${gr * 0.32},0.16)`;
+    g.fillStyle = sand ? `rgba(${gr * 1.6},${gr * 1.35},${gr * 0.9},0.18)` : `rgba(${gr * 0.66},${gr},${gr * 0.24},0.2)`;
     g.fillRect(r() * 512, r() * 512, 1, sand ? 1 : 2 + r() * 2);
   }
   return tex(c, 1, 1);

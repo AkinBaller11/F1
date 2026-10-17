@@ -258,7 +258,7 @@ export function buildScenery(tr) {
     if (hilly) {
       // verge strips: road edge out to 75 m, sampled every 2 m like the road, so they follow every dip and crest
       const vt = city ? pavementTex() : TX.grass(desert, true); vt.repeat.set(1, 1);
-      const vm = new THREE.MeshStandardMaterial({ map: vt, roughness: 0.95, color: city ? 0xffffff : desert ? 0xf2ead8 : 0xd2dcc2 });
+      const vm = new THREE.MeshStandardMaterial({ map: vt, roughness: 0.95, color: city ? 0xffffff : desert ? 0xf2ead8 : 0xdcdcc0 });
       // lanes (up to every 8.5 m) so the strip follows the height field; it stops halfway to a neighbouring section
       // from the measured road edge (not a fixed 7 m): narrow roads get no gap of bare ground beside them, wide
       // ones no strip under the asphalt
@@ -508,12 +508,6 @@ export function buildScenery(tr) {
   if (city) buildCity(tr, df, lampsOn, R);
   else buildNature(tr, df, height, lakeAt, R);
 
-  // TV crane
-  const crane = new THREE.Group();
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 26), new THREE.MeshStandardMaterial({ color: 0xf2b705 })); arm.position.set(0, 18, -8); arm.rotation.x = -0.5; crane.add(arm);
-  const mast = new THREE.Mesh(new THREE.BoxGeometry(0.8, 14, 0.8), darkMat); mast.position.y = 7; crane.add(mast);
-  const sC = (tr.mainStraight[1] + 260) % tr.length;
-  tr.place(crane, sC, tr.limR[tr.idx(sC)] + 30, 0, 0.5);
   levelOnTerrain(G, tr.placed);
 }
 
@@ -569,37 +563,6 @@ function buildNature(tr, df, height, lakeAt, R) {
     }
   }
   trunks.count = lc; pines.count = pc; bushes.count = bc;
-  // grass tufts near the barriers (ultra/high): two crossed alpha planes per tuft
-  if (q === 'ultra' || q === 'high') {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
-    const g2 = c.getContext('2d');
-    for (let k = 0; k < 26; k++) { const x = 4 + R() * 56; g2.strokeStyle = `rgba(${60 + R() * 40},${110 + R() * 50},${40 + R() * 20},1)`; g2.lineWidth = 2; g2.beginPath(); g2.moveTo(32, 64); g2.quadraticCurveTo(x, 40, x + (R() - 0.5) * 10, 6 + R() * 20); g2.stroke(); }
-    const tt = new THREE.CanvasTexture(c); tt.colorSpace = THREE.SRGBColorSpace;
-    const p1 = new THREE.PlaneGeometry(0.8, 0.55); p1.translate(0, 0.27, 0);
-    const p2 = p1.clone(); p2.rotateY(Math.PI / 2);
-    const tuftGeo = mergeGeometries([p1, p2]);
-    const n = q === 'ultra' ? 9000 : 4500;
-    const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ map: tt, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }), n);
-    let tcnt = 0;
-    for (let k = 0; k < n * 2 && tcnt < n; k++) {
-      const s = R() * tr.length, i = tr.idx(s);
-      if (tr.inPitStraight(s)) continue;
-      const side = R() < 0.5 ? -1 : 1;
-      const lim = side > 0 ? tr.limR[i] : tr.limL[i];
-      const grav = side > 0 ? tr.gravelR[i] : tr.gravelL[i];
-      const kerb = side > 0 ? tr.kerbR[i] : tr.kerbL[i];
-      const from = tr.hw[i] + (kerb ? 5 : 1.2);
-      const lat = side * (from + R() * Math.max(0.5, (grav ? 3 : lim) - from - 0.6));
-      if (Math.abs(lat) > lim - 0.5) continue;
-      const [x, z] = tr.posAt(s, lat);
-      P.set(x, 0, z); Q.setFromAxisAngle(Y, R() * 6.28); S.setScalar(0.7 + R() * 0.8);
-      M.compose(P, Q, S); tufts.setMatrixAt(tcnt, M); tcnt++;
-    }
-    tufts.count = tcnt;
-    G.add(tufts);
-  }
-  // alpha-tested shadows so the impostors cast tree-shaped shadows, not rectangles
-  for (const m of [trunks, pines]) { m.castShadow = true; m.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: m.material.map, alphaTest: 0.45 }); }
   G.add(trunks, pines, bushes);
 }
 
