@@ -115,35 +115,66 @@ function skidTex() {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
 }
 
-// painted tree impostors: crown built from many shaded leaf clusters, light from the top left
+// painted tree impostors. A crown is a handful of irregular sub-clumps, each filled with thousands of small leaf
+// dabs shaded by where they sit on the clump (lit from above, darker inside and underneath); branches show through
+// the gaps. Conifers are tiers of drooping branches. (The old crowns were a few large smooth discs: they read as
+// stacked balls.)
 function treeTexture(kind, R) {
-  const [c, g] = canvas(256, 320);
-  const W = 256, H = 320;
-  const trunkCol = '#5a4030';
-  if (kind !== 'bush') {
-    g.fillStyle = trunkCol;
-    g.beginPath(); g.moveTo(W / 2 - 7, H); g.lineTo(W / 2 - 4, H * 0.45); g.lineTo(W / 2 + 4, H * 0.45); g.lineTo(W / 2 + 7, H); g.fill();
-  }
-  const greens = kind === 'pine' ? [[34, 66, 34], [44, 82, 40], [58, 98, 48]] : [[52, 92, 38], [70, 112, 46], [92, 136, 58], [118, 160, 70]];
-  const blob = (x, y, rad, shade) => {
-    const [r0, g0, b0] = greens[Math.min(greens.length - 1, Math.max(0, shade))];
-    const gr = g.createRadialGradient(x - rad * 0.35, y - rad * 0.35, rad * 0.1, x, y, rad);
-    gr.addColorStop(0, `rgb(${r0 + 30},${g0 + 30},${b0 + 18})`); gr.addColorStop(0.7, `rgb(${r0},${g0},${b0})`); gr.addColorStop(1, `rgb(${r0 * 0.7 | 0},${g0 * 0.7 | 0},${b0 * 0.7 | 0})`);
-    g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
-  };
+  const W = 256, H = 384;
+  const [c, g] = canvas(W, H);
+  const dab = (x, y, rx, ry, col, a) => { g.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`; g.beginPath(); g.ellipse(x, y, rx, ry, R() * Math.PI, 0, Math.PI * 2); g.fill(); };
+  const shadeCol = (base, light) => base.map((v, i) => Math.max(0, Math.min(255, v * (0.42 + 0.78 * light) + (i === 0 ? 6 : 0) * light)));
   if (kind === 'pine') {
-    for (let layer = 0; layer < 9; layer++) {
-      const y = H * 0.12 + layer * H * 0.085, half = 14 + layer * 11;
-      for (let k = 0; k < 10; k++) blob(W / 2 + (R() - 0.5) * half * 2, y + R() * 16, 9 + R() * 6, layer < 3 ? 2 : layer < 6 ? 1 : 0);
+    const base = [44, 70, 40];
+    // trunk
+    g.fillStyle = '#3d2c22'; g.beginPath(); g.moveTo(W / 2 - 5, H); g.lineTo(W / 2 - 2, H * 0.05); g.lineTo(W / 2 + 2, H * 0.05); g.lineTo(W / 2 + 5, H); g.fill();
+    const tiers = 15;
+    for (let t = 0; t < tiers; t++) {
+      const f = t / (tiers - 1), y0 = H * (0.05 + f * 0.8), half = 8 + f * (W * 0.42) * (0.85 + R() * 0.3);
+      for (const side of [-1, 1]) {
+        const n = 26 + f * 70;
+        for (let k = 0; k < n; k++) {
+          const u = R(), x = W / 2 + side * u * half, y = y0 + u * u * 26 + (R() - 0.3) * 8; // branches droop towards the tips
+          const light = 0.35 + 0.45 * (1 - f) + 0.25 * (side < 0 ? 1 : 0) * u - 0.2 * R();
+          dab(x, y, 3 + R() * 3, 1.5 + R() * 1.5, shadeCol(base, light), 0.95);
+        }
+      }
     }
   } else {
-    const cx = W / 2, cy = kind === 'bush' ? H * 0.68 : H * 0.36, rx = kind === 'bush' ? 110 : 100, ry = kind === 'bush' ? 90 : 105;
-    for (let k = 0; k < 170; k++) {
-      const a = R() * Math.PI * 2, d = Math.sqrt(R());
-      const x = cx + Math.cos(a) * rx * d, y = cy + Math.sin(a) * ry * d;
-      const shade = Math.round(3 - ((y - (cy - ry)) / (2 * ry)) * 2.5 - (x > cx ? 0.6 : 0) + (R() - 0.5));
-      blob(x, y, 14 + R() * 14, shade);
+    const bush = kind === 'bush';
+    // summer foliage: dark, slightly varied greens (sunlit leaves are not lime)
+    const base = [[46, 72, 30], [52, 76, 28], [40, 66, 34]][Math.floor(R() * 3)];
+    const cx = W / 2, cy = bush ? H * 0.7 : H * 0.38, rx = bush ? 112 : 104, ry = bush ? 100 : 128;
+    if (!bush) {
+      // trunk and main branches reaching into the crown
+      g.strokeStyle = '#4a382b'; g.lineCap = 'round';
+      g.lineWidth = 9; g.beginPath(); g.moveTo(cx, H); g.lineTo(cx + (R() - 0.5) * 6, cy + ry * 0.3); g.stroke();
+      for (let k = 0; k < 7; k++) { g.lineWidth = 2 + R() * 3; g.beginPath(); g.moveTo(cx, cy + ry * 0.45); g.quadraticCurveTo(cx + (R() - 0.5) * rx, cy, cx + (R() - 0.5) * rx * 1.5, cy - ry * (0.2 + R() * 0.6)); g.stroke(); }
     }
+    // sub-clumps on an irregular envelope
+    const clumps = [];
+    const nc = bush ? 7 : 11;
+    for (let k = 0; k < nc; k++) {
+      const a = R() * Math.PI * 2, d = Math.sqrt(R()) * 0.62;
+      clumps.push([cx + Math.cos(a) * rx * d, cy + Math.sin(a) * ry * d * 0.9 - (bush ? 0 : ry * 0.05), (0.32 + R() * 0.22) * rx]);
+    }
+    clumps.sort((p, q) => p[1] - q[1]); // back (top) first
+    for (const [x0, y0, r0] of clumps) {
+      const n = Math.round(r0 * r0 * 0.55);
+      for (let k = 0; k < n; k++) {
+        const a = R() * Math.PI * 2, d = Math.pow(R(), 0.6);
+        const ox = Math.cos(a) * d, oy = Math.sin(a) * d * 0.9;
+        // light: top and left of each clump, of the whole crown, a little random flicker
+        const light = 0.5 - oy * 0.25 - ox * 0.08 - ((y0 - cy) / ry) * 0.3 + (d - 0.6) * 0.1 + (R() - 0.5) * 0.45;
+        const col = shadeCol(base, Math.max(0.05, Math.min(0.95, light)));
+        if (R() < 0.08) { col[0] += 14; col[1] += 10; } // some leaves turned to the sun, some yellower
+        dab(x0 + ox * r0, y0 + oy * r0, 2 + R() * 2.2, 1.5 + R() * 1.6, col, 0.92);
+      }
+    }
+    // a few holes where the sky shows through
+    g.globalCompositeOperation = 'destination-out';
+    for (let k = 0; k < (bush ? 4 : 10); k++) { g.beginPath(); g.ellipse(cx + (R() - 0.5) * rx * 1.4, cy + (R() - 0.5) * ry * 1.2, 3 + R() * 6, 2 + R() * 4, R() * 3, 0, Math.PI * 2); g.fill(); }
+    g.globalCompositeOperation = 'source-over';
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
@@ -411,6 +442,7 @@ export function buildScenery(tr) {
     const s = tr.pit[0] + 60 + k * ((pitLen - 80) / nStands);
     tr.place(grandstand(90, 22, 14, k), s, -tr.limL[tr.idx(s)] - 4, 0, Math.PI / 2);
   }
+  tr.standZones = standSpots.slice(0, 5).map((sp) => ({ s: sp.s, side: sp.side }));
   for (const sp of standSpots.slice(0, 5)) {
     const i = tr.idx(sp.s);
     const lat = sp.side > 0 ? tr.limR[i] + 6 : -tr.limL[i] - 6;
@@ -514,7 +546,7 @@ export function buildScenery(tr) {
 // ------------------------------------------------------------------ park / forest
 function buildNature(tr, df, height, lakeAt, R) {
   const G = tr.group, q = tr.trees || tr.quality, forest = tr.style === 'forest';
-  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 1.5 : tr.style === 'desert' ? 0.12 : 1));
+  const count = Math.round((q === 'low' ? 700 : q === 'medium' ? 1400 : q === 'ultra' ? 3600 : 2400) * (forest ? 2.2 : tr.style === 'desert' ? 0.12 : 1));
   // trees as painted impostors: three crossed planes with a hand-drawn crown (much cleaner than low-poly blobs)
   const treeGeo = (w, h) => {
     const planes = [0, Math.PI / 3, (2 * Math.PI) / 3].map((a) => { const p = new THREE.PlaneGeometry(w, h); p.translate(0, h / 2, 0); p.rotateY(a); return p; });
@@ -534,6 +566,24 @@ function buildNature(tr, df, height, lakeAt, R) {
   let lc = 0, pc = 0, bc = 0;
   const loc = {};
   const span = df.half - 1200;
+  // belts of woodland along the circuit behind the barriers (Spa, Suzuka, Spielberg and Monza are cut through
+  // forest; park circuits get thinner, broken tree lines). Kept clear: the pit straight and the grandstands.
+  const belt = Math.round(count * (forest ? 0.6 : 0.3));
+  const zones = tr.standZones || [];
+  const nearStand = (s, side) => zones.some((zn) => { if (zn.side !== side) return false; let d = Math.abs(s - zn.s); d = Math.min(d, tr.length - d); return d < 75; });
+  for (let tries = 0; tries < belt * 5 && (lc + pc) < belt; tries++) {
+    const s = R() * tr.length, i = tr.idx(s), side = R() < 0.5 ? -1 : 1;
+    if (tr.inRange(s, tr.pit[0] - 120, tr.pit[1] + 80) || nearStand(s, side)) continue;
+    if (fbm(s / 160 + (side > 0 ? 11 : 0), side * 3.3, 2) < (forest ? 0.36 : 0.5)) continue; // clumps and gaps
+    const lim = side > 0 ? tr.limR[i] : tr.limL[i];
+    const off = lim + 16 + Math.pow(R(), 1.7) * (forest ? 130 : 70);
+    const [x, z] = tr.posAt(s, side * off);
+    tr.locate(x, z, -1, loc);
+    const lim2 = loc.lat > 0 ? tr.limR[loc.i] : tr.limL[loc.i];
+    if (Math.abs(loc.lat) < lim2 + 14 || tr.inPitStraight(loc.s)) continue; // another part of the circuit is closer
+    if (lakeAt(x, z) < 1.2 || tr.seaAt(x, z) > -25) continue;
+    plant(x, z, forest ? 1.7 : 1.15);
+  }
   for (let tries = 0; tries < count * 4 && (lc + pc) < count; tries++) {
     // forests cluster: accept points with high clumping noise
     const x = df.cx + (R() - 0.5) * 2 * span, z = df.cz + (R() - 0.5) * 2 * span;
@@ -544,9 +594,14 @@ function buildNature(tr, df, height, lakeAt, R) {
     if (d < 70) { tr.locate(x, z, -1, loc); const lim = loc.lat > 0 ? tr.limR[loc.i] : tr.limL[loc.i]; if (Math.abs(loc.lat) < lim + 12 || tr.inPitStraight(loc.s)) continue; }
     if (d < 110 && tr.inPitStraight(tr.locate(x, z, -1, loc).s)) continue;
     if (lakeAt(x, z) < 1.2 || tr.seaAt(x, z) > -25) continue;
+    plant(x, z, 1);
+  }
+  trunks.count = lc; pines.count = pc; bushes.count = bc;
+  G.add(trunks, pines, bushes);
+  function plant(x, z, big) {
     const h = height(x, z);
-    if (h > 160) continue;
-    const s = 0.75 + R() * 0.9;
+    if (h > 160) return;
+    const s = (0.75 + R() * 0.9) * big;
     Q.setFromAxisAngle(Y, R() * 6.28);
     const tint = 0.82 + R() * 0.3;
     if (R() < (forest ? 0.55 : 0.62)) {
@@ -562,8 +617,6 @@ function buildNature(tr, df, height, lakeAt, R) {
       bushes.setColorAt(bc, C.setRGB(tint * 0.9, tint * 0.95, tint * 0.85)); bc++;
     }
   }
-  trunks.count = lc; pines.count = pc; bushes.count = bc;
-  G.add(trunks, pines, bushes);
 }
 
 // ------------------------------------------------------------------ city
