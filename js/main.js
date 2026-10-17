@@ -1024,7 +1024,7 @@ class Game {
       this.hemi.intensity += this.flash * 4; renderer.toneMappingExposure *= 1 + this.flash * 0.8;
     }
     const fl = $('#flash'); if (fl) { const o2 = (this.flash || 0) * 0.55; if (fl._o !== o2) { fl._o = o2; fl.style.opacity = o2; } }
-    audio.rainLevel = r * 0.14;
+    audio.rainLevel = r * 0.14; audio.wetness = this.weather.wetness;
   }
 
   // rubber laid down on the racing line (darker, grippier as the race goes on) and marbles beside it
@@ -2995,7 +2995,7 @@ class Game {
       bestLap: this.lap.best, playerPos: this.mode === 'quali' ? this.qualiOrder().indexOf(this.playerEntry) + 1 : this.playerPos || this.playerEntry.grid, total: this.mode === 'quali' ? 20 : this.cars.length,
       order: this.mode === 'quali' ? this.qualiOrder() : this.order || this.cars, quali: this.mode === 'quali', gapTo: (c) => this.gapTo(c), wet: this.startWet, time: this.raceTime, weather: this.weather, mph: settings.units === 'mph',
     });
-    if (this.replayMode) audio.quiet(); else audio.update(p, this.others, !!(CAMS[this.camMode] || {}).ego);
+    if (this.replayMode) audio.quiet(); else audio.update(p, this.others, !!(CAMS[this.camMode] || {}).ego, this.camera);
   }
 
   // on-screen touch wheel: rotation follows the car's steering, display mirrors the dash
