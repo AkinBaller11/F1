@@ -624,6 +624,18 @@ const GRADE = {
     }`,
 };
 
+// the same grade without post-processing (medium / low daytime): folded into the tone mapping of every material,
+// so it costs no extra full-screen pass. ACES, then into display space, white balance, saturation, S-curve, back
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+  'vec3 CustomToneMapping( vec3 color ) { return color; }',
+  `vec3 CustomToneMapping( vec3 color ) {
+    vec3 c = pow( clamp( ACESFilmicToneMapping( color ), 0.0, 1.0 ), vec3( 1.0 / 2.2 ) ) * vec3( 1.02, 1.0, 0.96 );
+    float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+    c = clamp( mix( vec3( l ), c, 1.07 ), 0.0, 1.0 );
+    c = mix( c, c * c * ( 3.0 - 2.0 * c ), 0.16 );
+    return pow( c, vec3( 2.2 ) );
+  }`);
+
 // sun lens flare: soft hexagonal ghosts along the line through the screen centre
 function makeFlare(tod) {
   const disc = (size, inner, col) => {
@@ -763,6 +775,14 @@ class Game {
     envScene.add(this.physSky ? physSky(18, 0.62, 1.6) : new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
     const ground = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color: tod.lamps > 0.5 ? 0x141a14 : 0x51703f }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -1; envScene.add(ground);
+    // a circuit's horizon is not open sky: barriers, stands and tree lines ring it up to ~6°. Without that band
+    // metallic, clear-coated paint mirrored bright sky all round and every car looked washed out (pale yellow,
+    // grey carbon) wherever the player's real-surroundings cube map is not rendered (medium / low, all AI cars)
+    if (tod.lamps < 0.5) {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 9.5, 2, 48, 1, true), new THREE.MeshBasicMaterial({ color: 0x3b4536, side: THREE.BackSide }));
+      band.position.y = 0; envScene.add(band); // -6° … +6° around the reflection centre
+      ground.material.color.set(0x474a46); // mostly asphalt close to a car, not lawn
+    }
     scene.environment = pm.fromScene(envScene, 0.04).texture;
 
     const hemi = (this.hemi = new THREE.HemisphereLight(tod.hemiSky, tod.hemiGround, tod.hemiInt));
@@ -800,6 +820,8 @@ class Game {
       c.addPass(new ShaderPass(GRADE));
       this.composer = c;
     }
+    // no post-processing: the broadcast grade runs inside the tone mapping instead (see CustomToneMapping)
+    renderer.toneMapping = this.composer ? THREE.ACESFilmicToneMapping : THREE.CustomToneMapping;
 
     this.track = new Track(scene, { def: this.def, tod, wetness: this.weather.wetness, quality: opts.quality, trees: opts.trees === 'auto' ? opts.quality : opts.trees });
     this.applyWeather(0, true);
@@ -849,10 +871,14 @@ class Game {
     this.playerBody.add(this.playerModel);
     // high / ultra: the player's paint reflects its real surroundings (road, kerbs, stands, other cars) from a
     // small cube map around the car instead of only the sky
-    if (opts.quality === 'high' || opts.quality === 'ultra') {
-      this.envRT = new THREE.WebGLCubeRenderTarget(opts.quality === 'ultra' ? 256 : 128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
-      this.envCam = new THREE.CubeCamera(0.4, 1500, this.envRT);
+    // medium: a 64 px cube, one face per frame (no 6-render spike, ~1/6 of a scene render each frame at tiny
+    // resolution) and a shorter far plane so the cube's cameras cull most of the circuit
+    if (opts.quality === 'high' || opts.quality === 'ultra' || opts.quality === 'medium') {
+      const med = opts.quality === 'medium';
+      this.envRT = new THREE.WebGLCubeRenderTarget(opts.quality === 'ultra' ? 256 : med ? 64 : 128, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+      this.envCam = new THREE.CubeCamera(0.4, med ? 450 : 1500, this.envRT);
       this.envEvery = opts.quality === 'ultra' ? 3 : 8;
+      this.envFaces = med;
       scene.add(this.envCam);
       const P = this.playerModel.userData.parts;
       for (const m of [P.livery.material, P.accent.material]) { m.envMap = this.envRT.texture; m.needsUpdate = true; }
@@ -2971,7 +2997,7 @@ class Game {
       undoRear();
       this.cockpit.visible = true; this.playerModel.visible = true;
     }
-    if (this.envCam && (this.envFrame = (this.envFrame || 0) + 1) % this.envEvery === 1) {
+    if (this.envCam && (this.envFrame = (this.envFrame || 0) + 1) % (this.envFaces ? 1 : this.envEvery) === (this.envFaces ? 0 : 1)) {
       // refresh the car's reflection cube from just above the cockpit, without the car itself and without
       // re-rendering the sun's shadow map six times
       // nor the sun sprite and its lens flare: they are screen effects of the main camera, but in the cube they
@@ -2981,7 +3007,15 @@ class Game {
       this.playerRoot.getWorldPosition(this.envCam.position); this.envCam.position.y += 0.8;
       this.envCam.updateMatrixWorld(true);
       const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
-      this.envCam.update(renderer, this.scene);
+      if (this.envFaces) {
+        // one face per frame; the last one regenerates the mipmaps the rough paint samples
+        const f = this.envFrame % 6, rt = this.envRT, gm = rt.texture.generateMipmaps;
+        if (this.envCam.coordinateSystem !== renderer.coordinateSystem) { this.envCam.coordinateSystem = renderer.coordinateSystem; this.envCam.updateCoordinateSystem(); }
+        rt.texture.generateMipmaps = f === 5;
+        renderer.setRenderTarget(rt, f); renderer.render(this.scene, this.envCam.children[f]); renderer.setRenderTarget(null);
+        rt.texture.generateMipmaps = gm;
+        if (f === 5) rt.texture.needsPMREMUpdate = true; // the paint samples a prefiltered copy: refresh it once per full cube
+      } else this.envCam.update(renderer, this.scene);
       renderer.shadowMap.autoUpdate = au;
       [this.playerModel.visible, this.cockpit.visible] = vis; if (this.sunSprite) this.sunSprite.visible = vis[2];
     }
