@@ -88,7 +88,9 @@ export class PlayerCar {
     if (a < W) this.surface = 'road';
     else if (kerb && a < W + KERB_W) this.surface = 'kerb';
     else if (kerb && a < W + 4.5) this.surface = 'runoff';
-    else if (gravel) this.surface = 'gravel';
+    // the gravel trap is drawn from 4.5 m beyond the road edge (track.js buildMeshes): the strip in between is grass
+    // on screen, so it is grass to drive on too
+    else if (gravel && a >= W + 4.5) this.surface = 'gravel';
     else this.surface = 'grass';
     const SF = SURF[this.surface];
     const mu = tr.mu * this.gripMul * (tr.wet ? SF.wet : SF.mu);

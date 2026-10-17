@@ -4,15 +4,16 @@
 // pitch over crests and climb Eau Rouge while the race logic stays flat.
 import * as THREE from 'three';
 
-const U = { terrainMap: { value: null }, terrainOn: { value: 0 }, terrainOrigin: { value: new THREE.Vector2() }, terrainSize: { value: 1 } };
+const U = { terrainMap: { value: null }, terrainOn: { value: 0 }, terrainOrigin: { value: new THREE.Vector2() }, terrainSize: { value: 1 }, terrainBase: { value: 0 } };
+const KERB = 1.6; // kerb width beside the road edge (track.js KERB_W)
 let cpu = null; // { data: Float32Array, res, ox, oz, size }
 
 const GLSL = `
-uniform sampler2D terrainMap; uniform float terrainOn; uniform vec2 terrainOrigin; uniform float terrainSize;
+uniform sampler2D terrainMap; uniform float terrainOn; uniform vec2 terrainOrigin; uniform float terrainSize; uniform float terrainBase;
 float terrainH( vec2 xz ) {
   if ( terrainOn < 0.5 ) return 0.0;
   vec2 uv = ( xz - terrainOrigin ) / terrainSize + 0.5;
-  return texture2D( terrainMap, clamp( uv, 0.0, 1.0 ) ).r;
+  return texture2D( terrainMap, clamp( uv, 0.0, 1.0 ) ).r + terrainBase;
 }
 `;
 const PROJECT = THREE.ShaderChunk.project_vertex.replace(
@@ -169,8 +170,13 @@ export function buildTerrain(tr, size = 7000, res = 1024, hw = 7) {
   // second-nearest road section (a different part of the lap, e.g. the other leg of a hairpin): between two
   // sections at different heights the field must ramp from one road edge to the other, not step halfway
   const N = tr.N, ds = (() => { let L = 0; for (let i = 0; i < N; i++) { const j = (i + 1) % N; L += Math.hypot(tr.px[j] - tr.px[i], tr.pz[j] - tr.pz[i]); } return L / N; })();
+  // another section = far along the lap compared with how far apart in space (the rule Track.neighbourGaps uses):
+  // the two legs of a hairpin are one corner, not two sections, so no embankment is drawn across its apex
   const SEP = Math.max(20, Math.ceil(60 / ds));
-  const apart = (a, b) => { const d = Math.abs(a - b); return Math.min(d, N - d) > SEP; };
+  const apart = (a, b) => {
+    let d = Math.abs(a - b); d = Math.min(d, N - d);
+    return d > SEP && d * ds > Math.hypot(tr.px[a] - tr.px[b], tr.pz[a] - tr.pz[b]) * 3 + 40;
+  };
   const near2 = new Int32Array(n).fill(-1), dist2 = new Float32Array(n).fill(1e9);
   const relax2 = (k, kk) => {
     const own = near[k]; if (own < 0) return;
@@ -190,15 +196,31 @@ export function buildTerrain(tr, size = 7000, res = 1024, hw = 7) {
       if (c < res - 1) relax2(k, k + 1); if (r < res - 1) { relax2(k, k + res); if (c < res - 1) relax2(k, k + res + 1); if (c > 0) relax2(k, k + res - 1); }
     }
   }
+  // road height at a texel: the centre-line height interpolated along the lap at the texel's projection onto the
+  // road (not the nearest 2 m sample's height, which steps on gradients), so bilinear filtering between texels
+  // reproduces the road profile the cars drive on (Track.hAt)
+  const roadH = (k, i) => {
+    if (!tr.tx || !tr.ds) return tr.hs[i];
+    const t = ((cx(k) - tr.px[i]) * tr.tx[i] + (cz(k) - tr.pz[i]) * tr.tz[i]) / tr.ds;
+    const j = t >= 0 ? (i + 1) % N : (i - 1 + N) % N;
+    return tr.hs[i] + (tr.hs[j] - tr.hs[i]) * Math.min(1, Math.abs(t));
+  };
+  // the embankment towards another section starts this far beyond the road edge: kerb plus one texel, so the
+  // bilinear filter at the road edge never reaches into the slope (it lifted Monaco's road edges by metres)
+  const keep = KERB + cell;
   const sharp = new Float32Array(n);
   for (let k = 0; k < n; k++) {
     const i1 = near[k]; if (i1 < 0) continue;
-    let h = tr.hs[i1];
+    let h = roadH(k, i1);
     const i2 = near2[k];
     if (i2 >= 0 && Math.abs(tr.hs[i2] - h) > 0.2) {
-      // on the road (inside the half width) the height is exact; off it, a linear embankment towards the
-      // other section's road edge, fading out once that section is far away
-      const e1 = Math.max(0, dist[k] - (tr.hw ? tr.hw[i1] : hw)), e2 = Math.max(0, dist2[k] - (tr.hw ? tr.hw[i2] : hw));
+      // on the road and its kerbs the height is exact; beyond, a linear embankment towards the other section's
+      // road edge, fading out once that section is far away
+      // between two sections closer than that, the slope takes the middle half of the gap instead of a step
+      // along the texel staircase where the nearest section changes
+      const w1 = tr.hw ? tr.hw[i1] : hw, w2 = tr.hw ? tr.hw[i2] : hw;
+      const kp = Math.min(keep, Math.max(0, dist[k] + dist2[k] - w1 - w2) * 0.25);
+      const e1 = Math.max(0, dist[k] - w1 - kp), e2 = Math.max(0, dist2[k] - w2 - kp);
       const fade = 1 - Math.min(1, Math.max(0, (dist2[k] - 30) / 30));
       if (e1 > 0 && fade > 0) h += (tr.hs[i2] - h) * (e1 / (e1 + e2)) * fade;
     }
@@ -214,14 +236,18 @@ export function buildTerrain(tr, size = 7000, res = 1024, hw = 7) {
   const br = Math.max(2, Math.round(41 / cell)); // ~41 m, whatever the texel size
   const soft = blur(blur(sharp, br), br);
   const data = new Float32Array(n), half = new Uint16Array(n);
+  // half floats keep 11 bits: stored around the middle height their step is <= 3 cm on a 100 m climb (raw, 6 cm
+  // above 64 m). The CPU copy holds exactly the values the GPU sees, so cameras, scenery and road agree.
+  let lo = 1e9, hi = -1e9; for (let i = 0; i < N; i++) { lo = Math.min(lo, tr.hs[i]); hi = Math.max(hi, tr.hs[i]); }
+  const base = (lo + hi) / 2;
   for (let k = 0; k < n; k++) {
     const t = Math.min(1, Math.max(0, (dist[k] - 28) / 110)), w = t * t * (3 - 2 * t);
-    data[k] = sharp[k] * (1 - w) + soft[k] * w;
-    half[k] = THREE.DataUtils.toHalfFloat(data[k]);
+    half[k] = THREE.DataUtils.toHalfFloat(sharp[k] * (1 - w) + soft[k] * w - base);
+    data[k] = THREE.DataUtils.fromHalfFloat(half[k]) + base;
   }
   const tex = new THREE.DataTexture(half, res, res, THREE.RedFormat, THREE.HalfFloatType);
   tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
-  U.terrainMap.value = tex; U.terrainOrigin.value.set(ox, oz); U.terrainSize.value = size;
+  U.terrainMap.value = tex; U.terrainOrigin.value.set(ox, oz); U.terrainSize.value = size; U.terrainBase.value = base;
   cpu = { data, res, ox, oz, size };
   U.terrainOn.value = 1;
 }

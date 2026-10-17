@@ -8,10 +8,41 @@ import { VEH, limits, driveLimit } from './vehicle.js';
 export const HALF_W = 7;      // default half track width (m); measured circuits carry their own per sample (Track.hw)
 export const KERB_W = 1.6;
 const DS = 2;                 // sample spacing (m)
+// smallest centre-line radius kept from the source data: the car's full-lock turning radius is 5.8 m (tests/
+// vehicle-tests.js, 'Volleinschlag'); tighter points are digitising kinks of the 20 m GeoJSON polygons
+const MIN_R = 7;
 
-function catmull(p0, p1, p2, p3, t) {
-  const t2 = t * t, t3 = t2 * t;
-  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+// centripetal Catmull-Rom (alpha 0.5) through p1 -> p2, u in [0, 1]. The uniform form overshoots and can loop
+// where neighbouring control points are unevenly spaced (a 0.1 m closing segment next to 5 m ones, GeoJSON points
+// 6 m and 22 m apart); the centripetal form never forms cusps or self-intersections inside a segment.
+function catmullC(p0, p1, p2, p3, u, out) {
+  const d = (a, b) => Math.max(1e-4, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1])));
+  const t1 = d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3), t = t1 + (t2 - t1) * u;
+  for (let c = 0; c < 2; c++) {
+    const A1 = (p0[c] * (t1 - t) + p1[c] * t) / t1;
+    const A2 = (p1[c] * (t2 - t) + p2[c] * (t - t1)) / (t2 - t1);
+    const A3 = (p2[c] * (t3 - t) + p3[c] * (t - t2)) / (t3 - t2);
+    const B1 = (A1 * (t2 - t) + A2 * t) / t2;
+    const B2 = (A2 * (t3 - t) + A3 * (t - t1)) / (t3 - t1);
+    out[c] = (B1 * (t2 - t) + B2 * (t - t1)) / (t2 - t1);
+  }
+  return out;
+}
+
+// drop control points that nearly coincide with their predecessor (e.g. a closing point 0.08 m from the
+// first one): a near-zero segment is a kink in any spline through it. Per-point data (height, width) goes too.
+function cleanControls(C, E, W) {
+  const n = C.length, seg = [];
+  for (let i = 0; i < n; i++) seg.push(Math.hypot(C[(i + 1) % n][0] - C[i][0], C[(i + 1) % n][1] - C[i][1]));
+  const med = [...seg].sort((a, b) => a - b)[n >> 1], keep = [];
+  for (let i = 0; i < n; i++) {
+    const prev = keep.length ? C[keep[keep.length - 1]] : null;
+    if (prev && Math.hypot(C[i][0] - prev[0], C[i][1] - prev[1]) < med * 0.2) continue;
+    keep.push(i);
+  }
+  // the closing segment (last kept point -> first point)
+  while (keep.length > 3 && Math.hypot(C[keep[keep.length - 1]][0] - C[0][0], C[keep[keep.length - 1]][1] - C[0][1]) < med * 0.2) keep.pop();
+  return { C: keep.map((i) => C[i]), E: E && keep.map((i) => E[i]), W: W && keep.map((i) => W[i]) };
 }
 
 function smoothArr(a, radius, passes = 1) {
@@ -126,18 +157,47 @@ export class Track {
         for (let k = 1; k < ns; k++) dense.push([s0[0] + (s1[0] - s0[0]) * (k / ns), -(s0[1] + (s1[1] - s0[1]) * (k / ns))]);
       }
     } else {
-      const C = def.ctrl, n = C.length, E = def.elev, Wd = def.hw;
+      const { C, E, W: Wd } = cleanControls(def.ctrl, def.elev, def.hw), n = C.length;
       // measured circuits have points every 5 m: fewer spline steps keep the dense line small
-      const sub = n > 600 ? 12 : 60;
+      const sub = n > 600 ? 12 : 60, q = [0, 0];
       for (let i = 0; i < n; i++) {
         const a = C[(i - 1 + n) % n], b = C[i], c = C[(i + 1) % n], d = C[(i + 2) % n];
         for (let k = 0; k < sub; k++) {
           const t = k / sub;
-          dense.push([catmull(a[0], b[0], c[0], d[0], t), -catmull(a[1], b[1], c[1], d[1], t),
-            E ? (E[i] + (E[(i + 1) % n] - E[i]) * t) / 10 : 0, Wd ? Wd[i] + (Wd[(i + 1) % n] - Wd[i]) * t : HALF_W]);
+          catmullC(a, b, c, d, t, q);
+          // x east, z = -north (three.js: -z is "forward" on the map), heights dm -> m, half widths m
+          dense.push([q[0], -q[1], E ? (E[i] + (E[(i + 1) % n] - E[i]) * t) / 10 : 0, Wd ? Wd[i] + (Wd[(i + 1) % n] - Wd[i]) * t : HALF_W]);
         }
       }
     }
+    this.resample(dense);
+    // a centre line tighter than the road's half width folds the inside edge of the road back over itself (and
+    // the driving surface with it). Where the source line has such a corner, relax it locally until the inside
+    // edge keeps a radius of at least 1 m; everywhere else the line stays exactly as measured. Where that is not
+    // possible without reshaping the lap (hairpin legs closer than the assumed road width), at least kinks of the
+    // source polygon tighter than MIN_R are rounded off
+    if (this.relaxTightCorners((i) => this.hw[i] + 1) || this.relaxTightCorners(() => MIN_R)) this.resample(Array.from({ length: this.N }, (_, i) => [this.px[i], this.pz[i], this.hs[i], this.hw[i]]));
+    const N = this.N;
+    this.tx = new Float32Array(N); this.tz = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const a = (i - 1 + N) % N, b = (i + 1) % N;
+      const dx = this.px[b] - this.px[a], dz = this.pz[b] - this.pz[a];
+      const l = Math.hypot(dx, dz);
+      this.tx[i] = dx / l; this.tz[i] = dz / l;
+    }
+    // signed curvature (+ = right-hander)
+    const k = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const b = (i + 1) % N;
+      const cross = this.tx[i] * this.tz[b] - this.tz[i] * this.tx[b];
+      const dot = this.tx[i] * this.tx[b] + this.tz[i] * this.tz[b];
+      k[i] = Math.atan2(cross, dot) / this.ds;
+    }
+    this.k = smoothArr(k, 3, 2);
+  }
+
+  // arc-length resampling of a closed polyline [x, z, height, half width] into N samples every ~DS metres
+  resample(dense) {
     const cum = [0];
     for (let i = 1; i <= dense.length; i++) {
       const p = dense[i - 1], q = dense[i % dense.length];
@@ -158,22 +218,53 @@ export class Track {
       this.hs[i] = (p[2] || 0) + ((q[2] || 0) - (p[2] || 0)) * f; // road height above the lowest point (m)
       this.hw[i] = (p[3] || HALF_W) + ((q[3] || HALF_W) - (p[3] || HALF_W)) * f; // half road width (m)
     }
-    this.tx = new Float32Array(N); this.tz = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      const a = (i - 1 + N) % N, b = (i + 1) % N;
-      const dx = this.px[b] - this.px[a], dz = this.pz[b] - this.pz[a];
-      const l = Math.hypot(dx, dz);
-      this.tx[i] = dx / l; this.tz[i] = dz / l;
+  }
+
+  // local Laplacian relaxation of samples whose curvature (over +-2 samples) exceeds 1 / rMin(i); returns true if
+  // the line was changed. Heights and widths stay with their samples.
+  relaxTightCorners(rMin) {
+    const N = this.N, px = this.px, pz = this.pz, K = 2;
+    const kAt = (i) => {
+      const a = (i - K + N) % N, b = (i + K) % N;
+      const ax = px[i] - px[a], az = pz[i] - pz[a], bx = px[b] - px[i], bz = pz[b] - pz[i];
+      const la = Math.hypot(ax, az), lb = Math.hypot(bx, bz);
+      return Math.abs(Math.atan2(ax * bz - az * bx, ax * bx + az * bz)) / Math.max(0.5 * (la + lb), 1e-3);
+    };
+    const count = () => { let n = 0; for (let i = 0; i < N; i++) if (kAt(i) * rMin(i) > 1) n++; return n; };
+    const kMax = () => { let m = 0; for (let i = 0; i < N; i++) m = Math.max(m, kAt(i) * rMin(i)); return m; };
+    const len = () => { let L = 0; for (let i = 0; i < N; i++) { const j = (i + 1) % N; L += Math.hypot(px[j] - px[i], pz[j] - pz[i]); } return L; };
+    const n0 = count();
+    if (!n0) return false;
+    const x0 = Float32Array.from(px), z0 = Float32Array.from(pz), L0 = len(), k0 = kMax();
+    // keep the best state (smallest worst curvature) whose lap length is within 0.3 % of the source line; a
+    // hairpin whose legs are fixed can't be opened by smoothing, only pulled inwards, so this stops early
+    let best = null, bestK = k0;
+    for (let it = 0; it < 400; it++) {
+      const bad = [];
+      for (let i = 0; i < N; i++) if (kAt(i) * rMin(i) > 1) bad.push(i);
+      if (!bad.length) break;
+      const mark = new Uint8Array(N);
+      for (const i of bad) for (let d = -4; d <= 4; d++) mark[(i + d + N) % N] = 1;
+      const nx = Float32Array.from(px), nz = Float32Array.from(pz);
+      for (let i = 0; i < N; i++) if (mark[i]) {
+        const a = (i - 1 + N) % N, b = (i + 1) % N;
+        nx[i] = px[i] + ((px[a] + px[b]) / 2 - px[i]) * 0.5;
+        nz[i] = pz[i] + ((pz[a] + pz[b]) / 2 - pz[i]) * 0.5;
+      }
+      px.set(nx); pz.set(nz);
+      if (Math.abs(len() - L0) > L0 * 0.003) break;
+      const k = kMax();
+      if (k < bestK) { bestK = k; best = [Float32Array.from(px), Float32Array.from(pz)]; }
+      if (k <= 1) break; // fully fixed
     }
-    // signed curvature (+ = right-hander)
-    const k = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      const b = (i + 1) % N;
-      const cross = this.tx[i] * this.tz[b] - this.tz[i] * this.tx[b];
-      const dot = this.tx[i] * this.tx[b] + this.tz[i] * this.tz[b];
-      k[i] = Math.atan2(cross, dot) / this.ds;
-    }
-    this.k = smoothArr(k, 3, 2);
+    // worth keeping if it fixed the corner, or made the worst point clearly better (kinks of the source polygon); otherwise the
+    // source line stays and the strips only avoid folding (ribbon / wall)
+    const moved = !!best && (bestK <= 1 || bestK < k0 * 0.8);
+    if (moved) { px.set(best[0]); pz.set(best[1]); } else { px.set(x0); pz.set(z0); }
+    this.tightCorners = count(); // samples still tighter than rMin
+    this.relaxed = moved;
+    this.tightCorners = moved ? 0 : n0; // samples still tighter than rMin
+    return moved;
   }
 
   idx(s) { const N = this.N; return ((Math.floor(s / this.ds) % N) + N) % N; }
@@ -488,14 +579,29 @@ export class Track {
   }
 
   // ---------- geometry ----------
-  ribbon(latA, latB, y, mat, uScale, vLen, filter, across = 1) {
+  // lateral offset on the inside of a corner limited to 95 % of the local radius: beyond the corner's centre an
+  // offset line would run backwards (strips fold, lanes of a wide strip cross each other). Outside: unchanged.
+  clampInside(i, l) {
+    if (!this.rIn) {
+      const ks = smoothArr(this.k, 2, 1);
+      this.rIn = Float32Array.from(ks, (k) => (Math.abs(k) > 1e-5 ? 0.95 / Math.abs(k) : 1e9) * Math.sign(k || 1));
+    }
+    const r = this.rIn[i]; // signed: + = the inside is to the right (+lat)
+    return r > 0 ? Math.min(l, r) : Math.max(l, r);
+  }
+  ribbon(latA, latB, y, mat, uScale, vLen, filter, across = 1, exact = false) {
     // build a strip between two lateral offsets (arrays or numbers), optionally only where filter(i) true;
-    // `across` splits it into lanes so a wide strip can follow the height field between its edges
+    // `across` splits it into lanes so a wide strip can follow the height field between its edges.
+    // `exact`: the strip carries the road's own height profile (Track.hs, what the cars drive on) in its vertices
+    // and skips the height-field lift. The field is a 1024² raster (3-7 m texels) that blurs steps between
+    // close sections; the driving surface must not depend on it.
+    if (exact && this.hilly) { mat.userData.noTerrain = true; mat.needsUpdate = true; }
     const N = this.N, K = Math.max(1, across | 0), row = K + 1;
     const pos = [], uv = [], idx = [];
     let run = false, base = 0;
     const getA = (i) => (typeof latA === 'function' ? latA(i) : latA);
     const getB = (i) => (typeof latB === 'function' ? latB(i) : latB);
+    const prev = new Float32Array(2 * (K + 1));
     for (let c = 0; c <= N; c++) {
       const i = c % N;
       const ok = !filter || filter(i);
@@ -504,8 +610,13 @@ export class Track {
         const rx = -this.tz[i], rz = this.tx[i];
         const v = (c * this.ds) / vLen;
         for (let k = 0; k <= K; k++) {
-          const l = a + (b - a) * (k / K);
-          pos.push(this.px[i] + rx * l, y, this.pz[i] + rz * l);
+          const l = this.clampInside(i, a + (b - a) * (k / K));
+          let x = this.px[i] + rx * l, z = this.pz[i] + rz * l;
+          // an offset line on the inside of a corner tighter than the offset would run backwards and fold the
+          // strip over itself: it holds its last point instead (the strip narrows to a fan, no overlap)
+          if (run && (x - prev[2 * k]) * this.tx[i] + (z - prev[2 * k + 1]) * this.tz[i] < 0.01) { x = prev[2 * k]; z = prev[2 * k + 1]; }
+          prev[2 * k] = x; prev[2 * k + 1] = z;
+          pos.push(x, exact && this.hilly ? y + this.hs[i] : y, z);
           uv.push(uScale * (k / K), v);
         }
         const vi = pos.length / 3 - row;
@@ -523,7 +634,7 @@ export class Track {
     const n = g.attributes.normal;
     for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
     const m = new THREE.Mesh(g, mat);
-    m.receiveShadow = true;
+    m.receiveShadow = true; m.userData.ribbon = true;
     this.group.add(m);
     return m;
   }
@@ -535,8 +646,10 @@ export class Track {
     for (let c = 0; c <= N; c++) {
       const i = c % N;
       const ok = (!filter || filter(i)) && !(this.cross && this.cross[i]);
-      const l = latFn(i);
-      const x = this.px[i] - this.tz[i] * l, z = this.pz[i] + this.tx[i] * l;
+      const l = this.clampInside(i, latFn(i));
+      let x = this.px[i] - this.tz[i] * l, z = this.pz[i] + this.tx[i] * l;
+      // same as the ribbons: a wall on the inside of a corner tighter than its offset holds its last point
+      if (prevX !== null && (x - prevX) * this.tx[i] + (z - prevZ) * this.tz[i] < 0.01) { x = prevX; z = prevZ; }
       if (prevX !== null) dist += Math.hypot(x - prevX, z - prevZ);
       prevX = x; prevZ = z;
       if (ok) {
@@ -568,13 +681,13 @@ export class Track {
     });
     if (this.quality !== 'low') { roadMat.normalMap = TX.noiseNormal(512, 11, 1, 2.6); roadMat.normalMap.repeat.set(9, 11); roadMat.normalScale.set(0.45, 0.45); }
     this.roadMat = roadMat;
-    this.ribbon(nW, W, 0.03, roadMat, 1, 16);
+    this.ribbon(nW, W, 0.03, roadMat, 1, 16, null, 1, true);
 
     // run-off verge (tarmac strip next to track)
     const ro = TX.runoff();
     const roMat = (this.roMat = new THREE.MeshStandardMaterial({ map: ro, roughness: 0.9, color: 0xbbbbbb }));
-    this.ribbon(nat(4.5), nW, 0.02, roMat, 1, 30, (i) => this.kerbL[i]);
-    this.ribbon(W, at(4.5), 0.02, roMat, 1, 30, (i) => this.kerbR[i]);
+    this.ribbon(nat(4.5), nW, 0.02, roMat, 1, 30, (i) => this.kerbL[i], 1, true);
+    this.ribbon(W, at(4.5), 0.02, roMat, 1, 30, (i) => this.kerbR[i], 1, true);
 
     // gravel traps
     const gr = TX.gravel(); gr.repeat.set(3, 1);
@@ -585,13 +698,13 @@ export class Track {
     // kerbs
     const kt = TX.kerb();
     const kMat = (this.kerbMat = new THREE.MeshStandardMaterial({ map: kt, roughness: 0.7 }));
-    this.ribbon(nat(KERB_W), nat(-0.1), 0.045, kMat, 1, 8, (i) => this.kerbL[i]);
-    this.ribbon(at(-0.1), at(KERB_W), 0.045, kMat, 1, 8, (i) => this.kerbR[i]);
+    this.ribbon(nat(KERB_W), nat(-0.1), 0.045, kMat, 1, 8, (i) => this.kerbL[i], 1, true);
+    this.ribbon(at(-0.1), at(KERB_W), 0.045, kMat, 1, 8, (i) => this.kerbR[i], 1, true);
 
     // start/finish line + grid slots
     const startI = this.idx(this.startS);
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xf2f2f2 });
-    this.ribbon(nW, W, 0.04, lineMat, 1, 1, (i) => i === startI || i === (startI + 1) % this.N);
+    this.ribbon(nW, W, 0.04, lineMat, 1, 1, (i) => i === startI || i === (startI + 1) % this.N, 1, true);
     for (let g = 0; g < 22; g++) {
       const s = this.startS - 8 - g * 8;
       const lat = (g % 2 === 0 ? -1 : 1) * Math.min(2.6, this.hwAt(s) - 1.8);

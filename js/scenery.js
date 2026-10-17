@@ -260,8 +260,10 @@ export function buildScenery(tr) {
       const vt = city ? pavementTex() : TX.grass(desert, true); vt.repeat.set(1, 1);
       const vm = new THREE.MeshStandardMaterial({ map: vt, roughness: 0.95, color: city ? 0xffffff : desert ? 0xf2ead8 : 0xd2dcc2 });
       // lanes (up to every 8.5 m) so the strip follows the height field; it stops halfway to a neighbouring section
-      tr.ribbon((i) => -tr.vergeL[i], -7, -0.04, vm, 7, 12, null, 10);
-      tr.ribbon(7, (i) => tr.vergeR[i], -0.04, vm, 7, 12, null, 10);
+      // from the measured road edge (not a fixed 7 m): narrow roads get no gap of bare ground beside them, wide
+      // ones no strip under the asphalt
+      tr.ribbon((i) => -tr.vergeL[i], (i) => -tr.hw[i], -0.04, vm, 7, 12, null, 10);
+      tr.ribbon((i) => tr.hw[i], (i) => tr.vergeR[i], -0.04, vm, 7, 12, null, 10);
       tr.vergeMat = vm;
     }
   }
@@ -347,7 +349,7 @@ export function buildScenery(tr) {
     const mat = new THREE.MeshBasicMaterial({ map: skidTex(), transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, color: 0x000000 });
     const inSkid = new Uint8Array(N);
     for (const c of hardCorners) for (let k = c.i; k !== (c.j + 15) % N; k = (k + 1) % N) inSkid[k] = 1;
-    for (const off of [-0.85, 0.85]) tr.ribbon((i) => tr.race[i] + off - 0.17, (i) => tr.race[i] + off + 0.17, 0.036, mat, 1, 10, (i) => inSkid[i]);
+    for (const off of [-0.85, 0.85]) tr.ribbon((i) => tr.race[i] + off - 0.17, (i) => tr.race[i] + off + 0.17, 0.036, mat, 1, 10, (i) => inSkid[i], 1, true); // on the exact road surface
   }
   const boards = [150, 100, 50].map((n) => new THREE.MeshStandardMaterial({ map: TX.distanceBoard(n), roughness: 0.6 }));
   const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.26, 10);
@@ -417,7 +419,7 @@ export function buildScenery(tr) {
 
   // ---------------- pit lane, pit wall, garages
   tr.pitMat = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.9 });
-  tr.ribbon(11.3, 28, 0.025, tr.pitMat, 1, 20, (i) => tr.inPitStraight(i * tr.ds));
+  tr.ribbon(11.3, 28, 0.025, tr.pitMat, 1, 20, (i) => tr.inPitStraight(i * tr.ds), 1, true); // cars in the pit lane ride on Track.hAt too
   tr.wall(() => 11, 1.3, 0, new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.7, side: THREE.DoubleSide }), 10, (i) => tr.inPitStraight(i * tr.ds));
   const garageMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.6 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.15, metalness: 0.6, emissive: 0xbfd8ff, emissiveIntensity: lampsOn * 0.35 });

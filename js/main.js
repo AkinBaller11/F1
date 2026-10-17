@@ -1019,7 +1019,8 @@ class Game {
       let dx = tr.raceX[j] - tr.raceX[i], dz = tr.raceZ[j] - tr.raceZ[i];
       const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
       const w = 1.25;
-      pos.set([tr.raceX[i] - dz * w, 0.018, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, 0.018, tr.raceZ[i] - dx * w], i * 6);
+      const y = 0.018 + (tr.hilly ? tr.hs[i] : 0); // on the exact road surface (track.js ribbon `exact`)
+      pos.set([tr.raceX[i] - dz * w, y, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, y, tr.raceZ[i] - dx * w], i * 6);
       uv.set([0, dist / 6, 1, dist / 6], i * 4);
       dist += l;
       idx.push(i * 2, j * 2, i * 2 + 1, i * 2 + 1, j * 2, j * 2 + 1);
@@ -1040,18 +1041,20 @@ class Game {
     for (let i = 0; i < 260; i++) { cg.fillStyle = `rgba(0,0,0,${Math.random() * 0.5})`; cg.fillRect(Math.random() * 64, Math.random() * 256, 1 + Math.random() * 2, 6 + Math.random() * 30); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
     const mat = new THREE.MeshBasicMaterial({ map: t, color: 0x000000, transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
+    mat.userData.noTerrain = tr.hilly;
     this.rubberMesh = new THREE.Mesh(g, mat); this.rubberMesh.frustumCulled = false;
     this.scene.add(this.rubberMesh);
     // marbles: little rubber pellets off the line, one instanced mesh
     const M = 2400, mg = new THREE.CircleGeometry(0.035, 6); mg.rotateX(-Math.PI / 2);
     const marbles = new THREE.InstancedMesh(mg, new THREE.MeshBasicMaterial({ color: 0x0b0b0c, transparent: true, opacity: 0, depthWrite: false }), M);
+    marbles.material.userData.noTerrain = tr.hilly;
     const d = new THREE.Object3D();
     for (let k = 0; k < M; k++) {
       const i = (Math.random() * N) | 0, s = i * tr.ds, rl = tr.racingLat(s);
       const side = Math.random() < 0.5 ? -1 : 1;
       const lat = Math.max(-tr.hw[i] + 0.3, Math.min(tr.hw[i] - 0.3, rl + side * (2.6 + Math.random() * 3)));
       const [x, z] = tr.posAt(s, lat);
-      d.position.set(x, 0.022, z); d.scale.setScalar(0.6 + Math.random() * 1.2); d.updateMatrix();
+      d.position.set(x, 0.022 + (tr.hilly ? tr.hAt(s) : 0), z); d.scale.setScalar(0.6 + Math.random() * 1.2); d.updateMatrix();
       marbles.setMatrixAt(k, d.matrix);
     }
     marbles.frustumCulled = false;
@@ -1082,7 +1085,8 @@ class Game {
       let dx = tr.raceX[j] - tr.raceX[i], dz = tr.raceZ[j] - tr.raceZ[i];
       const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
       const w = 0.55;
-      pos.set([tr.raceX[i] - dz * w, 0.056, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, 0.056, tr.raceZ[i] - dx * w], i * 6);
+      const y = 0.056 + (tr.hilly ? tr.hs[i] : 0); // on the exact road surface
+      pos.set([tr.raceX[i] - dz * w, y, tr.raceZ[i] + dx * w, tr.raceX[i] + dz * w, y, tr.raceZ[i] - dx * w], i * 6);
       uv.set([0, dist / 2.2, 1, dist / 2.2], i * 4);
       dist += l;
       idx.push(i * 2, j * 2, i * 2 + 1, i * 2 + 1, j * 2, j * 2 + 1);
@@ -1102,6 +1106,7 @@ class Game {
     cg.beginPath(); cg.moveTo(8, 92); cg.lineTo(32, 40); cg.lineTo(56, 92); cg.lineTo(46, 92); cg.lineTo(32, 62); cg.lineTo(18, 92); cg.closePath(); cg.fill();
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16;
     const mat = new THREE.MeshBasicMaterial({ map: t, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: false });
+    mat.userData.noTerrain = tr.hilly;
     const mesh = new THREE.Mesh(g, mat);
     mesh.frustumCulled = false;
     this.scene.add(mesh);
