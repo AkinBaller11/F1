@@ -91,6 +91,37 @@ function windowTex(style) {
   }
   return [ctex(c), ctex(e)];
 }
+// Riviera stucco facade (Monaco): one tile = 8 m wide, 4 floors. Plastered walls in the coast's pastel range,
+// tall windows with louvred shutters, wrought-iron balcony rails, a cornice band; the bottom-right corner holds
+// the terracotta roof colour (the roof faces sample it)
+const RIVIERA = [['#e9dcc0', '#5d7a55'], ['#dcae74', '#6a4e36'], ['#e6b39a', '#5f7480'], ['#efe2a6', '#4e6b52'], ['#f1ece2', '#6f8796'], ['#d9c3a0', '#7b5a3c']];
+function rivieraTex(style) {
+  const [wall, shut] = RIVIERA[style];
+  const [c, g] = canvas(256, 256);
+  g.fillStyle = wall; g.fillRect(0, 0, 256, 256);
+  const r = rng(style * 17 + 3);
+  for (let k = 0; k < 2500; k++) { g.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,255,255'},${0.025 + r() * 0.03})`; g.fillRect(r() * 256, r() * 256, 2 + r() * 3, 2 + r() * 3); } // plaster
+  const [e, ge] = canvas(256, 256);
+  ge.fillStyle = '#000'; ge.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < 4; y++) {
+    const fy = y * 64;
+    g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(0, fy + 60, 256, 4); // floor cornice
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, fy + 58, 256, 2);
+    for (let x = 0; x < 4; x++) {
+      const wx = x * 64 + 22, wy = fy + 12;
+      const open = r() < 0.45;
+      g.fillStyle = '#2a2622'; g.fillRect(wx, wy, 20, 34); // window
+      g.fillStyle = 'rgba(160,190,210,.25)'; g.fillRect(wx + 2, wy + 2, 16, 12);
+      g.fillStyle = shut; // shutters, folded open beside the window or closed over it
+      if (open) { g.fillRect(wx - 11, wy, 10, 34); g.fillRect(wx + 21, wy, 10, 34); } else g.fillRect(wx, wy, 20, 34);
+      g.fillStyle = 'rgba(0,0,0,.25)'; for (let l = 0; l < 34; l += 4) { if (open) { g.fillRect(wx - 11, wy + l, 10, 1); g.fillRect(wx + 21, wy + l, 10, 1); } else g.fillRect(wx, wy + l, 20, 1); }
+      if (y > 0 && r() < 0.6) { g.fillStyle = '#2b2b2b'; g.fillRect(wx - 6, wy + 30, 32, 2); for (let b = 0; b < 32; b += 4) g.fillRect(wx - 6 + b, wy + 30, 1, 10); g.fillRect(wx - 6, wy + 40, 32, 2); } // balcony
+      if (!open && r() < 0.4) { ge.fillStyle = '#ffcf86'; ge.fillRect(wx + 2, wy + 2, 16, 30); } else if (open && r() < 0.5) { ge.fillStyle = '#ffd9a0'; ge.fillRect(wx, wy, 20, 34); }
+    }
+  }
+  g.fillStyle = '#9c4f32'; g.fillRect(248, 248, 8, 8); // roof tiles colour (top faces)
+  return [ctex(c), ctex(e)];
+}
 function neonTex(text, col) {
   const [c, g] = canvas(512, 128);
   g.fillStyle = '#000'; g.fillRect(0, 0, 512, 128);
@@ -263,7 +294,10 @@ export function buildScenery(tr) {
     const col = new Float32Array(p.count * 3);
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), z = p.getZ(i);
-      const h = height(x, z);
+      // hilly: under the fine verge strips (they cover the land to 92 m, or halfway to a neighbouring section) the
+      // coarse ground sinks well out of sight: its ~41 m quads spanning two sections at different heights
+      // (Monaco: 31 m apart, 10 m apart in height) cut into the lower road. Trees keep using height().
+      const h = height(x, z) - (hilly ? 13 * (1 - smooth(55, 90, df.at(x, z))) : 0);
       p.setY(i, h - 0.03);
       if (city) { col.set([1, 1, 1], i * 3); continue; }
       const n = fbm(x / 90, z / 90, 3);
@@ -622,8 +656,9 @@ function buildNature(tr, df, height, lakeAt, R) {
 // ------------------------------------------------------------------ city
 function buildCity(tr, df, lampsOn, R) {
   const G = tr.group;
-  const styles = [0, 1, 2, 3].map((s) => windowTex(s));
-  const lists = [[], [], [], []];
+  const riv = tr.def.facade === 'riviera';
+  const styles = riv ? [0, 1, 2, 3, 4, 5].map((s) => rivieraTex(s)) : [0, 1, 2, 3].map((s) => windowTex(s));
+  const lists = styles.map(() => []), pick = () => (R() * lists.length) | 0;
   const box = (x, z, w, d, h, rot) => {
     const g = new THREE.BoxGeometry(w, h, d);
     // scale UVs so windows keep their size: one texture tile = 8 m wide, 4 floors (12 m)
@@ -631,7 +666,8 @@ function buildCity(tr, df, lampsOn, R) {
     for (let i = 0; i < uv.count; i++) {
       const ax = Math.abs(nrm.getX(i)), ay = Math.abs(nrm.getY(i));
       const sw = ay > 0.5 ? 0 : ax > 0.5 ? d : w;
-      uv.setXY(i, uv.getX(i) * sw / 8, uv.getY(i) * (ay > 0.5 ? 0 : h / 12));
+      if (riv && ay > 0.5) uv.setXY(i, 0.985, 0.015); // roof: terracotta corner of the tile
+      else uv.setXY(i, uv.getX(i) * sw / 8, uv.getY(i) * (ay > 0.5 ? 0 : h / 12));
     }
     g.rotateY(rot); g.translate(x, h / 2, z);
     return g.toNonIndexed();
@@ -647,8 +683,9 @@ function buildCity(tr, df, lampsOn, R) {
       const loc = {}; if (d < 90) { tr.locate(x, z, -1, loc); if (tr.inPitStraight(loc.s)) continue; }
       const w = 26 + R() * 18, dd = 26 + R() * 18;
       const near = 1 - Math.min(1, d / 600);
-      const h = Math.max(9, (14 + R() * 40 + R() * R() * 140 * (0.4 + near)) * (tr.def.cityH ?? 1)); // Monaco is mid-rise, Singapore towers
-      lists[(R() * 4) | 0].push(box(x, z, w, dd, h, 0));
+      let h = Math.max(9, (14 + R() * 40 + R() * R() * 140 * (0.4 + near)) * (tr.def.cityH ?? 1)); // Monaco is mid-rise, Singapore towers
+      if (riv) h = R() < 0.06 ? 40 + R() * 30 : 12 + R() * 26; // Riviera: 4-12 floors, the odd residential tower
+      lists[pick()].push(box(x, z, w, dd, h, 0));
     }
   }
   // distant skyline ring
@@ -656,12 +693,12 @@ function buildCity(tr, df, lampsOn, R) {
     const a = (k / 90) * Math.PI * 2 + R() * 0.05, r = 1700 + R() * 600;
     const x = df.cx + Math.cos(a) * r, z = df.cz + Math.sin(a) * r;
     if (tr.seaAt(x, z) > -30) continue;
-    lists[(R() * 4) | 0].push(box(x, z, 60 + R() * 60, 60 + R() * 60, (60 + R() * 260) * Math.max(0.35, tr.def.cityH ?? 1), a));
+    lists[pick()].push(box(x, z, 60 + R() * 60, 60 + R() * 60, (60 + R() * 260) * Math.max(0.35, tr.def.cityH ?? 1) * (riv ? 0.5 : 1), a));
   }
   lists.forEach((l, i) => {
     if (!l.length) return;
     const [map, emi] = styles[i];
-    const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: emi, emissive: 0xffffff, emissiveIntensity: 0.03 + lampsOn * 0.55, roughness: 0.6, metalness: i === 3 ? 0.4 : 0.1 });
+    const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: emi, emissive: 0xffffff, emissiveIntensity: (riv ? 0 : 0.03) + lampsOn * 0.55, roughness: riv ? 0.9 : 0.6, metalness: riv ? 0 : i === 3 ? 0.4 : 0.1 });
     const mesh = new THREE.Mesh(mergeGeometries(l), mat);
     mesh.castShadow = false; mesh.receiveShadow = true;
     G.add(mesh);
@@ -680,8 +717,8 @@ function buildCity(tr, df, lampsOn, R) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 9, 0.5), new THREE.MeshStandardMaterial({ color: 0x222 })); post.position.y = 4.5; g.add(post);
     tr.place(g, s, lat, 0, side > 0 ? -Math.PI / 2 : Math.PI / 2);
   }
-  // ferris wheel near the first corner
-  {
+  // ferris wheel near the first corner (not on the Riviera)
+  if (!riv) {
     const wheel = new THREE.Group();
     const rimMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, emissive: 0xff4fd8, emissiveIntensity: 0.1 + lampsOn * 2.2, roughness: 0.4 });
     const rim = new THREE.Mesh(new THREE.TorusGeometry(38, 0.8, 8, 64), rimMat); rim.position.y = 46; wheel.add(rim);

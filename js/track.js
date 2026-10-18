@@ -460,9 +460,12 @@ export class Track {
     if (near.pairs.length) this.levelCrossings(near.pairs);
     // verges (grass / pavement beside the road) end halfway to a neighbouring section, so they meet the other
     // section's verge instead of reaching over its road
+    // (the other leg of a hairpin counts here too: Monaco's hairpin legs run ~20 m apart, and the inner verge of
+    // one reached 92 m wide over the other's road)
+    const nearV = this.neighbourGaps(1.3, 8);
     const half = (g) => Float32Array.from(g, (d, i) => Math.max(this.hw[i] + 1, Math.min(92, d / 2)));
     const soft = (raw) => { const sm = smoothArr(raw, 6, 2); for (let i = 0; i < N; i++) sm[i] = Math.min(sm[i], raw[i]); return sm; }; // never past the half gap
-    this.vergeL = soft(half(near.L)); this.vergeR = soft(half(near.R));
+    this.vergeL = soft(half(nearV.L)); this.vergeR = soft(half(nearV.R));
     this.limL = smoothArr(left, 6, 2);
     this.limR = smoothArr(right, 6, 2);
     for (let i = 0; i < N; i++) if (near.cross[i]) { this.limL[i] = Math.max(this.limL[i], 24); this.limR[i] = Math.max(this.limR[i], 24); }
@@ -491,7 +494,8 @@ export class Track {
 
   // for every sample: lateral distance to the nearest unrelated part of the track on each side
   // (unrelated = much further along the lap than it is away in space, so hairpin legs don't count)
-  neighbourGaps() {
+  // arcK / arcC: how much further along the lap than away in space a sample must be to count as another section
+  neighbourGaps(arcK = 3, arcC = 40) {
     const N = this.N, ds = this.ds, R = 70, cell = 50;
     const L = new Float32Array(N).fill(1e9), Rr = new Float32Array(N).fill(1e9), cross = new Uint8Array(N), pairs = [];
     const grid = new Map(), key = (cx, cz) => cx * 100003 + cz;
@@ -505,7 +509,7 @@ export class Track {
           const dx = this.px[j] - x, dz = this.pz[j] - z, d = Math.hypot(dx, dz);
           if (d > R) continue;
           let arc = Math.abs(i - j); arc = Math.min(arc, N - arc) * ds;
-          if (arc < d * 3 + 40) continue;
+          if (arc < d * arcK + arcC) continue;
           const along = dx * tx + dz * tz, lat = dx * -tz + dz * tx;
           if (Math.abs(along) > 20) continue;
           if (Math.abs(lat) < this.hw[i] + this.hw[j] + 2) {
