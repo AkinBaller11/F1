@@ -508,7 +508,7 @@ body.touch.steer-wheel.cam-tcam .onboard { left: auto; right: calc(230px + env(s
 .pill { display: none; position: absolute; left: 50%; bottom: calc(4vh + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); scale: var(--hud-scale, 1); transform-origin: bottom center;
   align-items: baseline; gap: 14px; padding: 8px 26px 9px; border-radius: 999px; background: rgba(14,16,24,.72); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); font-variant-numeric: tabular-nums; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
 body.hud-minimal.ingame .pill { display: flex; }
-body.hud-minimal.cam-tcam .pill { display: none; }
+body.hud-minimal.cam-tcam:not(.touch) .pill { display: none; } /* touch: the onboard bar is off on the T-cam, so Clean keeps its pill */
 .pill b { font: 900 26px/1 var(--display); color: var(--fg); min-width: .7em; text-align: center; }
 .pill span { font: 700 26px/1 var(--display); min-width: 2.2em; text-align: right; }
 .pill small { font-size: 13px; color: var(--muted); font-weight: 600; }
@@ -866,3 +866,16 @@ body.touch.cam-tcam .onboard { display: none !important; }
 }
 .tower.compact { width: clamp(200px, 15vw, 250px); }
 .tower.compact .row { grid-template-columns: 1.6em 3px 1fr 1.45em 4.6em; }
+
+/* reference layout on touch: minimap bottom-left above the steering buttons, slimmer top bar, compact TV bar */
+body.touch.steer-buttons #hud .minimap { top: auto; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); transform-origin: bottom left; }
+#touch .tc-top { padding: 2px 10px; }
+#touch .tc-top button { width: 40px; height: 40px; padding: 10px; }
+body.touch.ingame #hud .tvbar { top: max(118px, 27vh); font-size: 13px; padding: 5px 12px 5px 0; }
+body.touch.ingame #hud .tvbar .tv-tag { font-size: 12px; margin: -5px 4px -5px 0; }
+@media (max-height: 520px) {
+  body.touch.steer-buttons #hud .minimap { bottom: calc(128px + env(safe-area-inset-bottom, 0px)); }
+  #touch .tc-top button { width: 34px; height: 34px; padding: 8px; }
+  #touch .tc-top .tc-box { font-size: 12px; }
+  body.touch.ingame .flag { top: calc(48px + env(safe-area-inset-top, 0px)); }
+}

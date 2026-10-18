@@ -164,6 +164,8 @@ try { Object.assign(settings, JSON.parse(localStorage.getItem('apexgp25') || '{}
 if (!settings.lightIntro) { if (settings.profile === 'normal' && settings.steerAssist === false) settings.steerAssist = 'light'; settings.lightIntro = true; }
 // the simple play style became the default: easier to pick up, everything realistic is one tap away
 if (!settings.styleIntro) { Object.assign(settings, STYLES.simple, { playStyle: 'simple', styleIntro: true }); }
+// broadcast HUD layout (tower, map, round dash): shown once in full, whatever the eye button was left on
+if (!settings.hudRefIntro) { Object.assign(settings, { hudMode: 'full', hudTower: true, hudTiming: true, hudMap: true, hudDash: true, hudRefIntro: true }); }
 // the black-yellow 2026 car becomes the player's look once (switch back to team colours in the livery screen)
 if (!settings.gialloIntro) { if (!settings.livery || !settings.livery.on) settings.livery = { on: true, ...GIALLO }; settings.gialloIntro = true; }
 if (!settings.wheelIntro) { if (settings.touchSteer === 'joystick') settings.touchSteer = 'wheel'; settings.wheelIntro = true; }
@@ -562,7 +564,7 @@ const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
   // T-cam: on the airbox right behind the helmet, like the TV onboard
-  tcam: { label: 'T-KAMERA', pos: [0, 1.15, 0.4], pitch: -0.1, fov: 80, shake: 1.0, lean: 0.8, lens: true },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.15, 0.4], pitch: -0.11, fov: 84, shake: 1.0, lean: 0.8, lens: true },
   sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
@@ -573,7 +575,7 @@ const CAMS = {
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
 // the 2026 model car is taller at the airbox and nose than the built-in car: onboard cameras sit just clear of it
-const MODEL_CAMS = { tcam: [0, 1.29, 0.47], nose: [0, 0.64, -2.0], wing: [0.62, 0.38, -2.4] };
+const MODEL_CAMS = { tcam: [0, 1.28, 0.18], nose: [0, 0.64, -2.0], wing: [0.62, 0.38, -2.4] };
 for (const k in MODEL_CAMS) CAMS[k].pos0 = CAMS[k].pos;
 function useModelCams(on) { for (const k in MODEL_CAMS) CAMS[k].pos = on ? MODEL_CAMS[k] : CAMS[k].pos0; }
 
