@@ -879,3 +879,8 @@ body.touch.ingame #hud .tvbar .tv-tag { font-size: 12px; margin: -5px 4px -5px 0
   #touch .tc-top .tc-box { font-size: 12px; }
   body.touch.ingame .flag { top: calc(48px + env(safe-area-inset-top, 0px)); }
 }
+
+/* touch: team radio as one compact line at the bottom centre, between steering and pedals (it covered the dash) */
+body.touch .radio { right: auto; top: auto; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 8px); max-width: 40vw; padding: 4px 10px 5px; font-size: 12px; line-height: 1.3; }
+body.touch .radio.show { transform: translate(-50%, 0); }
+body.touch .radio .rl { display: inline; margin: 0 6px 0 0; font-size: 9px; }

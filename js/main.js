@@ -1430,7 +1430,7 @@ class Game {
       const passed = this.lastOrder[i];
       if (!passed || passed.obj.pitCtl || passed.gone || passed.finished) continue;
       const human = c.isPlayer || c.remote || passed.isPlayer || passed.remote;
-      if (i > 2 && !human) continue;
+      if ((i > 2 || document.body.classList.contains('touch')) && !human) continue; // phones: only your own battles
       const col = (e) => hex(e.team.body === 0xf0f0f0 || e.team.body === 0x161616 ? e.team.accent : e.team.body);
       this.hud.tv(`<span class="tv-tag">P${i + 1}</span><i style="background:${col(c)}"></i><b>${c.name}</b><span class="tv-x">überholt</span><i style="background:${col(passed)}"></i><b>${passed.name}</b>`, i === 0 ? 'lead' : '', 2.6);
       this.otT = 2.8;
@@ -2495,7 +2495,6 @@ class Game {
       this.scObj = o; this._objs = null;
       this.scMesh.visible = true;
     }
-    this.hud.message(kind === 'SC' ? 'SAFETY CAR' : 'VIRTUELLES SAFETY CAR', 3, 'big sc');
     audio.beep(700, 0.3);
     this.radio && this.radio.say(kind === 'SC' ? 'Safety Car, Safety Car. Nicht überholen, bleib dicht dran.' : 'Virtuelles Safety Car. Halte das Delta, langsam fahren.', 3, true);
   }
@@ -2583,8 +2582,7 @@ class Game {
     const kind = d[0] === 1 ? 'VSC' : 'SC', ph = ['run', 'in', 'end'][d[1]] || 'run';
     if (!this.sc) {
       this.sc = { kind, ph, t: 0, leaderDist0: 0 };
-      this.hud.message(kind === 'SC' ? 'SAFETY CAR' : 'VIRTUELLES SAFETY CAR', 3, 'big sc');
-      this.radio && this.radio.say(kind === 'SC' ? 'Safety Car, Safety Car. Nicht überholen.' : 'Virtuelles Safety Car. Halte das Delta.', 3, true);
+        this.radio && this.radio.say(kind === 'SC' ? 'Safety Car, Safety Car. Nicht überholen.' : 'Virtuelles Safety Car. Halte das Delta.', 3, true);
     }
     this.sc.kind = kind; this.sc.ph = ph;
     if (typeof d[2] === 'number') {
@@ -2602,7 +2600,6 @@ class Game {
     this.sc = null; this.vscOver = 0; this.greenT = 3; this.scCool = 90; this.incScore = 0;
     if (this.scObj) { this.scObj = null; this._objs = null; }
     if (this.scMesh) this.scMesh.visible = false;
-    this.hud.message('GRÜNE FLAGGE', 2, 'big green');
     audio.beep(1040, 0.25);
     this.radio && this.radio.say('Grün, grün, grün! Gib alles.', 1.5, true);
   }
