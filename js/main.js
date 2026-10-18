@@ -83,7 +83,7 @@ const ONOFF = { vals: [true, false], labels: ['An', 'Aus'] };
 const SETTINGS = [
   { tab: 'Grafik', items: [
     { key: 'quality', label: 'Grafik-Voreinstellung', vals: ['ultra', 'high', 'medium', 'low'], labels: ['Ultra', 'Hoch', 'Mittel', 'Niedrig'], next: true, hint: 'Hoch: Umgebungsverdeckung (Kontaktschatten) und echte Spiegelungen der Umgebung im eigenen Lack. Ultra zusätzlich: doppelt so weite 4K-Schatten, 8× Kantenglättung, Linsenreflexe – für starke PCs und neue iPads.' },
-    { key: 'renderScale', label: 'Auflösung', range: [50, 100, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet.' },
+    { key: 'renderScale', label: 'Auflösung', range: [50, 200, 5], unit: '%', hint: 'Weniger = flüssiger auf Handy und Tablet. Über 100 %: das Bild wird größer berechnet und verkleinert (Supersampling) – deutlich schärfere Kanten, Zäune und Details auf Laptop/PC, braucht aber viel mehr Grafikleistung.' },
     { key: 'dynRes', label: 'Auflösung automatisch', ...ONOFF, hint: 'Wird es ruckelig, rendert das Spiel kurz etwas kleiner und danach wieder scharf. Hält die Bildrate stabil.' },
     { key: 'shadows', label: 'Schatten', ...ONOFF, next: true },
     { key: 'bloom', label: 'Glüheffekt', vals: ['auto', 'on', 'off'], labels: ['Automatisch', 'An', 'Aus'], next: true, hint: 'Leuchtende Lampen, Neon und Sonne.' },
@@ -522,7 +522,10 @@ const CAM_P = new THREE.Vector3();
 function resize() {
   const w = innerWidth, h = innerHeight;
   const q = settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'ultra' ? 2.5 : q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100 * (settings.dynRes !== false ? dynScale : 1));
+  // above 100 % the frame is rendered larger and scaled down (supersampling); capped at 3× the CSS pixels and
+  // at the GPU's largest render target so a high-DPI screen at 200 % cannot ask for an impossible buffer
+  const maxPR = Math.min(3, renderer.capabilities.maxTextureSize / Math.max(w, h));
+  renderer.setPixelRatio(Math.min(maxPR, Math.min(devicePixelRatio, q === 'ultra' ? 2.5 : q === 'high' ? 2 : q === 'medium' ? 1.5 : 1) * (settings.renderScale || 100) / 100 * (settings.dynRes !== false ? dynScale : 1)));
   renderer.setSize(w, h, false);
   if (game) {
     game.camera.aspect = w / h; game.camera.updateProjectionMatrix();
