@@ -152,6 +152,12 @@ float near(vec3 s, vec3 src, float full, float zero) { float e = abs(s.r - src.r
   float wSum = wN + wC + wP + wO + wY + wR;
   if (wSum > 1.0) d /= wSum;
   diffuseColor.rgb = cmToL(clamp((s + d) / 255.0, 0.0, 1.0));
+  // halo, its centre pillar, the mirrors and the cockpit rim in bare 2x2 twill carbon (as on the 2026 cars):
+  // the region above the cockpit opening, ahead of the airbox
+  float wHalo = step(-0.92, vCarPos.z) * step(vCarPos.z, 0.14) * smoothstep(0.755, 0.775, vCarPos.y);
+  float tw = step(0.5, fract((vCarPos.x + vCarPos.z) * 70.0)) + step(0.5, fract((vCarPos.z - vCarPos.x + vCarPos.y) * 70.0));
+  vec3 carbon = vec3(0.012, 0.013, 0.015) * (0.8 + 0.25 * mod(tw, 2.0));
+  diffuseColor.rgb = mix(diffuseColor.rgb, carbon, wHalo);
 }`);
   };
   m.customProgramCacheKey = () => 'teamShift';

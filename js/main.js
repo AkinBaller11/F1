@@ -534,7 +534,7 @@ addEventListener('resize', resize);
 // touch with steering buttons: the centre-bottom HUD (onboard bar, dash, pill) sits in the gap between the
 // arrow buttons and the pedals, shrunk if that gap is narrow, so it never covers BREMSE or a steering arrow
 function fitTouchHud() {
-  const b = document.body, els = document.querySelectorAll('#hud .onboard, #hud .dash, #hud .pill');
+  const b = document.body, els = document.querySelectorAll('#hud .onboard, #hud .pill'); // the dash sits above the pedals on touch
   for (const el of els) { el.style.left = ''; el.style.scale = ''; }
   if (!b.classList.contains('touch') || !b.classList.contains('ingame') || !b.classList.contains('steer-buttons')) return;
   const a = document.getElementById('tc-arrows'), p = document.querySelector('#touch .tside');
@@ -559,7 +559,7 @@ const CAMS = {
   helmet: { label: 'HELM', pos: [0, 0.945, 0.05], pitch: -0.035, fov: 72, shake: 1.15, ego: true },
   cockpit: { label: 'COCKPIT', pos: [0, 0.96, 0.02], pitch: -0.045, fov: 72, shake: 1, ego: true },
   // T-cam: on the airbox right behind the helmet, like the TV onboard
-  tcam: { label: 'T-KAMERA', pos: [0, 1.15, 0.4], pitch: -0.12, fov: 70, shake: 1.0, lean: 0.8, lens: true },
+  tcam: { label: 'T-KAMERA', pos: [0, 1.15, 0.4], pitch: -0.1, fov: 80, shake: 1.0, lean: 0.8, lens: true },
   sidepod: { label: 'SEITENKASTEN', pos: [0.4, 0.8, -0.92], pitch: -0.07, yaw: 0, fov: 78, shake: 0.8, lean: 0.4 },
   nose: { label: 'NASE', pos: [0, 0.5, -2.05], pitch: -0.03, fov: 78, shake: 0.6 },
   wing: { label: 'FRONTFLÜGEL', pos: [0.62, 0.22, -2.35], pitch: 0, fov: 80, shake: 0.5 },
@@ -570,7 +570,7 @@ const CAMS = {
   tv: { label: 'TV-KAMERA', world: true, tv: true, fov: 30 },
 };
 // the 2026 model car is taller at the airbox and nose than the built-in car: onboard cameras sit just clear of it
-const MODEL_CAMS = { tcam: [0, 1.27, 0.45], nose: [0, 0.64, -2.0], wing: [0.62, 0.38, -2.4] };
+const MODEL_CAMS = { tcam: [0, 1.29, 0.47], nose: [0, 0.64, -2.0], wing: [0.62, 0.38, -2.4] };
 for (const k in MODEL_CAMS) CAMS[k].pos0 = CAMS[k].pos;
 function useModelCams(on) { for (const k in MODEL_CAMS) CAMS[k].pos = on ? MODEL_CAMS[k] : CAMS[k].pos0; }
 
@@ -608,11 +608,19 @@ const INTRO_LEN = 7.5; // seconds of TV opening before the grid / formation lap
 const GRADE = {
   // wb: white balance. The sky light (hemisphere, environment map) tints everything blue; a camera would balance
   // that out, so asphalt reads neutral grey and grass olive-green like in broadcast footage
-  uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 }, wb: { value: new THREE.Vector3(1.02, 1.0, 0.96) } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.07 }, curve: { value: 0.16 }, vig: { value: 0.32 }, wb: { value: new THREE.Vector3(1.02, 1.0, 0.96) }, blur: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, curve, vig; uniform vec3 wb; varying vec2 vUv;
+  // blur: speed blur towards the screen edges (onboard cameras at speed), zero in the centre where you look
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, curve, vig, blur; uniform vec3 wb; varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
+      if (blur > 0.001) {
+        vec2 d = vUv - vec2(0.5, 0.42);
+        float k = blur * smoothstep(0.08, 0.5, length(d * vec2(1.6, 1.0)));
+        vec4 acc = c;
+        for (int i = 1; i < 7; i++) acc += texture2D(tDiffuse, vUv - d * k * 0.022 * float(i));
+        c = acc / 7.0;
+      }
       c.rgb *= wb;
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
       c.rgb = mix(vec3(l), c.rgb, sat);
@@ -818,7 +826,7 @@ class Game {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), tod.lamps > 0.5 ? 0.75 : 0.22, 0.45, tod.lamps > 0.5 ? 0.62 : 0.96);
       c.addPass(this.bloom);
       c.addPass(new OutputPass());
-      c.addPass(new ShaderPass(GRADE));
+      this.gradePass = new ShaderPass(GRADE); c.addPass(this.gradePass);
       this.composer = c;
     }
     // no post-processing: the broadcast grade runs inside the tone mapping instead (see CustomToneMapping)
@@ -2892,6 +2900,7 @@ class Game {
     }
     // speed vignette
     const sfx = settings.speedFx && v.ego && !this.lookBack ? Math.max(0, Math.min(1, (p.v - 45) / 45)) : 0;
+    if (this.gradePass) this.gradePass.uniforms.blur.value = settings.speedFx && (v.ego || v.lens) && !this.lookBack && !this.photo ? Math.max(0, Math.min(1, (p.v - 50) / 40)) : 0;
     if (Math.abs(sfx - (this.sfx || 0)) > 0.01) { this.sfx = sfx; $('#speedfx').style.opacity = (sfx * 0.6).toFixed(2); }
     // vibration feedback on phones (Android)
     if (IS_TOUCH && settings.vibrate && navigator.vibrate) {

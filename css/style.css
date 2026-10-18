@@ -852,3 +852,17 @@ body.touch.ingame .msg { top: max(170px, 26%); }
 #tc-gas { width: 128px; height: 128px; }
 @media (max-height: 520px) { #tc-gas { width: 112px; height: 112px; } #tc-brake svg { width: 26px; } #tc-gas svg { width: 17px; } }
 @media (min-width: 1000px) and (pointer: coarse) { #tc-gas { width: 152px; height: 152px; } }
+
+/* touch: the dash sits on the right above the pedals (reference layout), also on the T-cam, where it replaces
+   the TV onboard bar; the compact tower spells out surnames */
+body.touch .dash { left: auto; right: calc(18px + env(safe-area-inset-right, 0px)); bottom: calc(160px + env(safe-area-inset-bottom, 0px)); transform: none; transform-origin: bottom right; }
+body.touch:not(.auto-drs) .dash, body.touch:not(.auto-ers) .dash { bottom: calc(236px + env(safe-area-inset-bottom, 0px)); }
+body.touch.cam-tcam.ingame:not(.hide-dash):not(.hud-minimal) .dash { display: grid !important; }
+body.touch.cam-tcam .onboard { display: none !important; }
+@media (max-height: 520px) {
+  body.touch .dash { transform: scale(.74); bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+  body.touch:not(.auto-drs) .dash, body.touch:not(.auto-ers) .dash { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); }
+  body.touch .posbox .wx { display: none; } /* room for the dash on the right; the forecast stays on tablets */
+}
+.tower.compact { width: clamp(200px, 15vw, 250px); }
+.tower.compact .row { grid-template-columns: 1.6em 3px 1fr 1.45em 4.6em; }

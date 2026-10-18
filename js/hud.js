@@ -324,8 +324,9 @@ export class HUD {
         if (gt !== null) gap = (gt < 0 ? '-' : '+') + Math.abs(gt).toFixed(3);
         if (c.finished) gap = '<span class="fin">ZIEL</span>';
       }
-      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${c.name.slice(0, 3)}</span><span class="tyre" style="border-color:${TYRE_COL[c.obj.tyre] || '#888'}">${c.obj.tyre || '-'}</span><span class="gap">${gap}</span></div>`;
+      html += `<div class="row${c.isPlayer ? ' me' : ''}"><span class="p">${i + 1}</span><span class="bar" style="background:${hex(c.team.body === 0xf0f0f0 || c.team.body === 0x161616 ? c.team.accent : c.team.body)}"></span><span class="n">${N === 3 ? c.name : c.name.slice(0, 3)}</span><span class="tyre" style="border-color:${TYRE_COL[c.obj.tyre] || '#888'}">${c.obj.tyre || '-'}</span><span class="gap">${gap}</span></div>`;
     }
     this.html('h-rows', html);
+    this.root.querySelector('.tower').classList.toggle('compact', N === 3);
   }
 }
