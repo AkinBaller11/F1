@@ -11,7 +11,7 @@ export const TOD = {
     // strong direct sun, less (blue) sky fill: contrast and neutral colours of a clear midday
     sunAz: 160, sunEl: 58, sun: 0xfff1de, sunInt: 3.5, hemiSky: 0xe2eaf6, hemiGround: 0x67683f, hemiInt: 0.85,
     fog: 0xcfe0ee, fogD: 0.00035, exposure: 1.08, env: 0.75, lamps: 0, shadow: 1,
-    sky: ['#2f6cc4', '#7eaee6', '#d5e6f4'], cloud: [250, 250, 252], clouds: 60, stars: 0, glow: '#fffaf0',
+    sky: ['#2f6cc4', '#7eaee6', '#d5e6f4'], cloud: [250, 250, 252], clouds: 80, stars: 0, glow: '#fffaf0',
   },
   evening: {
     sunAz: 255, sunEl: 6, sun: 0xff9550, sunInt: 2.3, hemiSky: 0xd9a99a, hemiGround: 0x3c3428, hemiInt: 0.75,
@@ -87,28 +87,38 @@ function cumulus(g, t, r) {
     return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
   };
   const fbm = (x, y) => { let s = 0, a = 0.5, f = 1; for (let o = 0; o < 5; o++) { s += a * noise(x * f, y * f); f *= 2.03; a *= 0.5; } return s; };
-  const W = 512, H = 128, [cr, cg, cb] = t.cloud;
+  // 1024×256 for the full 360°: at 512×128 one texel covered ~6 screen pixels on a phone and the clouds were mush
+  const W = 1024, H = 256, [cr, cg, cb] = t.cloud;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const cx = cv.getContext('2d'), img = cx.createImageData(W, H), px = img.data;
-  const cover = Math.min(0.75, t.clouds / 170); // share of the sky covered (noon 60 -> ~35 %)
+  const cover = Math.min(0.75, t.clouds / 170); // share of the sky covered (noon 80 -> ~47 %)
   const thr = 0.62 - cover * 0.3;
+  const N = new Float32Array(W * H), EL = new Float32Array(H);
   for (let y = 0; y < H; y++) {
     const el = (1 - (y + 0.5) / H) * Math.PI / 2; // elevation of this row
+    EL[y] = el;
     // distance to the cloud layer (in layer heights), capped: further out one texel would span many cloud cells
     // and the noise aliased into stripes near the horizon
     const dist = Math.min(9, 1 / Math.max(Math.tan(el), 0.02));
     for (let x = 0; x < W; x++) {
       const az = (x / W) * Math.PI * 2;
-      const u = Math.sin(az) * dist * 1.6 + 60, v = Math.cos(az) * dist * 1.6 + 60;
-      const n = fbm(u, v);
-      let a = Math.min(1, Math.max(0, (n - thr) / 0.16));
+      N[y * W + x] = fbm(Math.sin(az) * dist * 1.6 + 60, Math.cos(az) * dist * 1.6 + 60);
+    }
+  }
+  for (let y = 0; y < H; y++) {
+    const el = EL[y], yb = Math.min(H - 1, y + 3);
+    for (let x = 0; x < W; x++) {
+      const n = N[y * W + x];
+      // crisp, cauliflower edges (fair-weather cumulus has sharp outlines, not fog)
+      let a = Math.min(1, Math.max(0, (n - thr) / 0.07));
       a *= Math.min(1, el / 0.16); // fade into the horizon haze
-      // shading: denser core darker underneath, edges bright
-      const core = Math.min(1, Math.max(0, (n - thr - 0.08) / 0.2));
-      const shade = 1 - core * 0.28 * (0.6 + 0.4 * Math.min(1, el * 2));
+      // shading: sunlit, bright tops (density falling towards the top of the screen) and grey flat bases
+      const core = Math.min(1, Math.max(0, (n - thr - 0.05) / 0.18));
+      const lit = Math.max(-1, Math.min(1, (n - N[yb * W + x]) * 9)); // > 0: this texel is above denser cloud
+      const shade = (1 - core * 0.3 * (0.6 + 0.4 * Math.min(1, el * 2))) * (1 + 0.1 * lit) - 0.08 * Math.max(0, -lit);
       const k = (x + y * W) * 4;
-      px[k] = Math.min(255, cr * shade); px[k + 1] = Math.min(255, cg * shade); px[k + 2] = Math.min(255, cb * shade);
-      px[k + 3] = Math.round(a * 235 * Math.min(1, 0.45 + el)); // thinner haze-like near the horizon
+      px[k] = Math.min(255, cr * shade); px[k + 1] = Math.min(255, cg * shade); px[k + 2] = Math.min(255, cb * shade * 1.03);
+      px[k + 3] = Math.round(a * 245 * Math.min(1, 0.5 + el)); // thinner haze-like near the horizon
     }
   }
   cx.putImageData(img, 0, 0);

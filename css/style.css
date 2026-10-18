@@ -712,8 +712,8 @@ body.ph-hidepanel .ph-panel { opacity: 0; }
 .trophy i { grid-row: span 2; font-style: normal; font-size: 26px; align-self: center; }
 .trophy b { font-weight: 900; } .trophy span { color: var(--muted); font-size: 12px; }
 #trophy-count { font-size: .55em; color: var(--muted); margin-left: 8px; }
-#ach-toast { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -140%); z-index: 30; display: flex; gap: 12px; align-items: center; padding: 10px 18px 10px 12px; background: #11141c; border: 1px solid rgba(245,196,0,.6); border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); transition: transform .35s cubic-bezier(.2,.9,.3,1.2); pointer-events: none; max-width: calc(100vw - 32px); }
-#ach-toast.show { transform: translate(-50%, 0); }
+#ach-toast { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translate(-50%, -140%); z-index: 30; display: flex; gap: 12px; align-items: center; padding: 10px 18px 10px 12px; background: #11141c; border: 1px solid rgba(245,196,0,.6); border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .35s, visibility 0s .35s; pointer-events: none; max-width: calc(100vw - 32px); opacity: 0; visibility: hidden; }
+#ach-toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .2s; } /* hidden: its shadow peeked in as a grey smudge at the top edge */
 #ach-toast > i { font-style: normal; font-size: 30px; }
 #ach-toast small { display: block; font-size: 10px; letter-spacing: .16em; color: var(--yellow); font-weight: 900; }
 #ach-toast b { display: block; font-weight: 900; } #ach-toast span { font-size: 12px; color: var(--muted); }
@@ -780,3 +780,75 @@ body.touch.ingame .msg { top: max(170px, 26%); }
   body.touch.ingame .flag { top: calc(56px + env(safe-area-inset-top, 0px)); }
   body.touch.ingame .warn { top: calc(84px + env(safe-area-inset-top, 0px)); }
 }
+
+/* ---------------- broadcast look (reference: official game HUD) ---------------- */
+/* position tower: dark glass, your row in team-red */
+.tower { background: rgba(14,16,24,.78); border-radius: 8px; border: 1px solid rgba(255,255,255,.08); }
+.tower-head { background: transparent; border-bottom: 1px solid rgba(255,255,255,.1); padding: 7px 12px 6px; }
+.tower-lap { border-bottom: 0; padding: 4px 10px 5px; font-weight: 700; }
+.row.me { background: linear-gradient(90deg, #e10600, #b00500); color: #fff; }
+.row.me .p, .row.me .gap { color: #fff; }
+
+/* timing box: big lap time, labelled sector segments, best lap */
+.posbox { background: rgba(14,16,24,.78); border-radius: 8px; border: 1px solid rgba(255,255,255,.08); }
+.posrow { border-bottom: 0; padding: 6px 12px 3px; }
+.laptime { font: 800 clamp(14px, 1.15vw, 19px)/1 var(--display); }
+.sectors { padding: 3px 10px 0; gap: 0; }
+.sectors i { height: auto; border-radius: 0; background: none; border-bottom: 3px solid rgba(255,255,255,.18); font: normal 700 clamp(9px, .7vw, 12px)/1.6 var(--body); color: var(--muted); text-align: center; letter-spacing: .06em; }
+.sectors i:nth-child(1)::after { content: 'S1'; } .sectors i:nth-child(2)::after { content: 'S2'; } .sectors i:nth-child(3)::after { content: 'S3'; }
+.sectors i.g { background: none; border-bottom-color: var(--green); color: #fff; }
+.sectors i.p { background: none; border-bottom-color: var(--purple); color: #fff; }
+.sectors i.y { background: none; border-bottom-color: var(--yellow); color: #fff; }
+.best { display: flex; justify-content: space-between; padding: 5px 12px 7px; font-weight: 700; }
+.best span { font-size: 1.35em; }
+
+/* dash: round rev gauge (gear, speed, rpm) with ERS / DRS beside it */
+.dash { min-width: 0; padding: 8px 14px 8px 8px; border-radius: 22px 10px 10px 22px; border: 1px solid rgba(46,230,168,.35); border-bottom: 1px solid rgba(46,230,168,.35); background: radial-gradient(120% 140% at 20% 50%, rgba(14,30,36,.88), rgba(8,10,16,.9)); box-shadow: 0 0 18px rgba(46,230,168,.18), 0 6px 22px rgba(0,0,0,.45); }
+.dash .revs { display: none; }
+.dmain { grid-template-columns: auto auto; gap: 12px; }
+.gauge { position: relative; width: clamp(118px, 9.5vw, 158px); aspect-ratio: 1; }
+.gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(135deg); }
+.gauge circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+.g-bg { stroke: rgba(255,255,255,.1); stroke-dasharray: 245 400; }
+.g-arc { stroke: url(#g-grad); stroke-dasharray: 0 400; filter: drop-shadow(0 0 4px rgba(46,230,168,.6)); transition: stroke-dasharray .06s linear; }
+.g-arc.hot { stroke: #ff3b3b; filter: drop-shadow(0 0 6px rgba(255,59,59,.8)); }
+.g-in { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 1px; }
+.g-in .gear { font: 900 clamp(34px, 2.9vw, 50px)/.9 var(--display); min-width: 0; }
+.g-in .spd { display: grid; justify-items: center; }
+.g-in .spd b { font: 800 clamp(18px, 1.5vw, 26px)/1 var(--display); }
+.g-in .spd small { font-size: 9px; letter-spacing: .14em; color: var(--muted); font-weight: 700; }
+.g-in .rpm { font-size: 9px; color: #bfe9dc; font-weight: 700; letter-spacing: .04em; }
+.ersbox { justify-items: start; min-width: 92px; gap: 4px; }
+.ers-l { font-size: 12px; color: #fff; font-weight: 900; }
+.ersbar { height: 8px; border-radius: 4px; }
+.ersbar i { background: linear-gradient(90deg, #19d65b, #7dff5a); box-shadow: 0 0 6px rgba(46,230,168,.6); }
+.ersbox .flags { flex-direction: column; gap: 4px; width: 100%; margin-top: 2px; }
+.ersbox .flags span { padding: 3px 6px; text-align: left; }
+.flags .drs.open::after { content: ' ON'; }
+.flags .drs.avail { outline: 0; border: 1px solid var(--green); }
+.dash .pedals { left: auto; right: -12px; }
+
+/* minimap in its own dark panel */
+.minimap { background: rgba(14,16,24,.62); border-radius: 12px; border: 1px solid rgba(255,255,255,.08); width: clamp(150px, 12vw, 220px); filter: none; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+@media (max-height: 520px) { .minimap { width: 118px; top: 118px; } body.steer-wheel .minimap { width: 100px; } }
+
+/* safety-car / VSC banner: slanted yellow plate with a car icon */
+.flag.sc, .flag.vsc { padding: 5px 22px 5px 46px; transform: translateX(-50%) skewX(-12deg); border-left: 4px solid #1a1600; border-right: 4px solid #1a1600; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.flag.sc::before, .flag.vsc::before { width: 26px; height: 12px; left: 12px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 12'%3E%3Cpath d='M2 9V6l4-1 4-3h7l4 3 3 1v3z' fill='%231a1600'/%3E%3Ccircle cx='7' cy='9.5' r='2.3' fill='%23f5c400' stroke='%231a1600' stroke-width='1.4'/%3E%3Ccircle cx='19' cy='9.5' r='2.3' fill='%23f5c400' stroke='%231a1600' stroke-width='1.4'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* touch: one glass bar for the top buttons, chevron steering, pedal icons */
+#touch .tc-top { background: rgba(16,18,26,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 3px 12px; gap: 4px; }
+#touch .tc-top button { border: 0; background: transparent; backdrop-filter: none; }
+#touch .tc-top button.on { background: rgba(225,6,0,.65); }
+#touch .tc-top .tc-box { font-size: 15px; }
+#touch .tc-top button { width: 46px; height: 46px; padding: 11px; }
+@media (max-width: 760px) { #touch .tc-top button { width: 40px; height: 40px; padding: 9px; } }
+.ersbox .mode { display: none; }
+#touch button svg { pointer-events: none; }
+#tc-arrows button { display: grid; place-items: center; padding: 0; background: rgba(10,12,20,.48); }
+#tc-arrows svg { width: 38%; height: 38%; display: block; }
+#tc-brake, #tc-gas { display: grid; place-content: center; justify-items: center; gap: 6px; border-radius: 50%; }
+#tc-brake svg { width: 34px; } #tc-gas svg { width: 22px; }
+#tc-gas { width: 128px; height: 128px; }
+@media (max-height: 520px) { #tc-gas { width: 112px; height: 112px; } #tc-brake svg { width: 26px; } #tc-gas svg { width: 17px; } }
+@media (min-width: 1000px) and (pointer: coarse) { #tc-gas { width: 152px; height: 152px; } }

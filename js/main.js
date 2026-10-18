@@ -744,22 +744,23 @@ class Game {
     const skyWet = new THREE.Mesh(new THREE.SphereGeometry(2900, 48, 24), new THREE.MeshBasicMaterial({ map: skyTexture(tod, true), side: THREE.BackSide, fog: false, transparent: true, opacity: 0, depthWrite: false }));
     sky.material.userData.noTerrain = true; skyWet.material.userData.noTerrain = true;
     // daytime: physically based sky (Rayleigh / Mie scattering, sun disc, haze at the horizon) under a cloud layer
-    const physSky = (k, gain = 0.62, max = 24) => {
+    const physSky = (k, gain = 0.62, max = 24, tint = '1.0, 1.0, 1.0') => {
       const sk = new Sky(); sk.scale.setScalar(k);
       const u = sk.material.uniforms, low = tod.sunEl < 20;
       // clear-day air: little aerosol, so the sky stays blue even looking towards the sun (was a white veil)
-      u.turbidity.value = low ? 6 : 2.4; u.rayleigh.value = low ? 2.2 : 1.5; u.mieCoefficient.value = low ? 0.004 : 0.0018; u.mieDirectionalG.value = 0.78;
+      u.turbidity.value = low ? 6 : 1.9; u.rayleigh.value = low ? 2.2 : 1.8; u.mieCoefficient.value = low ? 0.004 : 0.0018; u.mieDirectionalG.value = 0.78;
       u.sunPosition.value.copy(this.sunDir);
       // dimmed to our exposure; the sun disc is clamped so half-float targets (bloom) never see Inf / NaN
-      sk.material.fragmentShader = sk.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'vec3 skyC = clamp( retColor * ' + gain.toFixed(3) + ', 0.0, ' + max.toFixed(1) + ' ); if ( skyC.r != skyC.r || skyC.g != skyC.g || skyC.b != skyC.b ) skyC = vec3( 0.0 ); gl_FragColor = vec4( skyC, 1.0 );');
+      sk.material.fragmentShader = sk.material.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );', 'vec3 skyC = clamp( retColor * ' + gain.toFixed(3) + ' * vec3( ' + tint + ' ), 0.0, ' + max.toFixed(1) + ' ); if ( skyC.r != skyC.r || skyC.g != skyC.g || skyC.b != skyC.b ) skyC = vec3( 0.0 ); gl_FragColor = vec4( skyC, 1.0 );');
       return sk;
     };
     this.physSky = tod.lamps < 0.5 && tod.sunEl > 3 && opts.quality !== 'low';
     if (this.physSky) {
       // the visible dome a little darker than the light it gives (environment map below keeps 0.62): ACES no
       // longer burns the sky towards the sun to white, the blue holds like in a photo with the exposure on the cars
-      sky.add(physSky(5200, 0.4, 2.5)); // no HDR sun disc in the dome: the sprite draws the sun; the disc only blew out in reflections
+      sky.add(physSky(5200, 0.4, 2.5, '0.84, 0.96, 1.16')); // tinted: a polariser-like deep blue as in broadcast footage, the haze stays at the horizon // no HDR sun disc in the dome: the sprite draws the sun; the disc only blew out in reflections
       sky.material.map = skyTexture(tod, false, true); sky.material.transparent = true; sky.material.depthWrite = false;
+      sky.material.color.setScalar(tod.sunEl > 25 ? 1.45 : 1.15); // sunlit cumulus tops read white after tone mapping, not grey
     }
     sky.add(skyWet);
     scene.add(sky); this.sky = sky; this.skyWet = skyWet;
