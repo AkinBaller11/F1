@@ -2,9 +2,9 @@
 export const brand = {
   primary: '#FF6A00',
   accent: '#FFA53D',
-  // Zweite Farbe für den Wechsel in Szene 6
-  secondary: '#7A4DFF',
-  secondaryAccent: '#C08CFF',
+  // Zweite Farbe für den Wechsel in Szene 6: Reybex-Grün (aus dem Logo) + hellere Glow-Variante
+  secondary: '#0E2424',
+  secondaryAccent: '#4CB5B0',
   bg: '#000000',
   text: '#F5F7FA',
   muted: 'rgba(245,247,250,0.58)',
