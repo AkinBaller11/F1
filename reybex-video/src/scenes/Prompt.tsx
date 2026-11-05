@@ -2,7 +2,7 @@ import React from 'react';
 import {AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import {content} from '../content';
 import {clamp, ease, easeIn, lerp} from '../anim';
-import {CHAT, ChatInput} from '../components/ChatInput';
+import {CHAT, ChatInput, sendCenter} from '../components/ChatInput';
 import {Cursor} from '../components/Cursor';
 import {MotionBlur} from '../components/MotionBlur';
 
@@ -11,7 +11,7 @@ export const Prompt: React.FC = () => {
   const {width: W, height: H} = useVideoConfig();
   const vertical = H > W;
   const bw = Math.min(1250, W - 100);
-  const bh = vertical ? 360 : 290;
+  const bh = vertical ? 420 : 330;
   const left = (W - bw) / 2;
   const top = H / 2 - bh / 2;
   const CLICK = 58;
@@ -19,14 +19,15 @@ export const Prompt: React.FC = () => {
   // Kamera: groß auf den Text, dann Zoom-out auf das Eingabefeld
   const z = interpolate(f, [0, 42], [2.0, 1], {...clamp, easing: ease});
   const ox = left + CHAT.pad;
-  const oy = top + CHAT.pad + 20;
+  const oy = top + CHAT.textTop + 20;
   // leichter Push-in danach
   const push = 1 + 0.03 * lerp(f, 42, 64, 0, 1);
   const exit = lerp(f, 64, 80, 0, 1, easeIn);
   const press = interpolate(f, [CLICK, CLICK + 2, CLICK + 9], [0, 1, 0], clamp);
 
-  const sendX = left + bw - 32 - CHAT.send / 2;
-  const sendY = top + bh - 32 - CHAT.send / 2;
+  const sc = sendCenter(bw, bh);
+  const sendX = left + sc.x;
+  const sendY = top + sc.y;
 
   return (
     <AbsoluteFill style={{opacity: lerp(f, 0, 5, 0, 1) * (1 - lerp(f, 72, 80, 0, 1))}}>
@@ -39,6 +40,7 @@ export const Prompt: React.FC = () => {
                 typeStart={3}
                 width={bw}
                 height={bh}
+                chips={content.chips1}
                 chrome={lerp(f, 16, 38, 0, 1)}
                 controls={lerp(f, 26, 42, 0, 1)}
                 sendPress={press}

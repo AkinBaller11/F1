@@ -5,7 +5,7 @@ import {content} from '../content';
 import {blurIn, clamp, ease, lerp, mixColor, sp} from '../anim';
 import {Logo} from '../components/Logo';
 import {Icon} from '../components/Icon';
-import {ChatInput} from '../components/ChatInput';
+import {ChatInput, sendCenter} from '../components/ChatInput';
 import {Cursor} from '../components/Cursor';
 
 // Lokales Timing
@@ -116,7 +116,7 @@ export const Result: React.FC = () => {
   const cw = Math.min(1120, W - 100);
   const ch = vertical ? 900 : 720;
   const iw = Math.min(1120, W - 100);
-  const ih = vertical ? 300 : 230;
+  const ih = vertical ? 330 : 270;
   const cardTop = H / 2 - ch / 2;
   const inTop = cardTop + ch + 70;
   const inLeft = (W - iw) / 2;
@@ -129,8 +129,9 @@ export const Result: React.FC = () => {
   const exit = lerp(f, 146, 160, 0, 1);
   const press = interpolate(f, [CLICK2, CLICK2 + 2, CLICK2 + 9], [0, 1, 0], clamp);
   const leak = interpolate(f, [114, 128, 158], [0, 1, 0.25], clamp);
-  const sendX = inLeft + iw - 32 - 32;
-  const sendY = inTop + ih - 32 - 32;
+  const sc = sendCenter(iw, ih);
+  const sendX = inLeft + sc.x;
+  const sendY = inTop + sc.y;
 
   return (
     <AbsoluteFill style={{opacity: lerp(f, 0, 6, 0, 1) * (1 - exit), filter: `blur(${exit * 14}px)`}}>
@@ -141,7 +142,7 @@ export const Result: React.FC = () => {
           <Card w={cw} h={ch} mix={mix} vertical={vertical} />
         </div>
         <div style={{position: 'absolute', left: inLeft, top: inTop, ...blurIn(lerp(f, 60, 74, 0, 1))}}>
-          <ChatInput segments={content.prompt2} typeStart={TYPE2} width={iw} height={ih} fontSize={38} sendPress={press} />
+          <ChatInput segments={content.prompt2} typeStart={TYPE2} width={iw} height={ih} fontSize={38} sendPress={press} chips={content.chips2} />
         </div>
         <Cursor
           keys={[

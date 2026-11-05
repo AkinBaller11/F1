@@ -44,6 +44,8 @@ export const content = {
     schedule: 'Jeden Montag, 08:00 · Bericht an Buchhaltung',
     button: 'Freigeben',
   },
+  chips1: ['Buchhaltung', 'Offene Posten'],
+  chips2: ['Mahnwesen-Agent'],
   prompt2: [{text: 'Schick mir '}, {text: 'jeden Montag', hl: true}, {text: ' einen Bericht.'}] as Seg[],
   claim: [{text: 'Gebaut mit '}, {text: 'Reybex KI', hl: true}, {text: '.'}] as Seg[],
   subline: 'Reybex KI-ERP',
