@@ -17,10 +17,7 @@ export const Outro: React.FC = () => {
     <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', opacity: lerp(f, 0, 8, 0, 1) * (1 - end)}}>
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 42}}>
         <div style={{position: 'relative', transform: `scale(${(0.4 + 0.6 * logoP) * pulse})`, ...blurIn(logoP, 20)}}>
-          <div style={{position: 'absolute', left: '50%', top: '50%', width: 760, height: 760, marginLeft: -380, marginTop: -380,
-            borderRadius: '50%', pointerEvents: 'none', opacity: logoP * (0.85 + 0.15 * Math.sin(f / 4)),
-            background: `radial-gradient(circle, ${brand.secondary} 0%, ${brand.secondary} 22%, rgba(14,36,36,0.55) 45%, rgba(14,36,36,0) 70%)`}} />
-          <div style={{position: 'relative'}}><Logo size={120} glow={1.2 + 0.5 * Math.sin(f / 4)} glowColor={brand.secondaryAccent} glowColor2={brand.secondaryAccent} /></div>
+          <Logo size={120} glow={1 + 0.4 * Math.sin(f / 4.5)} />
         </div>
         <div style={{display: 'flex', fontFamily: brand.font, fontSize: 84, fontWeight: 650, color: brand.text, letterSpacing: -2,
           whiteSpace: 'pre'}}>
