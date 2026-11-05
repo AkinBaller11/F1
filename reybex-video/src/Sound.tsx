@@ -55,7 +55,6 @@ const cues: Cue[] = [
   {f: O + 4, s: 'impact', v: 0.5},
   {f: O + 6, s: 'shimmer', v: 0.5},
   {f: O + 14, s: 'whip', v: 0.25},
-  {f: O + 48, s: 'pop', v: 0.3},
 ];
 
 export const Sound: React.FC = () => (

@@ -34,8 +34,8 @@ export const Intro: React.FC = () => {
           {content.wordmarkSuffix.split('').map((ch, i) => {
             const p = sp(f, 24 + i * 2, 16, 140);
             return (
-              <span key={i} style={{...blurIn(p, 22), display: 'inline-block', color: brand.accent,
-                textShadow: `0 0 40px ${brand.accent}`, transform: `translateY(${(1 - p) * 26}px)`}}>
+              <span key={i} style={{...blurIn(p, 22), display: 'inline-block', color: brand.text,
+                textShadow: `0 0 40px ${brand.primary}`, transform: `translateY(${(1 - p) * 26}px)`}}>
                 {ch}
               </span>
             );

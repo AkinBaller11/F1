@@ -8,7 +8,7 @@ export const GlowBackground: React.FC<{intensity: number; mix: number}> = ({inte
   const frame = useCurrentFrame();
   const {width: W, height: H} = useVideoConfig();
   const t = frame / 30;
-  const c1 = mixColor(brand.primary, brand.secondary, mix);
+  const c1 = mixColor(brand.primary, brand.secondaryAccent, mix);
   const c2 = mixColor(brand.accent, brand.secondaryAccent, mix);
   const s = Math.min(W, H) / 1080;
 
@@ -21,7 +21,7 @@ export const GlowBackground: React.FC<{intensity: number; mix: number}> = ({inte
        ${1.25 * W} ${-0.25 * H}`;
 
   return (
-    <AbsoluteFill style={{background: brand.bg, opacity: intensity}}>
+    <AbsoluteFill style={{opacity: intensity}}>
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{position: 'absolute'}}>
         <defs>
           <linearGradient id="rg" x1="0" y1="1" x2="1" y2="0">

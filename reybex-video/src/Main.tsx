@@ -1,6 +1,7 @@
 import React from 'react';
 import {AbsoluteFill, interpolate, Sequence, useCurrentFrame} from 'remotion';
 import {clamp} from './anim';
+import {brand} from './brand';
 import {T} from './timeline';
 import {GlowBackground} from './components/GlowBackground';
 import {Intro} from './scenes/Intro';
@@ -22,7 +23,7 @@ export const Main: React.FC = () => {
   const mix = interpolate(f, [T.result.from + RESULT_MIX[0], T.result.from + RESULT_MIX[1]], [0, 1], clamp);
 
   return (
-    <AbsoluteFill style={{background: '#000'}}>
+    <AbsoluteFill style={{background: brand.bg}}>
       <GlowBackground intensity={intensity} mix={mix} />
       <Sequence from={T.intro.from} durationInFrames={T.intro.dur}><Intro /></Sequence>
       <Sequence from={T.pills.from} durationInFrames={T.pills.dur}><Pills /></Sequence>

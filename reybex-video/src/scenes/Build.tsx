@@ -5,7 +5,7 @@ import {content} from '../content';
 import {blurIn, easeIn, lerp, sp} from '../anim';
 import {MotionBlur} from '../components/MotionBlur';
 
-const COLORS: Record<string, string> = {k: '#FFB870', s: '#5CF2C2', c: '#B39DFF'};
+const COLORS: Record<string, string> = {k: '#FFFFFF', s: '#FFFFFF', c: '#FFFFFF'};
 
 export const Build: React.FC = () => {
   const f = useCurrentFrame();
@@ -34,14 +34,14 @@ export const Build: React.FC = () => {
               return (
                 <div key={i} style={{display: 'flex', gap: 22, whiteSpace: 'nowrap', ...blurIn(p, 12),
                   transform: `translateX(${(1 - p) * 60}px)`, marginTop: isStep ? 10 : 0}}>
-                  <span style={{color: 'rgba(255,255,255,0.25)', width: 48, textAlign: 'right'}}>{String(i + 1).padStart(2, '0')}</span>
-                  <span style={{color: COLORS[kind], fontWeight: isStep ? 700 : 400, textShadow: isStep ? `0 0 18px ${COLORS[kind]}88` : undefined}}>
+                  <span style={{color: brand.text, width: 48, textAlign: 'right'}}>{String(i + 1).padStart(2, '0')}</span>
+                  <span style={{color: COLORS[kind], fontWeight: isStep ? 700 : 400, textShadow: isStep ? `0 0 18px ${brand.primary}aa` : undefined}}>
                     {key}
                   </span>
-                  <span style={{color: 'rgba(255,255,255,0.35)'}}>→</span>
-                  <span style={{color: kind === 'c' ? '#FFD28A' : brand.text}}>{val}</span>
+                  <span style={{color: brand.text}}>→</span>
+                  <span style={{color: brand.text}}>{val}</span>
                   {isStep && (
-                    <span style={{color: '#5CF2C2', opacity: lerp(f, 10 + i * 2.2, 13 + i * 2.2, 0, 1)}}>✓</span>
+                    <span style={{color: brand.text, opacity: lerp(f, 10 + i * 2.2, 13 + i * 2.2, 0, 1)}}>✓</span>
                   )}
                 </div>
               );

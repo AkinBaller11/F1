@@ -12,7 +12,7 @@ export const Typewriter: React.FC<{
   cursor?: boolean;
   hlColor?: string;
   style?: React.CSSProperties;
-}> = ({segments, start, cps = 2, cursor = true, hlColor = brand.accent, style}) => {
+}> = ({segments, start, cps = 2, cursor = true, hlColor = brand.text, style}) => {
   const frame = useCurrentFrame();
   const total = segLength(segments);
   const shown = Math.max(0, Math.min(total, Math.floor((frame - start) * cps)));
@@ -25,7 +25,7 @@ export const Typewriter: React.FC<{
         const part = s.text.slice(0, Math.max(0, left));
         left -= s.text.length;
         return (
-          <span key={i} style={s.hl ? {color: hlColor, textShadow: `0 0 24px ${hlColor}88`} : undefined}>
+          <span key={i} style={s.hl ? {color: hlColor, fontWeight: 700} : undefined}>
             {part}
           </span>
         );

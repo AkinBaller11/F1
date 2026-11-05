@@ -1,13 +1,14 @@
-// Markenfarben: Orange. Logo liegt in public/reybex-logo.png.
+// Farben aus dem Reybex Farb-Styleguide: nur Orange und Dark-Green (+ Weiß für Schrift).
+// Logo: public/reybex-logo.png
 export const brand = {
-  primary: '#FF6A00',
-  accent: '#FFA53D',
-  // Zweite Farbe für den Wechsel in Szene 6: Reybex-Grün (aus dem Logo) + hellere Glow-Variante
-  secondary: '#0E2424',
-  secondaryAccent: '#4CB5B0',
+  primary: '#F15628', // Orange
+  accent: '#F15628', // Orange
+  // Wechsel in Szene 6
+  secondary: '#0E2424', // Dark-Green
+  secondaryAccent: '#0E2424', // Dark-Green
   bg: '#000000',
-  text: '#F5F7FA',
-  muted: 'rgba(245,247,250,0.58)',
+  text: '#FFFFFF',
+  muted: '#FFFFFF',
   font: 'Inter, "Helvetica Neue", Arial, sans-serif',
   mono: '"JetBrains Mono", "DejaVu Sans Mono", monospace',
 };

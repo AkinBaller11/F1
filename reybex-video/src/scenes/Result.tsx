@@ -28,8 +28,8 @@ const Card: React.FC<{w: number; h: number; mix: number; vertical: boolean}> = (
 
   return (
     <div style={{position: 'relative', width: w, height: h, borderRadius: 40, overflow: 'hidden', fontFamily: brand.font,
-      color: brand.text, border: `2px solid ${c2a}`,
-      background: `linear-gradient(152deg, rgba(8,10,22,0.94) 0%, rgba(8,10,22,0.7) 28%, ${c1} 68%, ${c2} 118%)`,
+      color: brand.text, border: '2px solid rgba(255,255,255,0.22)',
+      background: `linear-gradient(152deg, rgba(14,36,36,0.96) 0%, rgba(14,36,36,0.8) 28%, ${c1} 68%, ${c2} 118%)`,
       boxShadow: `0 0 90px ${c1s}, 0 40px 120px rgba(0,0,0,0.6), inset 0 0 50px rgba(255,255,255,0.07)`}}>
       <div style={{position: 'absolute', inset: 0, padding: 50}}>
         {/* Topbar */}
@@ -39,12 +39,11 @@ const Card: React.FC<{w: number; h: number; mix: number; vertical: boolean}> = (
             Reybex
           </div>
           {card.tabs.map((t, i) => (
-            <div key={t} style={{color: i === card.activeTab ? brand.text : 'rgba(255,255,255,0.6)', position: 'relative',
+            <div key={t} style={{color: brand.text, position: 'relative',
               fontWeight: i === card.activeTab ? 600 : 400}}>
               {t}
               {i === card.activeTab && (
-                <div style={{position: 'absolute', left: 0, right: 0, bottom: -10, height: 3, borderRadius: 2, background: c2,
-                  boxShadow: `0 0 12px ${c2}`, transform: `scaleX(${k(20)})`}} />
+                <div style={{position: 'absolute', left: 0, right: 0, bottom: -10, height: 3, borderRadius: 2, background: brand.text, transform: `scaleX(${k(20)})`}} />
               )}
             </div>
           ))}
@@ -55,12 +54,12 @@ const Card: React.FC<{w: number; h: number; mix: number; vertical: boolean}> = (
             transform: `translateY(${(1 - k(12)) * 20}px)`}}>{card.title}</div>
           <div style={{display: 'flex', alignItems: 'center', gap: 10, padding: '9px 18px', borderRadius: 999, fontSize: 21,
             fontWeight: 600, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.3)', ...blurIn(k(20))}}>
-            <div style={{width: 10, height: 10, borderRadius: 5, background: '#4BE3A0', boxShadow: '0 0 10px #4BE3A0',
+            <div style={{width: 10, height: 10, borderRadius: 5, background: brand.primary, boxShadow: `0 0 10px ${brand.primary}`,
               opacity: 0.6 + 0.4 * Math.sin(f / 4)}} />
             {card.badge}
           </div>
         </div>
-        <div style={{fontSize: 26, color: 'rgba(255,255,255,0.72)', marginTop: 14, ...blurIn(k(16))}}>{card.subtitle}</div>
+        <div style={{fontSize: 26, color: brand.text, marginTop: 14, ...blurIn(k(16))}}>{card.subtitle}</div>
         {/* KPIs */}
         <div style={{display: 'flex', gap: 18, marginTop: vertical ? 60 : 36}}>
           {card.kpis.map((kp, i) => {
@@ -71,7 +70,7 @@ const Card: React.FC<{w: number; h: number; mix: number; vertical: boolean}> = (
                 border: '1px solid rgba(255,255,255,0.18)', backdropFilter: 'blur(10px)', ...blurIn(p),
                 transform: `translateY(${(1 - p) * 30}px)`}}>
                 <div style={{fontSize: 60, fontWeight: 700, letterSpacing: -2, fontVariantNumeric: 'tabular-nums'}}>{n}</div>
-                <div style={{fontSize: 21, color: 'rgba(255,255,255,0.66)', marginTop: 2}}>{kp.label}</div>
+                <div style={{fontSize: 21, color: brand.text, marginTop: 2}}>{kp.label}</div>
               </div>
             );
           })}
@@ -92,15 +91,15 @@ const Card: React.FC<{w: number; h: number; mix: number; vertical: boolean}> = (
         {/* Neuer Zeitplan (Szene 6) */}
         <div style={{display: 'flex', alignItems: 'center', gap: 14, marginTop: 22, fontSize: 23, fontWeight: 600,
           padding: '12px 20px', borderRadius: 16, width: 'fit-content', background: 'rgba(255,255,255,0.14)',
-          border: `1px solid ${c2a}`, boxShadow: `0 0 30px ${c1s}`, ...blurIn(sched, 16),
+          border: '1px solid rgba(255,255,255,0.3)', boxShadow: `0 0 30px ${c1s}`, ...blurIn(sched, 16),
           transform: `translateY(${(1 - sched) * 18}px) scale(${0.94 + 0.06 * sched})`}}>
-          <Icon name="calendar" size={26} color={c2} />
+          <Icon name="calendar" size={26} color={brand.text} />
           {card.schedule}
         </div>
       </div>
       {/* Button */}
-      <div style={{position: 'absolute', right: 50, bottom: 46, padding: '13px 30px', borderRadius: 14, background: 'white',
-        color: '#0B0D14', fontSize: 24, fontWeight: 650, boxShadow: '0 0 30px rgba(255,255,255,0.35)', ...blurIn(k(40))}}>
+      <div style={{position: 'absolute', right: 50, bottom: 46, padding: '13px 30px', borderRadius: 14, background: brand.primary,
+        color: brand.text, fontSize: 24, fontWeight: 650, boxShadow: `0 0 30px ${brand.primary}99`, ...blurIn(k(40))}}>
         {card.button}
       </div>
       {/* Lichtschweif */}
@@ -157,7 +156,7 @@ export const Result: React.FC = () => {
       </AbsoluteFill>
       {/* Light-Leak links */}
       <AbsoluteFill style={{opacity: leak, mixBlendMode: 'screen',
-        background: `radial-gradient(ellipse 30% 60% at 0% 45%, ${mixColor(brand.secondary, brand.secondaryAccent, 0.3, 0.95)} 0%, ${mixColor(brand.secondary, brand.secondary, 0, 0.35)} 45%, transparent 75%)`}} />
+        background: `radial-gradient(ellipse 30% 60% at 0% 45%, ${mixColor(brand.secondaryAccent, brand.secondaryAccent, 0, 0.55)} 0%, ${mixColor(brand.secondaryAccent, brand.secondaryAccent, 0, 0.18)} 45%, transparent 75%)`}} />
     </AbsoluteFill>
   );
 };
