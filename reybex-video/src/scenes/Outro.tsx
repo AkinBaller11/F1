@@ -17,7 +17,7 @@ export const Outro: React.FC = () => {
     <AbsoluteFill style={{alignItems: 'center', justifyContent: 'center', opacity: lerp(f, 0, 8, 0, 1) * (1 - end)}}>
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 42}}>
         <div style={{position: 'relative', transform: `scale(${(0.4 + 0.6 * logoP) * pulse})`, ...blurIn(logoP, 20)}}>
-          <Logo size={120} glow={1 + 0.4 * Math.sin(f / 4.5)} />
+          <Logo size={120} glow={1 + 0.4 * Math.sin(f / 4.5)} glowColor={brand.outroGlow} glowColor2={brand.outroGlow} />
         </div>
         <div style={{display: 'flex', fontFamily: brand.font, fontSize: 84, fontWeight: 650, color: brand.text, letterSpacing: -2,
           whiteSpace: 'pre'}}>

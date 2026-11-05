@@ -6,6 +6,7 @@ export const brand = {
   // Wechsel in Szene 6
   secondary: '#0E2424', // Dark-Green
   secondaryAccent: '#0E2424', // Dark-Green
+  outroGlow: '#CEFF9D', // Green – nur für das Logo-Licht im Outro
   bg: '#000000',
   text: '#FFFFFF',
   muted: '#FFFFFF',
