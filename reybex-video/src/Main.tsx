@@ -9,6 +9,7 @@ import {Prompt} from './scenes/Prompt';
 import {Build} from './scenes/Build';
 import {Result, RESULT_MIX} from './scenes/Result';
 import {Outro} from './scenes/Outro';
+import {Sound} from './Sound';
 
 export const Main: React.FC = () => {
   const f = useCurrentFrame();
@@ -29,6 +30,7 @@ export const Main: React.FC = () => {
       <Sequence from={T.build.from} durationInFrames={T.build.dur}><Build /></Sequence>
       <Sequence from={T.result.from} durationInFrames={T.result.dur}><Result /></Sequence>
       <Sequence from={T.outro.from} durationInFrames={T.outro.dur}><Outro /></Sequence>
+      <Sound />
       {/* Vignette */}
       <AbsoluteFill style={{background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%)', pointerEvents: 'none'}} />
     </AbsoluteFill>
