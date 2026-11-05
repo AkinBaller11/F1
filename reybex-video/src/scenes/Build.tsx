@@ -5,7 +5,7 @@ import {content} from '../content';
 import {blurIn, easeIn, lerp, sp} from '../anim';
 import {MotionBlur} from '../components/MotionBlur';
 
-const COLORS: Record<string, string> = {k: '#8AB4FF', s: '#5CF2C2', c: '#B39DFF'};
+const COLORS: Record<string, string> = {k: '#FFB870', s: '#5CF2C2', c: '#B39DFF'};
 
 export const Build: React.FC = () => {
   const f = useCurrentFrame();

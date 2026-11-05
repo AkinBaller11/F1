@@ -10,9 +10,9 @@ npm run render:vertical   # out/reybex-ki-9x16.mp4
 ```
 
 ## Anpassen
-- `src/brand.ts`: Farben, Schriften. **Platzhalter, bitte mit dem Reybex-CI abgleichen.**
+- `src/brand.ts`: Farben (Orange), Schriften
 - `src/content.ts`: alle Texte (Pills, Prompts, Karte, Claim, URL)
-- `src/components/Logo.tsx`: Platzhalter-Bildmarke „R“, durch das echte Logo (SVG) ersetzen
+- `public/reybex-logo.png`: Reybex-Bildmarke (weiß, transparent), Glow kommt aus `src/components/Logo.tsx`
 - `src/timeline.ts`: Szenen-Timing
 
 ## Szenen
