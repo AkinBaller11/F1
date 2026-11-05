@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "studio": "remotion studio",
-    "render": "remotion render Main out/reybex-ki-16x9.mp4",
-    "render:vertical": "remotion render Vertical out/reybex-ki-9x16.mp4"
+    "render": "remotion render Main out/raw/raw-16x9.mp4 && sh scripts/master.sh out/raw/raw-16x9.mp4 out/reybex-ki-16x9.mp4",
+    "render:vertical": "remotion render Vertical out/raw/raw-9x16.mp4 && sh scripts/master.sh out/raw/raw-9x16.mp4 out/reybex-ki-9x16.mp4"
   },
   "dependencies": {
     "@remotion/cli": "4.0.541",
